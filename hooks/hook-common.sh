@@ -8,6 +8,8 @@ _hc_self="$(readlink -f "${BASH_SOURCE[0]}")"
 TOOL_ROOT="$(dirname "$(dirname "$_hc_self")")"
 export TOOL_ROOT
 
+# ephemeral responder sessions (fleet ask) opt out of self-reporting entirely
+[[ -n "${FLEET_NO_REPORT:-}" ]] && exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
 # minimal subset of common/registry (avoid pulling tmux/restart into hooks)

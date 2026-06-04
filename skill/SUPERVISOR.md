@@ -17,6 +17,9 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - `fleet restart <id>` — restart one child.
 - `fleet dispatch <id> "<task>" [cwd]` — start a fresh worker on a task.
 - `fleet attach <id>` — (for the human) jump into a worker's tmux window.
+- `fleet send <to> "<msg>"` — message a peer agent (you can route or relay).
+- `fleet broadcast "<msg>"` — message every worker at once.
+- `fleet inbox <id>` — read a worker's message mailbox (the audit trail of who asked whom).
 
 ## How to behave
 

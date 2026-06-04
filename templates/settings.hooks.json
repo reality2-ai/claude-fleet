@@ -10,6 +10,9 @@
     "PostToolUse": [
       { "matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/post-edit.sh" } ] }
     ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/on-stop.sh" } ] }
+    ],
     "SessionEnd": [
       { "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/session-end.sh" } ] }
     ]

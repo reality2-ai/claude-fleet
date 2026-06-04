@@ -15,6 +15,7 @@ source "$TOOL_ROOT/lib/manifest.sh"
 source "$TOOL_ROOT/lib/registry.sh"
 source "$TOOL_ROOT/lib/tmux.sh"
 source "$TOOL_ROOT/lib/restart.sh"
+source "$TOOL_ROOT/lib/comms.sh"
 
 FLEET_VERSION="0.1.0"
 
@@ -37,6 +38,12 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
   fleet dispatch <id> "<task>" [cwd]   start a fresh worker seeded with a task
   fleet attach <id>             attach your terminal to a child's tmux window
   fleet reap                    detect crashed children and apply restart policy
+
+  fleet ask <to> "<question>"   ask a peer via a fresh expert session in its repo,
+                                  without disturbing its main session  [needs tmux]
+  fleet send <to> "<msg>"       inject a message into a peer's live session
+  fleet broadcast "<msg>"       message all peer agents
+  fleet inbox [id]              show a child's message mailbox
 
   fleet help | version
 EOF
@@ -111,6 +118,7 @@ _render_hooks_json() {
       SessionStart:      hk("session-start.sh"),
       UserPromptSubmit:  hk("prompt-submit.sh"),
       PostToolUse:       hkm("Edit|Write|MultiEdit|NotebookEdit"; "post-edit.sh"),
+      Stop:              hk("on-stop.sh"),
       SessionEnd:        hk("session-end.sh")
     }'
 }
@@ -271,7 +279,7 @@ cmd_restart() {
 cmd_dispatch() {
   local id="${1:?usage: fleet dispatch <id> \"<task>\" [cwd]}"
   local task="${2:?provide a task prompt}"; local cwd="${3:-$WORKSPACE}"
-  fleet_load_paths
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_has_tmux || die "tmux required for dispatch. Run: sudo apt install tmux"
   cwd="${cwd:-$WORKSPACE}"; [[ "$cwd" != /* ]] && cwd="$WORKSPACE/$cwd"
   fleet_ensure_managed_settings
@@ -280,6 +288,8 @@ cmd_dispatch() {
   local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   local -a cargs=("${FLEET_CLAUDE_BIN:-claude}" --name "$id")
   [[ -n "${MANAGED_SETTINGS:-}" ]] && cargs+=(--settings "$MANAGED_SETTINGS")
+  local primer; primer="$(fleet_peer_primer "$id")"
+  [[ -n "$primer" ]] && cargs+=(--append-system-prompt "$primer")
   cargs+=("$task")
   tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" -e "FLEET_CHILD_ID=$id" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
@@ -314,6 +324,63 @@ cmd_reap() {
   (( reaped == 0 )) && info "reap: nothing to restart"
 }
 
+# --- inter-agent comms ------------------------------------------------------
+cmd_send() {
+  local from="" rest=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --from) from="$2"; shift 2 ;; *) rest+=("$1"); shift ;; esac
+  done
+  set -- "${rest[@]}"
+  local to="${1:?usage: fleet send <to> \"<msg>\" [--from <id>]}"
+  local msg="${2:?provide a message}"
+  fleet_load_paths
+  [[ -z "$from" ]] && from="${FLEET_CHILD_ID:-supervisor}"
+  [[ "$to" == "$from" ]] && die "cannot send to self ($to)"
+  fleet_enqueue "$to" "$from" "$msg"
+  fleet_log send "$to" "from=$from"
+  if fleet_drain_inbox "$to"; then
+    info "→ delivered to '$to' (from $from)"
+  else
+    info "→ queued for '$to' (busy or offline) — delivers when it next reaches its prompt"
+  fi
+}
+
+cmd_ask() {
+  local from="" rest=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --from) from="$2"; shift 2 ;; *) rest+=("$1"); shift ;; esac
+  done
+  set -- "${rest[@]}"
+  local to="${1:?usage: fleet ask <to> \"<question>\" [--from <id>]}"
+  local q="${2:?provide a question}"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required for ask. Run: sudo apt install tmux"
+  [[ -z "$from" ]] && from="${FLEET_CHILD_ID:-supervisor}"
+  [[ "$to" == "$from" ]] && die "cannot ask yourself ($to)"
+  fleet_ask "$to" "$from" "$q" || return 1
+  info "asked '$to' (a fresh expert session is answering; reply routes back to '$from')"
+}
+
+cmd_broadcast() {
+  local msg="${1:?usage: fleet broadcast \"<msg>\"}"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  local from="${FLEET_CHILD_ID:-supervisor}" c
+  for c in "${CHILD_IDS[@]:-}"; do
+    [[ -z "$c" || "$c" == "$from" ]] && continue
+    fleet_enqueue "$c" "$from" "$msg"; fleet_drain_inbox "$c" >/dev/null || true
+    info "→ $c"
+  done
+}
+
+cmd_inbox() {
+  fleet_load_paths
+  local id="${1:-${FLEET_CHILD_ID:-}}"
+  [[ -z "$id" ]] && die "usage: fleet inbox <id>  (or set FLEET_CHILD_ID)"
+  local f; f="$(fleet_inbox_file "$id")"
+  [[ -f "$f" ]] || { info "(no messages for $id)"; return; }
+  jq -r '"\(.ts|strftime("%H:%M:%S"))  \(if .delivered then "✓" else "•" end) [\(.from)] \(.text)"' "$f"
+}
+
 # ----------------------------------------------------------------------------
 main() {
   fleet_require_jq
@@ -332,6 +399,10 @@ main() {
     dispatch)  cmd_dispatch "$@" ;;
     attach)    cmd_attach "$@" ;;
     reap)      cmd_reap "$@" ;;
+    ask)       cmd_ask "$@" ;;
+    send)      cmd_send "$@" ;;
+    broadcast) cmd_broadcast "$@" ;;
+    inbox)     cmd_inbox "$@" ;;
     version|-v|--version) echo "fleet $FLEET_VERSION" ;;
     help|-h|--help) usage ;;
     *) usage; die "unknown command: $cmd" ;;

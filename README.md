@@ -28,22 +28,52 @@ The model is borrowed from Erlang/OTP supervision:
 - **Lifecycle** (`up`/`down`/`restart`/`dispatch`) hosts workers as windows in a
   single `fleet` tmux session, resuming each from its last session id.
 
+## Prerequisites
+
+| Requirement | Why | Check / install |
+|---|---|---|
+| **Claude Code CLI** (`claude`) | the worker sessions and the supervisor are Claude Code | `claude --version` — see the Claude Code install docs |
+| **bash ≥ 4** | the CLI, libs, and hooks are bash | `bash --version` (default on Linux; `brew install bash` on macOS) |
+| **jq** | all state/manifest/message handling is JSON | `jq --version` · `sudo apt install jq` / `brew install jq` |
+| **tmux ≥ 3.0** | hosts worker sessions; needed for `up`/`down`/`restart`/`dispatch`/`ask`/`send` | `tmux -V` · `sudo apt install tmux` / `brew install tmux` |
+| **flock** *(optional)* | mailbox locking under concurrent sends; degrades gracefully if absent | part of `util-linux` (present on most Linux) |
+
+Platform: Linux or macOS. The observe-only commands (`status`, `conflicts`,
+`logs`, `inbox`) work with just `bash` + `jq`; everything else needs `tmux`.
+
+> tmux ≥ 3.0 is required specifically because `fleet` uses `tmux new-window -e`
+> to set per-worker environment. Ubuntu 24.04 ships 3.4; check yours with `tmux -V`.
+
 ## Install
 
 ```sh
-# 1. one-time dependency for lifecycle commands (status/conflicts work without it)
-sudo apt install tmux          # jq is also required (usually already present)
+# 1) clone
+git clone <this-repo-url> claude-fleet
+cd claude-fleet
 
-# 2. put fleet on PATH (or call bin/fleet directly)
-ln -s "$PWD/bin/fleet" ~/.local/bin/fleet
+# 2) install prerequisites (Debian/Ubuntu shown; jq is usually already present)
+sudo apt install -y tmux jq
 
-# 3. wire it into a workspace (creates .fleet/, installs hooks)
+# 3) put `fleet` on your PATH (or call ./bin/fleet directly)
+ln -s "$PWD/bin/fleet" ~/.local/bin/fleet   # ensure ~/.local/bin is on $PATH
+fleet version
+
+# 4) wire it into the workspace that contains the repos you run sessions in
 fleet init /path/to/your/workspace
+
+# 5) (recommended) also install user-level hooks so sessions you start by hand
+#    inside sub-repos self-report too — they no-op outside a .fleet workspace
+fleet install-hooks --user
 ```
 
-`fleet init` scaffolds `<workspace>/.fleet/` and merges the self-reporting hooks
-into `<workspace>/.claude/settings.json` (it leaves `settings.local.json`, where
-your permissions live, untouched).
+`fleet init` scaffolds `<workspace>/.fleet/` (manifest, state, logs) and merges
+the self-reporting hooks into `<workspace>/.claude/settings.json` — it leaves
+`settings.local.json`, where your permissions live, untouched. Use
+`fleet init --no-hooks <ws>` to scaffold without writing any settings, then
+install hooks later with `fleet install-hooks [<ws>|--user]`.
+
+Then edit `<workspace>/.fleet/fleet.toml` to declare your workers (see
+`templates/fleet.toml.example`), and you're ready: `fleet up`.
 
 ### Hook scope — important if you run sessions in sub-repos
 
@@ -77,7 +107,28 @@ fleet restart <id>                 # restart one child
 fleet dispatch build "Fix the failing wire tests" r2-core
 fleet attach <id>                  # jump into a worker's window
 fleet reap                         # detect crashed children, apply restart policy
+
+fleet ask core "what wire version does r2-core use?"   # ask an expert repo (non-disruptive)
+fleet send hive "heads up: API boundary changed"        # nudge a peer's live session
+fleet broadcast "pausing for a rebase"                  # message all workers
+fleet inbox composer                                    # read a worker's mailbox
 ```
+
+### Talking between agents
+
+Each worker is primed (at launch) knowing it's the expert on its repo, who its
+peers are, and how to reach them. Two modes:
+
+- **`fleet ask <to> "q"`** spins up a *fresh headless expert session* in the
+  target's repo, which answers from that codebase and routes the reply back to
+  the asker — **the target's own session is never interrupted.** Best for Q&A.
+- **`fleet send <to> "msg"`** injects directly into the target's live session
+  (hybrid delivery: now if it's idle, else queued and delivered the moment it
+  next returns to its prompt). Best for nudges/notifications.
+
+Replies route back to whoever asked: the `[fleet msg from <id>]` prefix names the
+sender, and agents are instructed to always answer that id. Mailboxes live at
+`<workspace>/.fleet/inbox/<id>.jsonl` as an audit trail.
 
 Edit `<workspace>/.fleet/fleet.toml` to declare your workers (see
 `templates/fleet.toml.example`).
@@ -95,30 +146,33 @@ Then just ask it: *"status?"*, *"anything conflicting?"*, *"restart composer"*,
 
 ## What it does NOT do (by design)
 
-- **No live puppeteering.** It can launch, resume, seed, and stop interactive
-  workers; it cannot type follow-up turns into a running one. "Dispatch" = start
-  a worker seeded with a task.
 - **Conflict prevention is detection-only.** It warns when two live sessions
   claim the same file; it does not block edits.
 - **Reboot recovery resumes conversations, not in-flight tool runs.** A build
   interrupted by a crash is not auto-resumed; the worker returns to where its
   transcript ended.
+- **`fleet send` can interrupt a busy peer.** Injection enters the peer's input
+  as a user turn; the hybrid mode mitigates this by holding mail until the peer
+  is idle, but a mid-task agent that `fleet send`s another mid-task agent still
+  enqueues work. Prefer `fleet ask` (which spawns a separate responder) for Q&A.
+- **Agent conversations can loop.** Two agents replying to each other won't stop
+  on their own beyond the "don't reply unnecessarily" instruction in the primer;
+  there is no hop-count limit yet. Watch `fleet inbox` / `fleet logs`.
 
 ## Layout
 
 ```
 bin/fleet              the CLI
-lib/                   common, manifest parser, registry, tmux, restart logic
-hooks/                 self-reporting hooks run by worker sessions
+lib/                   common, manifest parser, registry, tmux, restart,
+                       comms (mailboxes + ask), responder, run-child
+hooks/                 self-reporting hooks (session-start, prompt-submit,
+                       post-edit, on-stop, session-end)
 skill/SUPERVISOR.md    role prompt for the supervising session
 templates/             example fleet.toml + illustrative hooks block
 ```
 
-Runtime state lives per-workspace under `<workspace>/.fleet/` (never in this repo).
-
-## Requirements
-
-`bash`, `jq`, and (for lifecycle commands) `tmux ≥ 3.0`. Linux/macOS.
+Runtime state lives per-workspace under `<workspace>/.fleet/` (manifest, state,
+run bindings, mailboxes, logs) — never in this repo.
 
 ## License
 

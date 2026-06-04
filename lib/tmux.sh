@@ -45,6 +45,11 @@ fleet_tmux_start_child() {
   # inject the hooks settings so the worker self-reports even when its cwd is a
   # sub-repo that doesn't inherit the workspace-root settings (see fleet up).
   [[ -n "${MANAGED_SETTINGS:-}" ]] && claude_args+=(--settings "$MANAGED_SETTINGS")
+  # prime the worker with its identity, peers, and the mailbox protocol
+  if declare -F fleet_peer_primer >/dev/null 2>&1; then
+    local primer; primer="$(fleet_peer_primer "$id")"
+    [[ -n "$primer" ]] && claude_args+=(--append-system-prompt "$primer")
+  fi
   [[ -n "$pm" ]] && claude_args+=(--permission-mode "$pm")
   if [[ -n "$sid" ]]; then
     claude_args+=(--resume "$sid")
