@@ -256,13 +256,12 @@ fleet_start_supervisor() {
   fleet_tmux_ensure_session
   local -a cargs=("${FLEET_CLAUDE_BIN:-claude}" --name fleet-supervisor)
   [[ -n "${MANAGED_SETTINGS:-}" ]] && cargs+=(--settings "$MANAGED_SETTINGS")
+  # always apply the supervisor role prompt — including on resume (so doc updates
+  # take effect when recycled); --append-system-prompt composes with --resume.
+  local primer; primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
+  [[ -n "$primer" ]] && cargs+=(--append-system-prompt "$primer")
   local sid=""; [[ -f "$RUN_DIR/supervisor.session" ]] && sid="$(<"$RUN_DIR/supervisor.session")"
-  if [[ -n "$sid" ]]; then
-    cargs+=(--resume "$sid")
-  else
-    local primer; primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
-    [[ -n "$primer" ]] && cargs+=(--append-system-prompt "$primer")
-  fi
+  [[ -n "$sid" ]] && cargs+=(--resume "$sid")
   local exitfile="$RUN_DIR/supervisor.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   tmux new-window -t "$FLEET_TMUX_SESSION" -n supervisor -c "$WORKSPACE" -e "FLEET_CHILD_ID=supervisor" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
