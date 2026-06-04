@@ -209,6 +209,21 @@ fleet remote-control [on|off] [id]   # enable/disable Claude /remote-control on 
 fleet help | version
 ```
 
+### The `/fleet` slash command
+
+So you can drive the fleet from *inside* a Claude session (the supervisor, or any
+member) without dropping to a shell, fleet ships a `/fleet` slash command:
+
+```sh
+fleet install-commands --user     # makes /fleet available in every session
+#   (fleet init also installs it into the workspace .claude/)
+```
+
+Then, in any session: `/fleet brief`, `/fleet status`, `/fleet up`, `/fleet ask
+core "…"`, `/fleet remote-control on`, etc. It runs the `fleet` CLI and the session
+reports the result. Like the hooks, the user-level install is what makes it reach
+members running in sub-repos. (Commands load live — no restart.)
+
 ## Inter-agent communication
 
 Each member is primed at launch knowing it's the resident expert on its repo, who
@@ -320,7 +335,8 @@ lib/                   common, manifest parser, registry, tmux, restart,
 hooks/                 self-reporting hooks: session-start, prompt-submit,
                        post-edit, on-stop, session-end
 skill/SUPERVISOR.md    role prompt for the supervising session
-templates/             example fleet.toml + illustrative hooks block
+commands/fleet.md      the /fleet slash command (installed into .claude/commands/)
+templates/             example fleet.toml + primer.md + illustrative hooks block
 ```
 
 Runtime state lives per-workspace under `<workspace>/.fleet/` (manifest, state,

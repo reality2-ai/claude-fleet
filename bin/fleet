@@ -40,6 +40,8 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
   fleet install-hooks --user            install hooks into ~/.claude/settings.json
                                           (covers hand-started sessions in sub-repos;
                                            no-ops outside a .fleet workspace)
+  fleet install-commands [<ws>|--user]  install the /fleet slash command
+                                          (--user makes /fleet work in every session)
   fleet status                  table of all known sessions (live/idle/dead, task, claims)
   fleet brief                   triage: what needs you, who's waiting at their prompt, who's working
   fleet conflicts               files being edited by more than one live session
@@ -197,11 +199,13 @@ GI
     info "wrote   $sd/.gitignore (so you can 'git init' here and version your config)"
   fi
 
-  # merge hooks into the workspace .claude/settings.json (NOT settings.local.json)
+  # merge hooks + install the /fleet command into the workspace .claude/
   if [[ "$no_hooks" == "1" ]]; then
-    info "skipped self-reporting hooks (--no-hooks). Install later with: fleet install-hooks $ws"
+    info "skipped hooks + /fleet command (--no-hooks). Install later:"
+    info "  fleet install-hooks $ws   and   fleet install-commands $ws"
   else
     fleet_install_hooks "$ws"
+    fleet_install_commands "$ws"
   fi
   info ""
   info "Done. Next: 'fleet status' (works now), and for lifecycle install tmux then 'fleet up'."
@@ -230,6 +234,15 @@ fleet_install_hooks() { _merge_hooks_into "$(fleet_realpath "$1")/.claude/settin
 # .fleet workspace, so this is safe globally). Covers hand-started sessions in
 # sub-repos that don't inherit the workspace-root settings.
 fleet_install_user_hooks() { _merge_hooks_into "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"; }
+
+# Install the /fleet slash command into a .claude/commands dir.
+_install_command_to() {
+  local cdir="$1"; mkdir -p "$cdir/commands"
+  cp "$TOOL_ROOT/commands/fleet.md" "$cdir/commands/fleet.md"
+  info "wrote   $cdir/commands/fleet.md  (use /fleet in sessions there)"
+}
+fleet_install_commands()      { _install_command_to "$(fleet_realpath "$1")/.claude"; }
+fleet_install_user_commands() { _install_command_to "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"; }
 
 # Write a settings file carrying only the hooks, for --settings injection into
 # managed workers so they self-report regardless of their cwd/project.
@@ -732,6 +745,9 @@ main() {
     install-hooks)
       if [[ "${1:-}" == "--user" ]]; then fleet_install_user_hooks
       else fleet_install_hooks "${1:-$PWD}"; fi ;;
+    install-commands)
+      if [[ "${1:-}" == "--user" ]]; then fleet_install_user_commands
+      else fleet_install_commands "${1:-$PWD}"; fi ;;
     status|ls) cmd_status "$@" ;;
     brief)     cmd_brief "$@" ;;
     conflicts) cmd_conflicts "$@" ;;
