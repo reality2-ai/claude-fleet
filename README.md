@@ -164,16 +164,22 @@ session from claude.ai/code or the Claude mobile app — an outbound HTTPS
 connection, no ports opened. `fleet` enables it on live members by injecting the
 slash command (no relaunch needed):
 
+It's a per-member toggle, meant to be enabled piecemeal, checked, and turned off
+again:
+
 ```sh
-fleet remote-control           # enable on all live members (names each by id)
-fleet remote-control hive      # or just one
-fleet remote                   # show remote-control status of each member
+fleet remote-control on hive   # enable one member  (default action is "on")
+fleet remote-control off hive  # disable it again   (/remote-control is a toggle)
+fleet remote-control on        # enable every live member at once
+fleet remote                   # show each member's status (active | -)
 ```
 
-Each member then appears **by its name** in claude.ai/code and the mobile app
-(signed in as you) — so you can check on or steer any fleet member from your
-phone. Requires a Pro/Max/Team/Enterprise login (`/login`); it's per-session, so
-each enabled member is a separately controllable session on your account.
+`fleet` reads each member's current state first, so `on`/`off` only act when they
+actually change something (no accidental double-toggle). Enabled members appear
+**by name** in claude.ai/code and the mobile app (signed in as you) — so you can
+check on or steer any fleet member from your phone. Requires a
+Pro/Max/Team/Enterprise login (`/login`); each enabled member is a separately
+controllable session on your account.
 
 ## What it does NOT do (by design)
 
