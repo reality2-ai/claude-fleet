@@ -43,7 +43,8 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
   fleet conflicts               files being edited by more than one live session
   fleet logs [id]               tail the aggregate event log, or summarise one child
 
-  fleet up [id]                 start the suite (or one child) in tmux  [needs tmux]
+  fleet up [--no-supervisor] [id]   start the suite + supervisor in tmux  [needs tmux]
+  fleet supervise               start (or point you to) the supervisor session
   fleet down [id]               stop the suite (or one child), marked intentional
   fleet restart <id>            force-restart one child (honours intensity breaker)
   fleet dispatch <id> "<task>" [cwd]   start a fresh worker seeded with a task
@@ -243,7 +244,44 @@ cmd_logs() {
 }
 
 # ----------------------------------------------------------------------------
+# Launch the supervisor: an interactive Claude session, primed with the
+# supervisor role, that oversees the fleet and can message workers. It is a
+# first-class fleet member (window "supervisor", id "supervisor").
+fleet_start_supervisor() {
+  fleet_tmux_has_window supervisor && return 0
+  fleet_ensure_managed_settings
+  fleet_tmux_ensure_session
+  local -a cargs=("${FLEET_CLAUDE_BIN:-claude}" --name fleet-supervisor)
+  [[ -n "${MANAGED_SETTINGS:-}" ]] && cargs+=(--settings "$MANAGED_SETTINGS")
+  local sid=""; [[ -f "$RUN_DIR/supervisor.session" ]] && sid="$(<"$RUN_DIR/supervisor.session")"
+  if [[ -n "$sid" ]]; then
+    cargs+=(--resume "$sid")
+  else
+    local primer; primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
+    [[ -n "$primer" ]] && cargs+=(--append-system-prompt "$primer")
+  fi
+  local exitfile="$RUN_DIR/supervisor.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  tmux new-window -t "$FLEET_TMUX_SESSION" -n supervisor -c "$WORKSPACE" -e "FLEET_CHILD_ID=supervisor" \
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_state_ensure supervisor "$WORKSPACE" true
+  fleet_state_jq supervisor '.state="running" | .role="supervisor"' >/dev/null
+  fleet_log supervisor - "started"
+}
+
+cmd_supervise() {
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required for the supervisor session. Run: sudo apt install tmux"
+  if fleet_tmux_has_window supervisor; then
+    info "supervisor already running."
+  else
+    fleet_start_supervisor; info "supervisor session started."
+  fi
+  info "attach with:  fleet attach supervisor"
+}
+
 cmd_up() {
+  local no_sup=0
+  case "${1:-}" in --no-supervisor) no_sup=1; shift ;; esac
   fleet_load_paths; fleet_manifest_load "$MANIFEST"
   fleet_ensure_managed_settings
   local only="${1:-}"
@@ -255,6 +293,9 @@ cmd_up() {
     info "up: started '$id'"
   done
   (( started == 0 )) && warn "nothing started (check id / manifest)"
+  if [[ -z "$only" && "$no_sup" == 0 ]]; then
+    fleet_start_supervisor && info "up: started 'supervisor'"
+  fi
   info "tmux session '$FLEET_TMUX_SESSION' — attach with: fleet attach <id>"
 }
 
@@ -344,15 +385,20 @@ cmd_send() {
   set -- "${rest[@]}"
   local to="${1:?usage: fleet send <to> \"<msg>\" [--from <id>]}"
   local msg="${2:?provide a message}"
-  fleet_load_paths
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   [[ -z "$from" ]] && from="${FLEET_CHILD_ID:-supervisor}"
   [[ "$to" == "$from" ]] && die "cannot send to self ($to)"
-  fleet_enqueue "$to" "$from" "$msg"
-  fleet_log send "$to" "from=$from"
+  local cap; cap="$(fleet_max_hops)"
+  local hop; hop="$(fleet_next_hop "$from")" || {
+    fleet_log hop-limit "$to" "from=$from cap=$cap"
+    die "hop limit ($cap) reached for this thread — message to '$to' not sent. Start a fresh thread, or raise [supervisor] max_hops."
+  }
+  fleet_enqueue "$to" "$from" "$msg" "$hop"
+  fleet_log send "$to" "from=$from hop=$hop"
   if fleet_drain_inbox "$to"; then
-    info "→ delivered to '$to' (from $from)"
+    info "→ delivered to '$to' (from $from, hop $hop/$cap)"
   else
-    info "→ queued for '$to' (busy or offline) — delivers when it next reaches its prompt"
+    info "→ queued for '$to' (busy or offline, hop $hop/$cap) — delivers when it next reaches its prompt"
   fi
 }
 
@@ -405,6 +451,7 @@ main() {
     conflicts) cmd_conflicts "$@" ;;
     logs|log)  cmd_logs "$@" ;;
     up)        cmd_up "$@" ;;
+    supervise|supervisor) cmd_supervise "$@" ;;
     down)      cmd_down "$@" ;;
     restart)   cmd_restart "$@" ;;
     dispatch)  cmd_dispatch "$@" ;;

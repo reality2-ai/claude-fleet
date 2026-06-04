@@ -135,14 +135,18 @@ Edit `<workspace>/.fleet/fleet.toml` to declare your workers (see
 
 ### Running the supervisor session
 
-Start an interactive Claude session primed with the supervisor role:
+`fleet up` starts a dedicated **supervisor** window (a Claude session primed with
+the supervisor role) alongside the workers — or start/raise it on its own:
 
 ```sh
-claude --append-system-prompt "$(cat /path/to/claude-fleet/skill/SUPERVISOR.md)"
+fleet supervise            # start the supervisor session (or tell you it's up)
+fleet attach supervisor    # drop into it
 ```
 
+It's a first-class fleet member (id `supervisor`): it self-reports, can be
+messaged (`fleet send supervisor "..."`), and resumes on the next `fleet up`.
 Then just ask it: *"status?"*, *"anything conflicting?"*, *"restart composer"*,
-*"bring the suite back up"*.
+*"bring the suite back up"*. Use `fleet up --no-supervisor` to skip it.
 
 ## What it does NOT do (by design)
 

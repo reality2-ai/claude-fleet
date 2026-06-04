@@ -10,25 +10,42 @@
 # Requires: registry.sh + tmux.sh sourced. Uses flock when available.
 
 FLEET_MSG_TAG="${FLEET_MSG_TAG:-fleet msg}"
+# Hard cap on conversation depth, to stop two agents ping-ponging forever.
+# Auto-tracked: a message a sender produces right after receiving one inherits
+# hop+1; the cap refuses sends past it. Configure via [supervisor] max_hops.
+fleet_max_hops() { printf '%s\n' "${FLEET_MAX_HOPS:-${SUP_MAX_HOPS:-6}}"; }
 
 fleet_inbox_file() { printf '%s/inbox/%s.jsonl\n' "$STATE_DIR" "$1"; }
 
-# enqueue a message as undelivered
+# enqueue a message as undelivered, carrying its hop depth
 fleet_enqueue() {
-  local to="$1" from="$2" text="$3" f ts
+  local to="$1" from="$2" text="$3" hops="${4:-1}" f ts
   f="$(fleet_inbox_file "$to")"; mkdir -p "$(dirname "$f")"
   ts="$(date +%s)"
   exec 9>"$f.lock"; flock 9 2>/dev/null || true
-  jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" \
-    '{ts:$ts, from:$from, to:$to, text:$text, delivered:false}' >>"$f"
+  jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" --argjson hops "$hops" \
+    '{ts:$ts, from:$from, to:$to, text:$text, hops:$hops, delivered:false}' >>"$f"
   flock -u 9 2>/dev/null || true; exec 9>&-
+}
+
+# Compute the hop depth for a message <from> is about to send: one deeper than
+# the last message delivered TO <from> (a reply), else 1 (a fresh thread).
+# Returns the hop number on stdout, or empty if the cap would be exceeded.
+fleet_next_hop() {
+  local from="$1" prev hop
+  prev="$(fleet_state_get "$from" '.last_inbound_hops' 0)"; [[ "$prev" =~ ^[0-9]+$ ]] || prev=0
+  hop=$(( prev + 1 ))
+  # consume the inherited depth so only the immediate reply carries it
+  fleet_state_jq "$from" '.last_inbound_hops=0' >/dev/null 2>&1 || true
+  (( hop > $(fleet_max_hops) )) && { printf ''; return 1; }
+  printf '%s\n' "$hop"
 }
 
 # type one message into a target's tmux prompt and submit it
 fleet_inject() {
-  local to="$1" from="$2" text="$3"
+  local to="$1" from="$2" text="$3" hops="${4:-1}"
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
-  tmux send-keys -t "$FLEET_TMUX_SESSION:$to" -l "[$FLEET_MSG_TAG from $from] $text" 2>/dev/null || return 1
+  tmux send-keys -t "$FLEET_TMUX_SESSION:$to" -l "[$FLEET_MSG_TAG from $from · hop $hops/$(fleet_max_hops)] $text" 2>/dev/null || return 1
   tmux send-keys -t "$FLEET_TMUX_SESSION:$to" Enter 2>/dev/null || return 1
 }
 
@@ -46,12 +63,16 @@ fleet_drain_inbox() {
   exec 9>"$f.lock"; flock 9 2>/dev/null || true
   local n; n="$(jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0)"
   if [[ "${n:-0}" -gt 0 ]]; then
-    local line from text
+    local line from text hops maxhop=0
     while IFS= read -r line; do
       from="$(jq -r '.from' <<<"$line")"; text="$(jq -r '.text' <<<"$line")"
-      fleet_inject "$to" "$from" "$text" || break
+      hops="$(jq -r '.hops // 1' <<<"$line")"
+      fleet_inject "$to" "$from" "$text" "$hops" || break
+      (( hops > maxhop )) && maxhop="$hops"
     done < <(jq -c 'select(.delivered==false)' "$f")
     jq -c '.delivered=true' "$f" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
+    # record the deepest hop delivered so this agent's reply inherits hop+1
+    fleet_state_jq "$to" --argjson h "$maxhop" '.last_inbound_hops=$h' >/dev/null 2>&1 || true
     fleet_log deliver "$to" "$n message(s)"
   fi
   flock -u 9 2>/dev/null || true; exec 9>&-
@@ -99,7 +120,13 @@ Two ways to reach a peer (run in Bash):
   - Notify/nudge their live session directly (use sparingly):
         fleet send <peer-id> "a heads-up"
 
-Messages and answers arrive in your input prefixed: [${FLEET_MSG_TAG} from <id>] ...
+There is also a "supervisor" coordinating the fleet. Escalate to it (blockers,
+cross-cutting decisions, "who owns X?") with:  fleet send supervisor "..."
+
+Messages and answers arrive in your input prefixed:
+    [${FLEET_MSG_TAG} from <id> · hop N/MAX] ...
+The hop number is the conversation depth; if it is at MAX, do not reply further
+(the fleet will refuse it anyway) — wrap up or escalate to the supervisor instead.
 Read queued mail anytime with:  fleet inbox
 
 REPLY ROUTING (a firm rule, not a suggestion):

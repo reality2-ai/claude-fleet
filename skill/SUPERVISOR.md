@@ -17,7 +17,8 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - `fleet restart <id>` — restart one child.
 - `fleet dispatch <id> "<task>" [cwd]` — start a fresh worker on a task.
 - `fleet attach <id>` — (for the human) jump into a worker's tmux window.
-- `fleet send <to> "<msg>"` — message a peer agent (you can route or relay).
+- `fleet ask <to> "<q>"` — ask a worker's repo a question via a fresh expert session (non-disruptive).
+- `fleet send <to> "<msg>"` — inject a message into a worker's live session (nudge/notify).
 - `fleet broadcast "<msg>"` — message every worker at once.
 - `fleet inbox <id>` — read a worker's message mailbox (the audit trail of who asked whom).
 
@@ -35,8 +36,11 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 
 ## Honest limits (do not overstate to the user)
 
-- You cannot type follow-up turns into a running interactive worker. "Dispatch"
-  starts/resumes a worker seeded with a task; it does not puppeteer one mid-conversation.
+- `fleet send` injects into a worker's live input (it can interrupt a busy one);
+  `fleet ask` spawns a separate expert and does not. Neither lets you silently
+  steer a worker — your message shows up as a visible turn in its session.
+- Agent-to-agent threads are hop-capped (`max_hops`); past the cap, sends are
+  refused. If agents hit the cap a lot, the work probably needs a human decision.
 - Conflict handling is **detection only** — you warn, you do not block edits.
 - `fleet up` resumes *conversations*; a build/test interrupted by a crash is not
   auto-resumed — the worker returns to where its transcript ended.

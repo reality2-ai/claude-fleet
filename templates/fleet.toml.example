@@ -11,6 +11,9 @@ strategy     = "one_for_one"
 # and left down instead of crash-looping.
 max_restarts = 3
 max_seconds  = 60
+# cap on agent-to-agent conversation depth (stops two agents ping-ponging
+# forever). A reply inherits hop+1; sends past max_hops are refused.
+max_hops     = 6
 
 # --- children ---------------------------------------------------------------
 # Each [[child]] is one worker session.

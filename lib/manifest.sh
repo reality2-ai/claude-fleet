@@ -31,7 +31,7 @@ fleet_manifest_load() {
   local file="$1"
   [[ -f "$file" ]] || die "manifest not found: $file"
   MANIFEST_KV=(); CHILD_IDS=()
-  SUP_STRATEGY="one_for_one"; SUP_MAX_RESTARTS=3; SUP_MAX_SECONDS=60
+  SUP_STRATEGY="one_for_one"; SUP_MAX_RESTARTS=3; SUP_MAX_SECONDS=60; SUP_MAX_HOPS=6
 
   local section="" cur_id="" anon=0 line key val
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -58,6 +58,7 @@ fleet_manifest_load() {
           strategy)     SUP_STRATEGY="$val" ;;
           max_restarts) SUP_MAX_RESTARTS="$val" ;;
           max_seconds)  SUP_MAX_SECONDS="$val" ;;
+          max_hops)     SUP_MAX_HOPS="$val" ;;
         esac
         ;;
       child)
