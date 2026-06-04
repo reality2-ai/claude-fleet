@@ -45,6 +45,7 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
 
   fleet up [--no-supervisor] [id]   start the suite + supervisor in tmux  [needs tmux]
   fleet supervise               start (or point you to) the supervisor session
+  fleet order                   arrange tmux windows: supervisor, then manifest order
   fleet down [id]               stop the suite (or one child), marked intentional
   fleet restart <id>            force-restart one child (honours intensity breaker)
   fleet dispatch <id> "<task>" [cwd]   start a fresh worker seeded with a task
@@ -247,6 +248,32 @@ cmd_logs() {
 }
 
 # ----------------------------------------------------------------------------
+# Arrange the tmux windows into the canonical order: supervisor first, then the
+# children in manifest (dependency) order, then anything else (ad-hoc, ask:*).
+# Done by parking every window at a high temp index, then placing back at 0..n-1.
+fleet_reorder_windows() {
+  fleet_tmux_session_exists || return 0
+  local -a current=(); mapfile -t current < <(tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null)
+  [[ ${#current[@]} -eq 0 ]] && return 0
+  local -a want=(supervisor) desired=(); local -A seen=(); local w id
+  for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && want+=("$id"); done
+  for w in "${want[@]}"; do
+    printf '%s\n' "${current[@]}" | grep -qx "$w" && { desired+=("$w"); seen["$w"]=1; }
+  done
+  for w in "${current[@]}"; do [[ -z "${seen[$w]:-}" ]] && desired+=("$w"); done
+  local i=0
+  for w in "${desired[@]}"; do tmux move-window -d -s "$FLEET_TMUX_SESSION:$w" -t "$FLEET_TMUX_SESSION:$((900+i))" 2>/dev/null; i=$(( i+1 )); done
+  i=0
+  for w in "${desired[@]}"; do tmux move-window -d -s "$FLEET_TMUX_SESSION:$((900+i))" -t "$FLEET_TMUX_SESSION:$i" 2>/dev/null; i=$(( i+1 )); done
+}
+
+cmd_order() {
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required for window ordering."
+  fleet_reorder_windows
+  info "windows ordered: $(tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#{window_index}:#W' 2>/dev/null | tr '\n' ' ')"
+}
+
 # Launch the supervisor: an interactive Claude session, primed with the
 # supervisor role, that oversees the fleet and can message workers. It is a
 # first-class fleet member (window "supervisor", id "supervisor").
@@ -298,6 +325,7 @@ cmd_up() {
   if [[ -z "$only" && "$no_sup" == 0 ]]; then
     fleet_start_supervisor && info "up: started 'supervisor'"
   fi
+  fleet_reorder_windows
   info "tmux session '$FLEET_TMUX_SESSION' — attach with: fleet attach <id>"
 }
 
@@ -515,6 +543,7 @@ main() {
     logs|log)  cmd_logs "$@" ;;
     up)        cmd_up "$@" ;;
     supervise|supervisor) cmd_supervise "$@" ;;
+    order)     cmd_order "$@" ;;
     down)      cmd_down "$@" ;;
     restart)   cmd_restart "$@" ;;
     dispatch)  cmd_dispatch "$@" ;;

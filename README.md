@@ -106,6 +106,7 @@ fleet down [id]                    # stop the suite / one child
 fleet restart <id>                 # restart one child
 fleet dispatch build "Fix the failing wire tests" r2-core
 fleet attach <id>                  # jump into a worker's window
+fleet order                        # arrange windows: supervisor, then manifest order
 fleet reap                         # detect crashed children, apply restart policy
 
 fleet ask core "what wire version does r2-core use?"   # ask an expert repo (non-disruptive)
