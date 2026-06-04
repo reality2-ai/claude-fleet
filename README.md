@@ -198,8 +198,8 @@ fleet order                       # arrange windows: supervisor, then manifest o
 fleet reap                        # detect crashed members, apply restart policy
 
 # inter-agent comms (tmux)
-fleet ask <to> "<question>"  # ask a member's repo via a fresh expert (non-disruptive)
-fleet send <to> "<msg>"      # inject a message into a member's live session
+fleet ask <to> "<question>"  # ask a member (lands in its thread; it answers + replies back)
+fleet send <to> "<msg>"      # tell a member something (lands in its thread; no reply needed)
 fleet broadcast "<msg>"      # message every member
 fleet supervise              # start (or point you to) the supervisor session
 
@@ -227,21 +227,21 @@ members running in sub-repos. (Commands load live — no restart.)
 ## Inter-agent communication
 
 Each member is primed at launch knowing it's the resident expert on its repo, who
-its peers are, and how to reach them. Two modes:
+its peers are, and how to reach them. Both verbs deliver into the **target's own
+live session** — the message appears in its thread, it answers there (visible to
+you), and the reply routes back. Nothing happens off-thread.
 
-- **`fleet ask <to> "q"`** spins up a *fresh, headless* expert session in the
-  target's repo, which answers from that codebase and routes the reply back to
-  the asker — **the target's own session is never interrupted.** Best for Q&A. The
-  responder window is spawned in the background (it won't steal your focus) and
-  closes when done.
-- **`fleet send <to> "msg"`** injects a message into the target's *live* session
-  (hybrid delivery: now if it's idle, else queued and delivered the moment it next
-  returns to its prompt). Best for nudges / notifications.
+- **`fleet ask <to> "q"`** — a question; the peer answers and replies back. Arrives
+  prefixed `[fleet ask from <id>]`.
+- **`fleet send <to> "msg"`** — info / a heads-up; reply only if useful. Arrives
+  prefixed `[fleet msg from <id>]`.
 
-Replies route back to whoever asked: the `[fleet msg from <id>]` prefix names the
-sender, and members are instructed to always answer that id. Long replies are
-delivered in full (typed in keystroke chunks, one turn). Mailboxes live at
-`<workspace>/.fleet/inbox/<id>.jsonl` as an audit trail.
+Delivery is **hybrid**: if the peer is at its prompt the message goes in now; if
+it's mid-task the message waits and is delivered the moment it returns to its
+prompt (its Stop hook drains the mailbox). Replies route back to whoever asked —
+the prefix names the sender, and members are instructed to always answer that id.
+Long replies are delivered in full (typed in keystroke chunks, one turn).
+Mailboxes live at `<workspace>/.fleet/inbox/<id>.jsonl` as an audit trail.
 
 **Hop cap.** To stop two agents ping-ponging forever, every message carries a hop
 depth (a reply inherits hop+1; a fresh thread resets to 1). Sends past
@@ -321,17 +321,17 @@ that gap:
 - **Reboot recovery resumes conversations, not in-flight tool runs.** A build
   interrupted by a crash is not auto-resumed — the member returns to where its
   transcript ended.
-- **`fleet send` can interrupt a busy peer.** Injection enters the peer's input as
-  a turn; hybrid delivery holds mail until the peer is idle, but a mid-task agent
-  that `send`s another still enqueues a turn. Prefer `fleet ask` for Q&A — it never
-  touches the target's session.
+- **Messages become a turn in the peer's session.** `ask`/`send` deliver into the
+  peer's live thread; hybrid delivery holds mail until the peer is at its prompt, so
+  it won't corrupt a mid-task turn — but it does add a turn the peer must handle. That's
+  by design (it's visible to you); just know inter-agent chatter consumes peer turns.
 
 ## Project layout
 
 ```
 bin/fleet              the CLI (the only entrypoint)
 lib/                   common, manifest parser, registry, tmux, restart,
-                       comms (mailboxes + ask), responder, run-child
+                       comms (mailboxes, ask/send), run-child
 hooks/                 self-reporting hooks: session-start, prompt-submit,
                        post-edit, on-stop, session-end
 skill/SUPERVISOR.md    role prompt for the supervising session

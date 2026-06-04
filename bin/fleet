@@ -613,45 +613,48 @@ cmd_reap() {
 }
 
 # --- inter-agent comms ------------------------------------------------------
-cmd_send() {
-  local from="" rest=()
-  while [[ $# -gt 0 ]]; do
-    case "$1" in --from) from="$2"; shift 2 ;; *) rest+=("$1"); shift ;; esac
-  done
+# Shared delivery for ask/send — both land in the TARGET'S OWN live thread, where
+# it answers visibly and routes the reply back. kind is "ask" (reply expected) or
+# "msg" (info). _fleet_parse_msg sets _F_FROM/_F_TO/_F_TEXT from [--from] <to> <text>.
+_fleet_parse_msg() {
+  _F_FROM=""; local rest=()
+  while [[ $# -gt 0 ]]; do case "$1" in --from) _F_FROM="$2"; shift 2 ;; *) rest+=("$1"); shift ;; esac; done
   set -- "${rest[@]}"
-  local to="${1:?usage: fleet send <to> \"<msg>\" [--from <id>]}"
-  local msg="${2:?provide a message}"
-  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
-  [[ -z "$from" ]] && from="${FLEET_CHILD_ID:-supervisor}"
-  [[ "$to" == "$from" ]] && die "cannot send to self ($to)"
+  _F_TO="${1:-}"; _F_TEXT="${2:-}"
+  [[ -z "$_F_FROM" ]] && _F_FROM="${FLEET_CHILD_ID:-supervisor}"
+}
+_fleet_deliver() {   # <kind> <to> <from> <text>
+  local kind="$1" to="$2" from="$3" text="$4"
+  [[ "$to" == "$from" ]] && die "cannot $kind to self ($to)"
   local cap; cap="$(fleet_max_hops)"
   local hop; hop="$(fleet_next_hop "$from")" || {
     fleet_log hop-limit "$to" "from=$from cap=$cap"
-    die "hop limit ($cap) reached for this thread — message to '$to' not sent. Start a fresh thread, or raise [supervisor] max_hops."
+    die "hop limit ($cap) reached for this thread — not sent to '$to'. Start a fresh thread, or raise [supervisor] max_hops."
   }
-  fleet_enqueue "$to" "$from" "$msg" "$hop"
-  fleet_log send "$to" "from=$from hop=$hop"
+  fleet_enqueue "$to" "$from" "$text" "$hop" "$kind"
+  fleet_log "$kind" "$to" "from=$from hop=$hop"
   if fleet_drain_inbox "$to"; then
-    info "→ delivered to '$to' (from $from, hop $hop/$cap)"
+    info "→ delivered to '$to' (from $from, hop $hop/$cap) — it's in '$to's thread now"
   else
-    info "→ queued for '$to' (busy or offline, hop $hop/$cap) — delivers when it next reaches its prompt"
+    info "→ queued for '$to' (busy/offline, hop $hop/$cap) — lands in its thread when it's next at its prompt"
   fi
 }
 
-cmd_ask() {
-  local from="" rest=()
-  while [[ $# -gt 0 ]]; do
-    case "$1" in --from) from="$2"; shift 2 ;; *) rest+=("$1"); shift ;; esac
-  done
-  set -- "${rest[@]}"
-  local to="${1:?usage: fleet ask <to> \"<question>\" [--from <id>]}"
-  local q="${2:?provide a question}"
+cmd_send() {
+  _fleet_parse_msg "$@"
+  [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet send <to> \"<msg>\" [--from <id>]"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
-  fleet_has_tmux || die "tmux required for ask. Run: sudo apt install tmux"
-  [[ -z "$from" ]] && from="${FLEET_CHILD_ID:-supervisor}"
-  [[ "$to" == "$from" ]] && die "cannot ask yourself ($to)"
-  fleet_ask "$to" "$from" "$q" || return 1
-  info "asked '$to' (a fresh expert session is answering; reply routes back to '$from')"
+  fleet_has_tmux || die "tmux required. Run: sudo apt install tmux"
+  _fleet_deliver msg "$_F_TO" "$_F_FROM" "$_F_TEXT"
+}
+
+cmd_ask() {
+  _fleet_parse_msg "$@"
+  [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet ask <to> \"<question>\" [--from <id>]"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required. Run: sudo apt install tmux"
+  _fleet_deliver ask "$_F_TO" "$_F_FROM" "$_F_TEXT"
+  info "  '$_F_TO' will answer in its own thread and route the reply back to '$_F_FROM'."
 }
 
 cmd_broadcast() {

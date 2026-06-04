@@ -9,7 +9,6 @@
 #
 # Requires: registry.sh + tmux.sh sourced. Uses flock when available.
 
-FLEET_MSG_TAG="${FLEET_MSG_TAG:-fleet msg}"
 # Hard cap on conversation depth, to stop two agents ping-ponging forever.
 # Auto-tracked: a message a sender produces right after receiving one inherits
 # hop+1; the cap refuses sends past it. Configure via [supervisor] max_hops.
@@ -17,14 +16,14 @@ fleet_max_hops() { printf '%s\n' "${FLEET_MAX_HOPS:-${SUP_MAX_HOPS:-6}}"; }
 
 fleet_inbox_file() { printf '%s/inbox/%s.jsonl\n' "$STATE_DIR" "$1"; }
 
-# enqueue a message as undelivered, carrying its hop depth
+# enqueue a message as undelivered, carrying its hop depth and kind (ask|msg)
 fleet_enqueue() {
-  local to="$1" from="$2" text="$3" hops="${4:-1}" f ts
+  local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}" f ts
   f="$(fleet_inbox_file "$to")"; mkdir -p "$(dirname "$f")"
   ts="$(date +%s)"
   exec 9>"$f.lock"; flock 9 2>/dev/null || true
-  jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" --argjson hops "$hops" \
-    '{ts:$ts, from:$from, to:$to, text:$text, hops:$hops, delivered:false}' >>"$f"
+  jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" --argjson hops "$hops" --arg kind "$kind" \
+    '{ts:$ts, from:$from, to:$to, text:$text, hops:$hops, kind:$kind, delivered:false}' >>"$f"
   flock -u 9 2>/dev/null || true; exec 9>&-
 }
 
@@ -48,9 +47,10 @@ fleet_next_hop() {
 FLEET_INJECT_DELAY="${FLEET_INJECT_DELAY:-0.2}"
 FLEET_INJECT_CHUNK="${FLEET_INJECT_CHUNK:-500}"
 fleet_inject() {
-  local to="$1" from="$2" text="$3" hops="${4:-1}"
+  local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}"
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
-  local full="[$FLEET_MSG_TAG from $from · hop $hops/$(fleet_max_hops)] $text"
+  local tag="fleet msg"; [[ "$kind" == "ask" ]] && tag="fleet ask"
+  local full="[$tag from $from · hop $hops/$(fleet_max_hops)] $text"
   local tgt="$FLEET_TMUX_SESSION:$to" i=0 n=${#full}
   while (( i < n )); do
     tmux send-keys -t "$tgt" -l "${full:i:FLEET_INJECT_CHUNK}" 2>/dev/null || return 1
@@ -75,11 +75,11 @@ fleet_drain_inbox() {
   exec 9>"$f.lock"; flock 9 2>/dev/null || true
   local n; n="$(jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0)"
   if [[ "${n:-0}" -gt 0 ]]; then
-    local line from text hops maxhop=0
+    local line from text hops kind maxhop=0
     while IFS= read -r line; do
       from="$(jq -r '.from' <<<"$line")"; text="$(jq -r '.text' <<<"$line")"
-      hops="$(jq -r '.hops // 1' <<<"$line")"
-      fleet_inject "$to" "$from" "$text" "$hops" || break
+      hops="$(jq -r '.hops // 1' <<<"$line")"; kind="$(jq -r '.kind // "msg"' <<<"$line")"
+      fleet_inject "$to" "$from" "$text" "$hops" "$kind" || break
       (( hops > maxhop )) && maxhop="$hops"
     done < <(jq -c 'select(.delivered==false)' "$f")
     jq -c '.delivered=true' "$f" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
@@ -89,24 +89,6 @@ fleet_drain_inbox() {
   fi
   flock -u 9 2>/dev/null || true; exec 9>&-
   return 0
-}
-
-# Ask a peer a question via an ephemeral expert session in its repo (does NOT
-# touch the peer's main interactive session). Answer is routed back async.
-#   fleet_ask <to> <from> <question>
-fleet_ask() {
-  local to="$1" from="$2" q="$3" rel cwd
-  rel="$(fleet_child_get "$to" cwd "")"
-  if [[ -n "$rel" ]]; then cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
-  else cwd="$(fleet_state_get "$to" '.cwd' "$WORKSPACE")"; fi
-  [[ -d "$cwd" ]] || { warn "ask: don't know which repo '$to' is — add it to fleet.toml"; return 1; }
-  fleet_tmux_ensure_session
-  # -d: create the responder window in the background so it never steals the
-  # focus of whoever is attached. It's a headless `claude -p` (no TUI, so it
-  # would show blank anyway) and closes itself when the answer is routed back.
-  tmux new-window -d -t "$FLEET_TMUX_SESSION" -n "ask:$to" -c "$cwd" -e "FLEET_NO_REPORT=1" \
-    "$TOOL_ROOT/lib/responder.sh" "$to" "$from" "$q"
-  fleet_log ask "$to" "from=$from"
 }
 
 # Build the per-child priming prompt that teaches a worker its identity, its
@@ -126,38 +108,36 @@ on: ${me_cwd}.
 
 Your peers — consult them when a question is genuinely about THEIR area:
 ${peers}
-Two ways to reach a peer (run in Bash):
-  - Ask without interrupting them (PREFERRED for questions):
+To reach a peer (run in Bash):
+  - Ask a question (you expect an answer back):
         fleet ask <peer-id> "your question"
-    This spins up a fresh expert session in the peer's repo, which answers from
-    that codebase and routes the reply back to you — the peer's own session is
-    never disturbed. The answer arrives later as a "[${FLEET_MSG_TAG} from <id>]" line.
-  - Notify/nudge their live session directly (use sparingly):
+  - Tell them something (no answer needed):
         fleet send <peer-id> "a heads-up"
+
+How it works: the message is delivered into the PEER'S OWN session as a normal
+turn — it appears in their thread, they answer there (visible to the human
+operator), and their reply comes back to you the same way. There is no hidden
+side-channel; everything happens in the actual sessions.
 
 There is also a "supervisor" coordinating the fleet. Escalate to it (blockers,
 cross-cutting decisions, "who owns X?") with:  fleet send supervisor "..."
 
-Messages and answers arrive in your input prefixed:
-    [${FLEET_MSG_TAG} from <id> · hop N/MAX] ...
-The hop number is the conversation depth; if it is at MAX, do not reply further
-(the fleet will refuse it anyway) — wrap up or escalate to the supervisor instead.
-Read queued mail anytime with:  fleet inbox
+Messages arrive in your input prefixed:
+    [fleet ask from <id> · hop N/MAX] ...   ← a question; answer it
+    [fleet msg from <id> · hop N/MAX] ...   ← info; reply only if useful
+Answer in your normal response (the human can see it), THEN route your answer back
+to the asker:  fleet send <that-id> "your answer". The hop number is the
+conversation depth; at MAX, don't reply further (the fleet refuses it) — wrap up or
+escalate to the supervisor. Read queued mail anytime with:  fleet inbox
 
-REPLY ROUTING (a firm rule, not a suggestion):
-  - Every message you receive names its sender in the "[${FLEET_MSG_TAG} from <id>]"
-    prefix. If it asks you anything, you MUST route your answer back to THAT exact
-    id:  fleet send <that-id> "your answer".
-  - A question you leave unanswered is a dropped message — the asker is blocked
-    waiting on you. Always close the loop, even if the answer is "I don't know" or
-    "that's outside <your-repo>; try <other-peer>".
-  - When you ask a peer something, expect their reply to arrive the same way (a
-    later "[${FLEET_MSG_TAG} from <id>]" line); fold it into what you were doing.
-
-Keep cross-agent messages short and specific. Avoid loops: only reply when you are
-answering a question or adding genuinely new information — acknowledgements like
-"thanks" do not need to be sent. Prefer asking the right peer over guessing about a
-repo that isn't yours.
+REPLY ROUTING (a firm rule):
+  - A "[fleet ask from <id>]" you leave unanswered is a dropped message — the
+    asker is blocked on you. Always close the loop, even if it's "I don't know" or
+    "that's outside <your-repo>; ask <other-peer>".
+  - Keep cross-agent messages short and specific. Avoid loops: only reply when you
+    are answering a question or adding genuinely new information — a bare "thanks"
+    needs no message. Prefer asking the right peer over guessing about a repo that
+    isn't yours.
 EOF
   # Optional workspace-supplied context (architecture, ownership rules, etc.),
   # appended verbatim so the generic tool stays domain-agnostic.

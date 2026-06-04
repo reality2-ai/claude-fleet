@@ -25,8 +25,8 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - `fleet restart <id>` — restart one child.
 - `fleet dispatch <id> "<task>" [cwd]` — start a fresh worker on a task.
 - `fleet attach <id>` — (for the human) jump into a worker's tmux window.
-- `fleet ask <to> "<q>"` — ask a worker's repo a question via a fresh expert session (non-disruptive).
-- `fleet send <to> "<msg>"` — inject a message into a worker's live session (nudge/notify).
+- `fleet ask <to> "<q>"` — ask a worker a question; it lands in that worker's own thread, it answers there, reply routes back.
+- `fleet send <to> "<msg>"` — tell a worker something (same delivery; no reply expected).
 - `fleet broadcast "<msg>"` — message every worker at once.
 - `fleet inbox <id>` — read a worker's message mailbox (the audit trail of who asked whom).
 
@@ -46,9 +46,10 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 
 ## Honest limits (do not overstate to the user)
 
-- `fleet send` injects into a worker's live input (it can interrupt a busy one);
-  `fleet ask` spawns a separate expert and does not. Neither lets you silently
-  steer a worker — your message shows up as a visible turn in its session.
+- `fleet ask`/`send` both deliver into a worker's own live thread (hybrid: held
+  until it's at its prompt, so no mid-task corruption — but it does add a turn).
+  Your message always shows up as a visible turn in its session; nothing is steered
+  silently or off-thread.
 - Agent-to-agent threads are hop-capped (`max_hops`); past the cap, sends are
   refused. If agents hit the cap a lot, the work probably needs a human decision.
 - Conflict handling is **detection only** — you warn, you do not block edits.
