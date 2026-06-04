@@ -140,6 +140,23 @@ prompt used **only on a fresh start** — once a session exists, `fleet up` resu
 it (`claude --resume`) instead of re-seeding. Window order follows manifest
 order (supervisor first); see `fleet order`.
 
+## Portability — version your config
+
+`fleet init` drops a `.gitignore` into `<workspace>/.fleet/` that excludes runtime
+state (`state/`, `run/`, `inbox/`, `log/`, `managed.settings.json`) but keeps your
+**config** (`fleet.toml`, `primer.md`). So you can version just the config and run
+the same fleet on any machine:
+
+```sh
+cd <workspace>/.fleet && git init && git add . && git commit -m "fleet config"
+# push to a (private) repo, then on another machine:
+git clone <your-fleet-config-repo> <workspace>/.fleet
+fleet install-hooks <workspace> && fleet install-hooks --user
+cd <workspace> && fleet up
+```
+
+(The repos your members work in are cloned separately, as usual.)
+
 ## Commands
 
 ```sh

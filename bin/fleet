@@ -82,6 +82,24 @@ cmd_init() {
     info "wrote   $sd/fleet.toml  (edit this — it is your supervision tree)"
   fi
 
+  # a .gitignore so you can version your config (fleet.toml, primer.md) in a repo
+  # for portability across machines, while runtime state stays local.
+  if [[ ! -f "$sd/.gitignore" ]]; then
+    cat >"$sd/.gitignore" <<'GI'
+# claude-fleet runtime state — machine-specific and regenerated.
+# Only the config (fleet.toml, primer.md) is meant to be versioned.
+/state/
+/run/
+/log/
+/inbox/
+/managed.settings.json
+*.lock
+*.tmp
+*.tmp.*
+GI
+    info "wrote   $sd/.gitignore (so you can 'git init' here and version your config)"
+  fi
+
   # merge hooks into the workspace .claude/settings.json (NOT settings.local.json)
   if [[ "$no_hooks" == "1" ]]; then
     info "skipped self-reporting hooks (--no-hooks). Install later with: fleet install-hooks $ws"
