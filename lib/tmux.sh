@@ -42,6 +42,9 @@ fleet_tmux_start_child() {
   sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
 
   local -a claude_args=("${FLEET_CLAUDE_BIN:-claude}" --name "$name")
+  # inject the hooks settings so the worker self-reports even when its cwd is a
+  # sub-repo that doesn't inherit the workspace-root settings (see fleet up).
+  [[ -n "${MANAGED_SETTINGS:-}" ]] && claude_args+=(--settings "$MANAGED_SETTINGS")
   [[ -n "$pm" ]] && claude_args+=(--permission-mode "$pm")
   if [[ -n "$sid" ]]; then
     claude_args+=(--resume "$sid")

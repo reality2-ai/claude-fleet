@@ -23,7 +23,10 @@ usage() {
 fleet — supervise parallel Claude Code sessions (OTP-style)
 
   fleet init [--no-hooks] [workspace]   scaffold .fleet/ and install self-reporting hooks
-  fleet install-hooks [workspace]       (re)install hooks into <ws>/.claude/settings.json
+  fleet install-hooks [workspace]       install hooks into <ws>/.claude/settings.json
+  fleet install-hooks --user            install hooks into ~/.claude/settings.json
+                                          (covers hand-started sessions in sub-repos;
+                                           no-ops outside a .fleet workspace)
   fleet status                  table of all known sessions (live/idle/dead, task, claims)
   fleet conflicts               files being edited by more than one live session
   fleet logs [id]               tail the aggregate event log, or summarise one child
@@ -68,11 +71,9 @@ cmd_init() {
   fleet_log init "-" "workspace=$ws"
 }
 
-# Merge the self-reporting hooks into <ws>/.claude/settings.json (idempotent).
-fleet_install_hooks() {
-  local ws="$1"; ws="$(readlink -f "$ws")"
-  local cdir="$ws/.claude"; mkdir -p "$cdir"
-  local settings="$cdir/settings.json"
+# Merge the self-reporting hooks into an arbitrary settings.json (idempotent).
+_merge_hooks_into() {
+  local settings="$1"; mkdir -p "$(dirname "$settings")"
   local hooks_json; hooks_json="$(_render_hooks_json)"
   if [[ -f "$settings" ]]; then
     local merged; merged="$(jq --argjson h "$hooks_json" '.hooks = ((.hooks // {}) * $h)' "$settings")"
@@ -82,6 +83,22 @@ fleet_install_hooks() {
     jq -n --argjson h "$hooks_json" '{hooks: $h}' >"$settings"
     info "wrote   $settings  (self-reporting hooks)"
   fi
+}
+
+# Project-scoped install (one workspace's sessions started at its root).
+fleet_install_hooks() { _merge_hooks_into "$(readlink -f "$1")/.claude/settings.json"; }
+
+# User-scoped install (every session, anywhere — the hooks no-op outside a
+# .fleet workspace, so this is safe globally). Covers hand-started sessions in
+# sub-repos that don't inherit the workspace-root settings.
+fleet_install_user_hooks() { _merge_hooks_into "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"; }
+
+# Write a settings file carrying only the hooks, for --settings injection into
+# managed workers so they self-report regardless of their cwd/project.
+fleet_ensure_managed_settings() {
+  MANAGED_SETTINGS="$STATE_DIR/managed.settings.json"
+  jq -n --argjson h "$(_render_hooks_json)" '{hooks: $h}' >"$MANAGED_SETTINGS"
+  export MANAGED_SETTINGS
 }
 
 # emit the hooks object that points at this checkout's hook scripts
@@ -209,6 +226,7 @@ cmd_logs() {
 # ----------------------------------------------------------------------------
 cmd_up() {
   fleet_load_paths; fleet_manifest_load "$MANIFEST"
+  fleet_ensure_managed_settings
   local only="${1:-}"
   local id started=0
   for id in "${CHILD_IDS[@]:-}"; do
@@ -256,11 +274,15 @@ cmd_dispatch() {
   fleet_load_paths
   fleet_has_tmux || die "tmux required for dispatch. Run: sudo apt install tmux"
   cwd="${cwd:-$WORKSPACE}"; [[ "$cwd" != /* ]] && cwd="$WORKSPACE/$cwd"
+  fleet_ensure_managed_settings
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && die "child '$id' already running — pick another id"
   local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  local -a cargs=("${FLEET_CLAUDE_BIN:-claude}" --name "$id")
+  [[ -n "${MANAGED_SETTINGS:-}" ]] && cargs+=(--settings "$MANAGED_SETTINGS")
+  cargs+=("$task")
   tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" -e "FLEET_CHILD_ID=$id" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${FLEET_CLAUDE_BIN:-claude}" --name "$id" "$task"
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
   fleet_state_ensure "$id" "$cwd" true
   fleet_state_jq "$id" --arg t "$task" '.state="running" | .current_task=$t' >/dev/null
   fleet_log dispatch "$id" "$task"
@@ -298,7 +320,9 @@ main() {
   local cmd="${1:-help}"; shift || true
   case "$cmd" in
     init)      cmd_init "$@" ;;
-    install-hooks) fleet_install_hooks "${1:-$PWD}" ;;
+    install-hooks)
+      if [[ "${1:-}" == "--user" ]]; then fleet_install_user_hooks
+      else fleet_install_hooks "${1:-$PWD}"; fi ;;
     status|ls) cmd_status "$@" ;;
     conflicts) cmd_conflicts "$@" ;;
     logs|log)  cmd_logs "$@" ;;

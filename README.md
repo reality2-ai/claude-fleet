@@ -45,6 +45,25 @@ fleet init /path/to/your/workspace
 into `<workspace>/.claude/settings.json` (it leaves `settings.local.json`, where
 your permissions live, untouched).
 
+### Hook scope — important if you run sessions in sub-repos
+
+Claude Code loads hooks from the session's **own** project. A session started in
+a sub-repo (e.g. `r2-composer/`) does **not** inherit the workspace-root
+`.claude/settings.json`, so it won't self-report with only a project-scoped
+install. Two mechanisms close that gap:
+
+- **Managed workers** (`fleet up` / `fleet dispatch`) are launched with
+  `--settings <workspace>/.fleet/managed.settings.json`, so they always
+  self-report regardless of their cwd. Nothing extra to do.
+- **Hand-started sessions** in sub-repos need a **user-scoped** install:
+
+  ```sh
+  fleet install-hooks --user      # merges hooks into ~/.claude/settings.json
+  ```
+
+  These hooks no-op instantly outside any `.fleet` workspace, so a global
+  install has no effect on your other projects.
+
 ## Use
 
 ```sh
