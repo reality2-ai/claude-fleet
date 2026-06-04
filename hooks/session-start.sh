@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart hook — register the session: id, cwd, pid, state=running.
 # Also records the session id under run/<id>.session so 'fleet up' can resume it.
-source "$(dirname "$(readlink -f "$0")")/hook-common.sh"
+source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
 fleet_state_jq "$CHILD_ID" \
   --arg sid "$SESSION_ID" --arg cwd "$CWD" --argjson now "$NOW" --argjson pid "$PPID" '

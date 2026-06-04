@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionEnd hook — mark the child stopped and record the reason. Does NOT clear
 # session_id/run file, so 'fleet up' can still resume the conversation later.
-source "$(dirname "$(readlink -f "$0")")/hook-common.sh"
+source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
 REASON="$(hjq '.reason')"; [[ -z "$REASON" ]] && REASON="exit"
 fleet_state_jq "$CHILD_ID" --arg r "$REASON" --argjson now "$NOW" \

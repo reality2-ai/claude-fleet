@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse hook (Edit|Write|MultiEdit|NotebookEdit) — record the edited file
 # as a claim for conflict detection. Keeps the most recent 50 claims.
-source "$(dirname "$(readlink -f "$0")")/hook-common.sh"
+source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
 FP="$(hjq '.tool_input.file_path')"
 [[ -z "$FP" ]] && FP="$(hjq '.tool_input.notebook_path')"

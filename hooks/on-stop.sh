@@ -2,7 +2,7 @@
 # Stop hook — fires when the agent finishes a turn (it's now at its prompt).
 # Marks the child ready and drains any queued peer messages into it (the
 # "deliver when it next returns to its prompt" half of hybrid delivery).
-source "$(dirname "$(readlink -f "$0")")/hook-common.sh"
+source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 source "$TOOL_ROOT/lib/tmux.sh" 2>/dev/null || exit 0
 source "$TOOL_ROOT/lib/comms.sh" 2>/dev/null || exit 0
 

@@ -5,9 +5,20 @@
 
 set -euo pipefail
 
-# --- locate the tool + load libraries ---------------------------------------
-_self="$(readlink -f "${BASH_SOURCE[0]}")"
-TOOL_ROOT="$(dirname "$(dirname "$_self")")"
+# --- require bash >= 4 (assoc arrays). macOS ships 3.2; tell the user clearly --
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+  printf 'fleet: needs bash >= 4 (found %s).\n  macOS: brew install bash, and ensure it is first on PATH.\n' \
+    "${BASH_VERSION:-unknown}" >&2
+  exit 1
+fi
+
+# --- locate the tool (follow symlinks without GNU readlink -f) ---------------
+_src="${BASH_SOURCE[0]}"
+while [ -h "$_src" ]; do
+  _dir="$(cd -P "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"; [ "${_src#/}" = "$_src" ] && _src="$_dir/$_src"
+done
+TOOL_ROOT="$(cd -P "$(dirname "$_src")/.." && pwd)"
 export TOOL_ROOT
 # shellcheck source=../lib/common.sh
 source "$TOOL_ROOT/lib/common.sh"
@@ -54,7 +65,7 @@ cmd_init() {
   local no_hooks=0
   case "${1:-}" in --no-hooks) no_hooks=1; shift ;; esac
   local ws="${1:-$PWD}"
-  ws="$(readlink -f "$ws")"
+  ws="$(fleet_realpath "$ws")"
   [[ -d "$ws" ]] || die "workspace does not exist: $ws"
   local sd="$ws/.fleet"
   mkdir -p "$sd/state" "$sd/run" "$sd/log"
@@ -93,7 +104,7 @@ _merge_hooks_into() {
 }
 
 # Project-scoped install (one workspace's sessions started at its root).
-fleet_install_hooks() { _merge_hooks_into "$(readlink -f "$1")/.claude/settings.json"; }
+fleet_install_hooks() { _merge_hooks_into "$(fleet_realpath "$1")/.claude/settings.json"; }
 
 # User-scoped install (every session, anywhere — the hooks no-op outside a
 # .fleet workspace, so this is safe globally). Covers hand-started sessions in

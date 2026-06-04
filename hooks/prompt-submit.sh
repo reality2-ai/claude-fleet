@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook — record the latest prompt as the child's current task.
-source "$(dirname "$(readlink -f "$0")")/hook-common.sh"
+source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
 PROMPT="$(hjq '.prompt')"
 # collapse whitespace, keep it short

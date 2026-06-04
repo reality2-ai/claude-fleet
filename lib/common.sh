@@ -53,8 +53,18 @@ fleet_transcript_path() {
   printf '%s/%s/%s.jsonl\n' "$(fleet_projects_dir)" "$(fleet_encode_path "$cwd")" "$sid"
 }
 
-# mtime (epoch secs) of a file, or 0 if missing.
-fleet_mtime() { [[ -f "$1" ]] && stat -c %Y "$1" 2>/dev/null || echo 0; }
+# mtime (epoch secs) of a file, or 0 if missing. GNU stat then BSD stat.
+fleet_mtime() {
+  [[ -f "$1" ]] || { echo 0; return; }
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
+}
+
+# Absolute path for an existing file/dir without relying on GNU readlink -f.
+fleet_realpath() {
+  local p="$1"
+  if [[ -d "$p" ]]; then ( cd "$p" && pwd )
+  else printf '%s/%s\n' "$( cd "$(dirname "$p")" 2>/dev/null && pwd )" "$(basename "$p")"; fi
+}
 
 # --- jq guard ----------------------------------------------------------------
 fleet_require_jq() {

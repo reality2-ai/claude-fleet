@@ -4,8 +4,7 @@
 # fail the session, so everything here is best-effort and exits 0 on trouble.
 
 # resolve the tool checkout from this file's location (hooks/ -> TOOL_ROOT)
-_hc_self="$(readlink -f "${BASH_SOURCE[0]}")"
-TOOL_ROOT="$(dirname "$(dirname "$_hc_self")")"
+TOOL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export TOOL_ROOT
 
 # ephemeral responder sessions (fleet ask) opt out of self-reporting entirely
