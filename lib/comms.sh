@@ -41,12 +41,18 @@ fleet_next_hop() {
   printf '%s\n' "$hop"
 }
 
-# type one message into a target's tmux prompt and submit it
+# Deliver one message into a target's tmux prompt and submit it. The text goes in
+# as a literal keystroke run, then we pause briefly so the TUI finishes ingesting
+# and rendering it before pressing Enter — without that gap, the rapid
+# type-then-submit makes a full-screen TUI reflow/blank while you're watching.
+FLEET_INJECT_DELAY="${FLEET_INJECT_DELAY:-0.2}"
 fleet_inject() {
   local to="$1" from="$2" text="$3" hops="${4:-1}"
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
-  tmux send-keys -t "$FLEET_TMUX_SESSION:$to" -l "[$FLEET_MSG_TAG from $from · hop $hops/$(fleet_max_hops)] $text" 2>/dev/null || return 1
-  tmux send-keys -t "$FLEET_TMUX_SESSION:$to" Enter 2>/dev/null || return 1
+  local tgt="$FLEET_TMUX_SESSION:$to"
+  tmux send-keys -t "$tgt" -l "[$FLEET_MSG_TAG from $from · hop $hops/$(fleet_max_hops)] $text" 2>/dev/null || return 1
+  sleep "$FLEET_INJECT_DELAY"
+  tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
 }
 
 # Deliver any undelivered mail to <to>. Returns 0 if delivered (or nothing to
