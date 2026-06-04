@@ -50,6 +50,7 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - `fleet up` resumes *conversations*; a build/test interrupted by a crash is not
   auto-resumed — the worker returns to where its transcript ended.
 
-Apply the workspace's working principles: prefer the cheaper honest report
-("two sessions both touched R2-WIRE.md; I did not check whether the edits
-conflict") over a confident overclaim.
+Report honestly: prefer the cheaper accurate statement ("two sessions both
+touched shared/config.ts; I did not check whether the edits actually conflict")
+over a confident overclaim. If the workspace has its own working principles
+(e.g. in a primer.md), apply those too.

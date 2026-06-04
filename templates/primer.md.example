@@ -1,0 +1,44 @@
+# Example .fleet/primer.md
+#
+# Put your project's shared context here. If this file exists at
+# <workspace>/.fleet/primer.md, fleet appends it verbatim to EVERY member's
+# launch primer — so all agents share one map of how your repos relate and how
+# to collaborate. Re-`up`/re-dispatch members after editing (applied at launch).
+#
+# The example below is for a workspace with three repos that depend on each
+# other. Replace it with yours.
+
+## How these repos relate
+
+```
+   core   ← shared library; the source of truth for shared types/logic
+    │  depended on by
+    ├──────────────┐
+    ▼              ▼
+   api            (other consumers…)
+    │  depended on by
+    ▼
+   web            ← frontend; talks to api
+```
+
+- **core** — the shared library. Types, domain logic, and anything used by more
+  than one repo lives here. It depends on nothing else in the workspace.
+- **api** — the service. Depends on `core`. Owns HTTP endpoints and persistence.
+- **web** — the frontend. Depends on `api` (its HTTP contract). Owns UI.
+
+## Collaboration rules for fleet agents
+
+1. **Shared things live in `core`.** If a change you need is a shared type or
+   shared logic, it belongs in `core` and propagates outward — don't copy or fork
+   it locally in `api`/`web`.
+2. **Don't guess across repos — ask the expert.** For how something in another
+   repo behaves, `fleet ask <repo> "..."` (e.g. a `web` question about a request
+   shape → `fleet ask api "what does GET /things return?"`). Each repo's expert
+   answers from that codebase.
+3. **Respect the dependency direction.** `core` doesn't depend on `api`/`web`;
+   `api` doesn't depend on `web`. A change that would invert that is a smell —
+   surface it rather than working around it.
+4. **Cross-repo changes are coordinated, not unilateral.** If your change forces
+   a change in a repo you don't own (e.g. an `api` contract change that breaks
+   `web`), flag it (message the owner, or escalate to the supervisor) so the
+   change lands in the right order.

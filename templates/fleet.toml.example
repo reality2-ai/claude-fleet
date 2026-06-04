@@ -1,6 +1,6 @@
 # fleet.toml — your supervision tree.
-# This is the declarative list of worker sessions `fleet up` manages, modelled
-# on an Erlang/OTP supervisor. Edit freely; `fleet up` reads it each time.
+# The declarative list of worker sessions `fleet up` manages, modelled on an
+# Erlang/OTP supervisor. Edit freely; `fleet up` reads it each time.
 
 [supervisor]
 # one_for_one: restarting one child does not touch the others (the usual choice).
@@ -16,7 +16,10 @@ max_seconds  = 60
 max_hops     = 6
 
 # --- children ---------------------------------------------------------------
-# Each [[child]] is one worker session.
+# Each [[child]] is one worker session — typically one per repo in your
+# workspace. List them in dependency order (foundational repos first); the tmux
+# windows follow this order, with the supervisor first.
+#
 #   id              stable name (also the tmux window name)
 #   cwd             working dir, relative to the workspace root (or absolute)
 #   restart         permanent | transient | temporary
@@ -28,19 +31,32 @@ max_hops     = 6
 #   seed            initial prompt used ONLY on a fresh start; once a session
 #                   exists, `fleet up` resumes it instead of re-seeding.
 
-[[child]]
-id              = "composer"
-cwd             = "r2-composer"
-restart         = "permanent"
-name            = "composer-worker"
-permission_mode = "default"
-seed            = "Resume work on the composer UI. Check git status first."
+# Example: a shared library and two services that depend on it.
 
 [[child]]
-id      = "core-tests"
-cwd     = "r2-core"
+id      = "core"                 # a shared library the others depend on
+cwd     = "core"
+restart = "permanent"
+name    = "core-worker"
+seed    = "Resume work in core. Run 'git status' first and summarise where things stand."
+
+[[child]]
+id      = "api"                  # depends on core
+cwd     = "api"
 restart = "transient"
-name    = "core-test-runner"
-seed    = "Run the r2-core conformance vectors and report any failures."
+name    = "api-worker"
+seed    = "Resume work in the api service. Run 'git status' first and summarise where things stand."
 
-# Add as many children as you run in parallel. Delete the examples above.
+[[child]]
+id      = "web"                  # depends on api
+cwd     = "web"
+restart = "transient"
+name    = "web-worker"
+seed    = "Resume work on the web frontend. Run 'git status' first and summarise where things stand."
+
+# Replace the examples above with your repos.
+#
+# Tip: describe how these repos RELATE — who depends on whom, ownership/where
+# changes belong — in <workspace>/.fleet/primer.md (see templates/primer.md.example).
+# It's appended to every member's primer, so each agent knows to consult the right
+# expert (e.g. a web change that needs an API change → `fleet ask api "..."`).

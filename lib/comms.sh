@@ -121,8 +121,8 @@ fleet_peer_primer() {
   [[ -z "$peers" ]] && peers="  (no peers configured)"$'\n'
   cat <<EOF
 You are "$id", one member of a fleet of Claude Code sessions. Each member is the
-resident expert on its own R2 sub-repo and holds deep context on it. You are the
-expert on: ${me_cwd}.
+resident expert on its own repo and holds deep context on it. You are the expert
+on: ${me_cwd}.
 
 Your peers — consult them when a question is genuinely about THEIR area:
 ${peers}
