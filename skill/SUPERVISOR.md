@@ -14,7 +14,10 @@ coordinate and oversee. Don't duplicate a worker's hands-on work at the root.
 Run these via Bash (the `fleet` binary is on PATH, or at
 `<workspace>/claude-fleet/bin/fleet`):
 
-- `fleet status` — who is live/idle/dead, what each is working on, file claims, conflicts.
+- `fleet brief` — triage for the human: what needs them, who's waiting at their prompt
+  (with the last thing each said), who's just working. Use this first for "what's the
+  status / what needs me?".
+- `fleet status` — the fuller table: who is live/idle/dead, current task, file claims, conflicts.
 - `fleet conflicts` — files being edited by more than one live session right now.
 - `fleet logs [id]` — recent fleet events, or a one-child summary.
 - `fleet up [id]` — start the suite (or one child) — this is the **post-reboot recovery** command.
@@ -29,8 +32,10 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 
 ## How to behave
 
-- When asked "status", run `fleet status` and `fleet conflicts`, then give a short
-  human summary: who's active, who's stuck/idle, any conflicts, anything `failed`.
+- When asked "status" / "what needs me?", run `fleet brief` and lead with what's
+  waiting on the human: members at their prompt that asked a question, anything
+  `failed`, conflicts, unanswered peer mail. Be concrete — quote the actual question a
+  member is waiting on, don't just say "3 idle". Then offer the obvious next action.
 - When a child is `failed` (restart-intensity breaker tripped), do **not** blindly
   restart it — report it and ask, or investigate `fleet logs <id>` first. A
   crash-loop usually means a real problem, not a transient blip.

@@ -162,6 +162,7 @@ cd <workspace> && fleet up
 ```sh
 # observe (no tmux needed)
 fleet status                 # who's live/idle/dead, current task, file claims, conflicts
+fleet brief                  # triage: what needs you, who's waiting at their prompt, who's working
 fleet conflicts              # files claimed by more than one live session
 fleet logs [id]              # aggregate event log, or one member's summary
 fleet inbox [id]             # a member's message mailbox (audit trail)

@@ -40,6 +40,7 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
                                           (covers hand-started sessions in sub-repos;
                                            no-ops outside a .fleet workspace)
   fleet status                  table of all known sessions (live/idle/dead, task, claims)
+  fleet brief                   triage: what needs you, who's waiting at their prompt, who's working
   fleet conflicts               files being edited by more than one live session
   fleet logs [id]               tail the aggregate event log, or summarise one child
 
@@ -242,6 +243,84 @@ cmd_conflicts() {
   for p in "${!CONFLICT_PATHS[@]}"; do
     printf '  %s%s%s\n      ↳ %s\n' "$c_yel" "$p" "$c_reset" "${CONFLICT_PATHS[$p]# }"
   done
+}
+
+# count of undelivered (unanswered) messages in a member's mailbox
+_undelivered_count() {
+  local f; f="$(fleet_inbox_file "$1")"
+  [[ -f "$f" ]] || { echo 0; return; }
+  jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0
+}
+
+# the last thing a member said (last assistant text from its transcript), collapsed
+_last_said() {
+  local id="$1" cwd sid tf txt
+  cwd="$(fleet_state_get "$id" '.cwd' "")"; sid="$(fleet_state_get "$id" '.session_id' "")"
+  [[ -n "$cwd" && -n "$sid" ]] || return 0
+  tf="$(fleet_transcript_path "$cwd" "$sid")"; [[ -f "$tf" ]] || return 0
+  txt="$(tail -n 3000 "$tf" 2>/dev/null \
+    | jq -rc 'select(.type=="assistant") | (.message.content // []) | map(select(.type=="text")|.text)[]' 2>/dev/null \
+    | tail -1 || true)"
+  printf '%s' "$txt" | tr '\n' ' ' | sed 's/  */ /g'
+  return 0
+}
+
+# Human-oriented triage: what needs you, who's waiting at their prompt, who's working.
+cmd_brief() {
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  _conflict_set
+  local -A MAN=(); local id; for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && MAN["$id"]=1; done
+  local -A seen=(); local -a ids=()
+  for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen[$id]=1; ids+=("$id"); }; done
+  while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen[$id]=1; ids+=("$id"); }; done < <(fleet_state_ids)
+
+  local -a attention=() waiting=() working=()
+  local live ready mail snip managed
+  for id in "${ids[@]}"; do
+    [[ "$id" == "supervisor" ]] && continue                 # the overseer isn't triaged
+    managed="$(fleet_state_get "$id" '.managed' false)"
+    [[ -n "${MAN[$id]:-}" || "$managed" == "true" ]] || continue
+    live="$(fleet_liveness "$id")"; ready="$(fleet_state_get "$id" '.ready' false)"
+    mail="$(_undelivered_count "$id")"
+    case "$live" in
+      failed)  attention+=("$id — FAILED (restart breaker tripped) · see 'fleet logs $id'") ;;
+      dead)    attention+=("$id — dead (no live window / no recent activity)") ;;
+      stopped) : ;;
+      *)
+        if [[ "$ready" == "true" || "$live" == "idle" ]]; then
+          snip="$(_last_said "$id")"; snip="${snip: -220}"
+          waiting+=("$id │ last said: ${snip:-<no text yet>}")
+        else
+          working+=("$id │ $(fleet_state_get "$id" '.current_task' '(working)' | cut -c1-72)")
+        fi ;;
+    esac
+    [[ "${mail:-0}" -gt 0 ]] && attention+=("$id — $mail unanswered peer message(s) · 'fleet inbox $id'")
+  done
+  # only surface conflicts between MANAGED members (ignore ad-hoc/driving sessions)
+  local -a confs=(); local p o owners mgr
+  for p in "${!CONFLICT_PATHS[@]}"; do
+    mgr=""
+    for o in ${CONFLICT_PATHS[$p]}; do
+      [[ -n "${MAN[$o]:-}" || "$(fleet_state_get "$o" '.managed' false)" == "true" ]] && mgr+=" $o"
+    done
+    [[ "$(wc -w <<<"$mgr")" -ge 2 ]] && confs+=("${p##*/} —$mgr")
+  done
+
+  printf '%s═══ fleet brief ═══%s\n' "$c_bold" "$c_reset"
+  if (( ${#attention[@]} || ${#confs[@]} )); then
+    printf '\n%s▲ NEEDS YOU%s\n' "$c_red" "$c_reset"
+    for p in "${attention[@]}"; do printf '   • %s\n' "$p"; done
+    for p in "${confs[@]}"; do printf '   • conflict on %s\n' "$p"; done
+  fi
+  if (( ${#waiting[@]} )); then
+    printf '\n%s◆ WAITING AT THEIR PROMPT%s  (may want your input)\n' "$c_yel" "$c_reset"
+    for p in "${waiting[@]}"; do printf '   • %s\n' "$p"; done
+  fi
+  if (( ${#working[@]} )); then
+    printf '\n%s● WORKING%s  (no action needed)\n' "$c_grn" "$c_reset"
+    for p in "${working[@]}"; do printf '   • %s\n' "$p"; done
+  fi
+  (( ${#attention[@]} || ${#confs[@]} || ${#waiting[@]} )) || printf '\n  All members are working or quiet — nothing waiting on you.\n'
 }
 
 # ----------------------------------------------------------------------------
@@ -557,6 +636,7 @@ main() {
       if [[ "${1:-}" == "--user" ]]; then fleet_install_user_hooks
       else fleet_install_hooks "${1:-$PWD}"; fi ;;
     status|ls) cmd_status "$@" ;;
+    brief)     cmd_brief "$@" ;;
     conflicts) cmd_conflicts "$@" ;;
     logs|log)  cmd_logs "$@" ;;
     up)        cmd_up "$@" ;;
