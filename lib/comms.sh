@@ -41,16 +41,22 @@ fleet_next_hop() {
   printf '%s\n' "$hop"
 }
 
-# Deliver one message into a target's tmux prompt and submit it. The text goes in
-# as a literal keystroke run, then we pause briefly so the TUI finishes ingesting
-# and rendering it before pressing Enter — without that gap, the rapid
-# type-then-submit makes a full-screen TUI reflow/blank while you're watching.
+# Deliver one message into a target's tmux prompt and submit it. The full text is
+# typed in small keystroke chunks (gentle on a full-screen TUI — avoids the
+# reflow/blank a single huge keystroke blast causes), then a brief settle pause,
+# then ONE Enter — so even a long reply arrives complete, as a single turn.
 FLEET_INJECT_DELAY="${FLEET_INJECT_DELAY:-0.2}"
+FLEET_INJECT_CHUNK="${FLEET_INJECT_CHUNK:-500}"
 fleet_inject() {
   local to="$1" from="$2" text="$3" hops="${4:-1}"
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
-  local tgt="$FLEET_TMUX_SESSION:$to"
-  tmux send-keys -t "$tgt" -l "[$FLEET_MSG_TAG from $from · hop $hops/$(fleet_max_hops)] $text" 2>/dev/null || return 1
+  local full="[$FLEET_MSG_TAG from $from · hop $hops/$(fleet_max_hops)] $text"
+  local tgt="$FLEET_TMUX_SESSION:$to" i=0 n=${#full}
+  while (( i < n )); do
+    tmux send-keys -t "$tgt" -l "${full:i:FLEET_INJECT_CHUNK}" 2>/dev/null || return 1
+    i=$(( i + FLEET_INJECT_CHUNK ))
+    (( i < n )) && sleep 0.03
+  done
   sleep "$FLEET_INJECT_DELAY"
   tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
 }
@@ -95,7 +101,10 @@ fleet_ask() {
   else cwd="$(fleet_state_get "$to" '.cwd' "$WORKSPACE")"; fi
   [[ -d "$cwd" ]] || { warn "ask: don't know which repo '$to' is — add it to fleet.toml"; return 1; }
   fleet_tmux_ensure_session
-  tmux new-window -t "$FLEET_TMUX_SESSION" -n "ask:$to" -c "$cwd" -e "FLEET_NO_REPORT=1" \
+  # -d: create the responder window in the background so it never steals the
+  # focus of whoever is attached. It's a headless `claude -p` (no TUI, so it
+  # would show blank anyway) and closes itself when the answer is routed back.
+  tmux new-window -d -t "$FLEET_TMUX_SESSION" -n "ask:$to" -c "$cwd" -e "FLEET_NO_REPORT=1" \
     "$TOOL_ROOT/lib/responder.sh" "$to" "$from" "$q"
   fleet_log ask "$to" "from=$from"
 }

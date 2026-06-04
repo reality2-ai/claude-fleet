@@ -16,7 +16,14 @@ primer="You are \"$to\", the resident expert on the repository at $PWD. A peer a
 
 ans="$("${FLEET_CLAUDE_BIN:-claude}" -p --append-system-prompt "$primer" "$q" 2>/dev/null)"
 ans="${ans//$'\n'/ }"          # single line for delivery
-ans="${ans:0:1500}"            # keep injects sane
+# High safety cap (full replies are delivered via keystroke-chunked injection, so
+# this only bounds pathological output) — trimmed at a WORD boundary with a
+# visible marker, never a silent mid-sentence cut.
+MAXLEN="${FLEET_ANSWER_MAX:-16000}"
+if [ "${#ans}" -gt "$MAXLEN" ]; then
+  ans="${ans:0:$MAXLEN}"; ans="${ans% *}"
+  ans="$ans … [reply truncated — ask a narrower question for the rest]"
+fi
 [ -z "$ans" ] && ans="(no answer produced)"
 
 # route the answer back to the original asker, attributed to the responding expert
