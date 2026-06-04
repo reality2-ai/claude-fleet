@@ -144,4 +144,10 @@ answering a question or adding genuinely new information — acknowledgements li
 "thanks" do not need to be sent. Prefer asking the right peer over guessing about a
 repo that isn't yours.
 EOF
+  # Optional workspace-supplied context (architecture, ownership rules, etc.),
+  # appended verbatim so the generic tool stays domain-agnostic.
+  if [[ -f "$STATE_DIR/primer.md" ]]; then
+    printf '\n=== Shared workspace context ===\n'
+    cat "$STATE_DIR/primer.md"
+  fi
 }

@@ -130,6 +130,15 @@ Replies route back to whoever asked: the `[fleet msg from <id>]` prefix names th
 sender, and agents are instructed to always answer that id. Mailboxes live at
 `<workspace>/.fleet/inbox/<id>.jsonl` as an audit trail.
 
+#### Shared workspace context (`primer.md`)
+
+To keep the tool domain-agnostic, any project-specific context — architecture,
+ownership rules, who-owns-what, conventions — goes in an optional
+`<workspace>/.fleet/primer.md`. If present, its contents are appended verbatim to
+every worker's launch primer, so all agents share the same map of how the repos
+relate and how to collaborate. (Re-`up`/re-dispatch workers after editing it; the
+primer is applied at launch.)
+
 Edit `<workspace>/.fleet/fleet.toml` to declare your workers (see
 `templates/fleet.toml.example`).
 
