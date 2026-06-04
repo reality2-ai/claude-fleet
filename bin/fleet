@@ -51,6 +51,9 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
   fleet attach <id>             attach your terminal to a child's tmux window
   fleet reap                    detect crashed children and apply restart policy
 
+  fleet remote-control [id]     enable Claude /remote-control on member(s) (phone/web)
+  fleet remote [id]             show remote-control status of member(s)
+
   fleet ask <to> "<question>"   ask a peer via a fresh expert session in its repo,
                                   without disturbing its main session  [needs tmux]
   fleet send <to> "<msg>"       inject a message into a peer's live session
@@ -438,6 +441,56 @@ cmd_inbox() {
   jq -r '"\(.ts|strftime("%H:%M:%S"))  \(if .delivered then "✓" else "•" end) [\(.from)] \(.text)"' "$f"
 }
 
+# --- remote control (Claude Code's /remote-control slash command) -----------
+# Enable claude.ai/code + mobile control of a live session by typing the
+# /remote-control slash command into it (no relaunch needed).
+_rc_members() {
+  local only="$1" id
+  if [[ -n "$only" ]]; then printf '%s\n' "$only"; return; fi
+  for id in $(fleet_state_ids); do fleet_tmux_has_window "$id" 2>/dev/null && printf '%s\n' "$id"; done
+}
+
+# report a member's remote-control status from its pane: active | connecting | -
+_rc_status() {
+  local pane; pane="$(tmux capture-pane -t "$FLEET_TMUX_SESSION:$1" -p 2>/dev/null)"
+  if   grep -qi 'Remote Control active'     <<<"$pane"; then echo "active"
+  elif grep -qi 'Remote Control connecting' <<<"$pane"; then echo "connecting"
+  else echo "-"; fi
+}
+
+cmd_remote_control() {
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required for remote-control. Run: sudo apt install tmux"
+  local only="${1:-}" id sent=0
+  while read -r id; do
+    [[ -n "$id" ]] || continue
+    fleet_tmux_has_window "$id" 2>/dev/null || { warn "$id: no live window"; continue; }
+    # type the slash command and submit it (names the remote session after the id)
+    tmux send-keys -t "$FLEET_TMUX_SESSION:$id" -l "/remote-control $id" 2>/dev/null || continue
+    sleep 0.2
+    tmux send-keys -t "$FLEET_TMUX_SESSION:$id" Enter 2>/dev/null || continue
+    fleet_log remote-control "$id" "enabled"
+    info "→ /remote-control sent to '$id'"; sent=$(( sent + 1 ))
+  done < <(_rc_members "$only")
+  (( sent == 0 )) && { warn "nothing to enable"; return; }
+  info "connecting…"; sleep 5
+  cmd_remote "$only"
+  info ""
+  info "Open these in claude.ai/code or the Claude mobile app (signed in as you) —"
+  info "each appears by its member name. No URL/ports; it's an outbound connection."
+}
+
+cmd_remote() {
+  fleet_load_paths
+  local only="${1:-}" id st
+  printf '%s%-14s %s%s\n' "$c_bold" "MEMBER" "REMOTE CONTROL" "$c_reset"
+  while read -r id; do
+    [[ -n "$id" ]] || continue
+    st="$(_rc_status "$id")"
+    printf '  %-12s %s\n' "$id" "$st"
+  done < <(_rc_members "$only")
+}
+
 # ----------------------------------------------------------------------------
 main() {
   fleet_require_jq
@@ -457,6 +510,8 @@ main() {
     dispatch)  cmd_dispatch "$@" ;;
     attach)    cmd_attach "$@" ;;
     reap)      cmd_reap "$@" ;;
+    remote-control|rc) cmd_remote_control "$@" ;;
+    remote)    cmd_remote "$@" ;;
     ask)       cmd_ask "$@" ;;
     send)      cmd_send "$@" ;;
     broadcast) cmd_broadcast "$@" ;;

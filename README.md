@@ -157,6 +157,24 @@ messaged (`fleet send supervisor "..."`), and resumes on the next `fleet up`.
 Then just ask it: *"status?"*, *"anything conflicting?"*, *"restart composer"*,
 *"bring the suite back up"*. Use `fleet up --no-supervisor` to skip it.
 
+## Remote control (phone / web)
+
+Claude Code's own **Remote Control** (`/remote-control`) lets you drive a local
+session from claude.ai/code or the Claude mobile app — an outbound HTTPS
+connection, no ports opened. `fleet` enables it on live members by injecting the
+slash command (no relaunch needed):
+
+```sh
+fleet remote-control           # enable on all live members (names each by id)
+fleet remote-control hive      # or just one
+fleet remote                   # show remote-control status of each member
+```
+
+Each member then appears **by its name** in claude.ai/code and the mobile app
+(signed in as you) — so you can check on or steer any fleet member from your
+phone. Requires a Pro/Max/Team/Enterprise login (`/login`); it's per-session, so
+each enabled member is a separately controllable session on your account.
+
 ## What it does NOT do (by design)
 
 - **Conflict prevention is detection-only.** It warns when two live sessions
