@@ -48,6 +48,7 @@ and `fleet` keeps it running.
 | **bash ≥ 4** | the CLI, libs, and hooks are bash | `bash --version` — default on Linux; `brew install bash` on macOS |
 | **jq** | all state / manifest / message handling is JSON | `jq --version` · `sudo apt install jq` / `brew install jq` |
 | **tmux ≥ 3.0** | hosts the sessions; needed for everything except observe-only commands | `tmux -V` · `sudo apt install tmux` / `brew install tmux` |
+| **GitHub CLI** (`gh`) *(optional)* | only for `fleet wizard` (discovers repos under a gh owner) | `gh --version` · https://cli.github.com, then `gh auth login` |
 | **flock** *(optional)* | mailbox locking under concurrent sends; degrades gracefully if absent | part of `util-linux` (already present on most Linux) |
 
 Platform: Linux or macOS. The observe-only commands (`status`, `conflicts`,
@@ -89,9 +90,28 @@ later with `fleet install-hooks [<ws>|--user]`.
 
 ## Quick start
 
+**Guided (recommended for a new workspace)** — `fleet wizard` discovers the repos
+under a GitHub owner, lets you pick which to clone into the workspace and which
+should run an agent, and writes the manifest for you:
+
+```sh
+fleet wizard ~/work/myproject              # needs `gh` (logged in)
+#   → lists repos under your gh owner/org
+#   → "Which repos make up this workspace?"  (clones the missing ones)
+#   → "Which should run an AI agent?" (in dependency order)
+#   → writes .fleet/fleet.toml + installs hooks
+```
+
+**Manual:**
+
 ```sh
 fleet init ~/work/myproject                 # scaffold + hooks
 $EDITOR ~/work/myproject/.fleet/fleet.toml  # declare your members (see below)
+```
+
+Then, either way:
+
+```sh
 cd ~/work/myproject
 fleet up                                    # launch every member + the supervisor
 fleet status                                # the dashboard

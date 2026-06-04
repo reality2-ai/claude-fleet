@@ -34,6 +34,7 @@ usage() {
   cat <<'EOF'
 fleet — supervise parallel Claude Code sessions (OTP-style)
 
+  fleet wizard [workspace] [owner]      interactive setup: pick gh repos to clone + run agents on
   fleet init [--no-hooks] [workspace]   scaffold .fleet/ and install self-reporting hooks
   fleet install-hooks [workspace]       install hooks into <ws>/.claude/settings.json
   fleet install-hooks --user            install hooks into ~/.claude/settings.json
@@ -64,6 +65,101 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
 
   fleet help | version
 EOF
+}
+
+# expand a selection like "1-3 5 all" into unique 1-based indices (<= max)
+_wizard_expand() {
+  local sel="$1" max="$2"; local -a out=(); local tok n
+  for tok in $sel; do
+    if [[ "$tok" == "all" ]]; then out=($(seq 1 "$max")); break
+    elif [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      for (( n=${BASH_REMATCH[1]}; n<=${BASH_REMATCH[2]}; n++ )); do (( n>=1 && n<=max )) && out+=("$n"); done
+    elif [[ "$tok" =~ ^[0-9]+$ ]]; then (( tok>=1 && tok<=max )) && out+=("$tok")
+    fi
+  done
+  printf '%s\n' "${out[@]:-}" | awk 'NF && !seen[$0]++' | tr '\n' ' '
+}
+
+# write a manifest from a list of repo dir names (becomes the cwd + id)
+_wizard_write_manifest() {
+  local f="$1"; shift
+  { printf '[supervisor]\nstrategy     = "one_for_one"\nmax_restarts = 3\nmax_seconds  = 60\nmax_hops     = 6\n\n'
+    local name id
+    for name in "$@"; do
+      id="$(printf '%s' "$name" | tr -c 'a-zA-Z0-9_-' '-')"
+      printf '[[child]]\nid      = "%s"\ncwd     = "%s"\nrestart = "transient"\nname    = "%s-worker"\nseed    = "Resume work in %s. Run '\''git status'\'' first and summarise where things stand."\n\n' \
+        "$id" "$name" "$id" "$name"
+    done
+  } >"$f"
+}
+
+# Interactive setup: discover repos under a gh owner, choose which to bring local
+# and which to run agents on, then scaffold the workspace.
+cmd_wizard() {
+  command -v gh >/dev/null 2>&1 || die "fleet wizard needs the GitHub CLI (gh): https://cli.github.com  then 'gh auth login'"
+  gh auth status >/dev/null 2>&1 || die "not logged in to GitHub — run: gh auth login"
+  fleet_require_jq
+
+  local ws="${1:-$PWD}"; ws="$(fleet_realpath "$ws")"
+  mkdir -p "$ws"
+  info "Workspace: $ws"
+
+  local owner="${2:-}"
+  if [[ -z "$owner" ]]; then
+    local me; me="$(gh api user -q .login 2>/dev/null || true)"
+    read -rp "GitHub owner/org to scan [${me:-}]: " owner; owner="${owner:-$me}"
+  fi
+  [[ -n "$owner" ]] || die "no owner given"
+
+  info "Fetching repos under '$owner'…"
+  local -a repos=()
+  mapfile -t repos < <(gh repo list "$owner" --no-archived --limit 300 \
+    --json name,description,pushedAt,isPrivate,primaryLanguage \
+    -q 'sort_by(.pushedAt)|reverse|.[]|[.name,(if .isPrivate then "private" else "public" end),(.primaryLanguage.name//"-"),((.description//"")[0:48])]|@tsv' 2>/dev/null)
+  [[ ${#repos[@]} -gt 0 ]] || die "no repos found under '$owner' (or no access)"
+
+  local i=1 r name vis lang desc mark
+  printf '\n%s   #  loc  %-24s %-7s %-8s %s%s\n' "$c_bold" "REPO" "VIS" "LANG" "DESC" "$c_reset"
+  for r in "${repos[@]}"; do
+    IFS=$'\t' read -r name vis lang desc <<<"$r"
+    mark=" "; [[ -d "$ws/$name" ]] && mark="✓"
+    printf '  %2d   [%s] %-24s %-7s %-8s %s\n' "$i" "$mark" "$name" "$vis" "$lang" "$desc"
+    i=$(( i+1 ))
+  done
+  info "  ([✓] = already cloned in the workspace)"
+
+  local sel; read -rp $'\nWhich repos make up this workspace? (e.g. 1-3 5, or all): ' sel
+  local -a chosen=(); read -ra chosen <<<"$(_wizard_expand "$sel" "${#repos[@]}")"
+  [[ ${#chosen[@]} -gt 0 ]] || die "nothing selected"
+
+  # clone the missing ones
+  local idx; for idx in "${chosen[@]}"; do
+    name="$(cut -f1 <<<"${repos[$((idx-1))]}")"
+    if [[ -d "$ws/$name" ]]; then info "  have   $name"
+    else
+      local yn; read -rp "  clone $owner/$name into the workspace? [Y/n] " yn
+      [[ "$yn" =~ ^[Nn] ]] || { info "  cloning $name…"; gh repo clone "$owner/$name" "$ws/$name" >/dev/null 2>&1 && info "  cloned $name" || warn "  clone failed: $name"; }
+    fi
+  done
+
+  # which get an agent
+  local asel; read -rp $'\nWhich of those should run an AI agent (a fleet member)?\n(subset, in DEPENDENCY order — foundational first; same number format): ' asel
+  local -a agents=(); read -ra agents <<<"$(_wizard_expand "$asel" "${#repos[@]}")"
+  [[ ${#agents[@]} -gt 0 ]] || die "no agents selected"
+  local -a agent_names=(); for idx in "${agents[@]}"; do agent_names+=("$(cut -f1 <<<"${repos[$((idx-1))]}")"); done
+
+  # scaffold
+  mkdir -p "$ws/.fleet"
+  _wizard_write_manifest "$ws/.fleet/fleet.toml" "${agent_names[@]}"
+  info ""
+  info "Wrote manifest with ${#agent_names[@]} member(s): ${agent_names[*]}"
+  cmd_init "$ws"          # scaffold dirs + .gitignore + hooks (keeps the manifest above)
+
+  info ""
+  info "Next:"
+  info "  1. (optional) describe how your repos relate in $ws/.fleet/primer.md"
+  info "     (copy templates/primer.md.example) — agents share it and consult the right expert."
+  info "  2. install tmux if needed, then:  cd $ws && fleet up"
 }
 
 # ----------------------------------------------------------------------------
@@ -631,6 +727,7 @@ main() {
   fleet_require_jq
   local cmd="${1:-help}"; shift || true
   case "$cmd" in
+    wizard|setup) cmd_wizard "$@" ;;
     init)      cmd_init "$@" ;;
     install-hooks)
       if [[ "${1:-}" == "--user" ]]; then fleet_install_user_hooks
