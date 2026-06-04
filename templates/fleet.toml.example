@@ -1,0 +1,43 @@
+# fleet.toml — your supervision tree.
+# This is the declarative list of worker sessions `fleet up` manages, modelled
+# on an Erlang/OTP supervisor. Edit freely; `fleet up` reads it each time.
+
+[supervisor]
+# one_for_one: restarting one child does not touch the others (the usual choice).
+# rest_for_one: restarting a child also restarts children listed after it.
+strategy     = "one_for_one"
+# restart intensity (circuit breaker): more than `max_restarts` restarts within
+# `max_seconds` for a child trips the breaker — that child is marked `failed`
+# and left down instead of crash-looping.
+max_restarts = 3
+max_seconds  = 60
+
+# --- children ---------------------------------------------------------------
+# Each [[child]] is one worker session.
+#   id              stable name (also the tmux window name)
+#   cwd             working dir, relative to the workspace root (or absolute)
+#   restart         permanent | transient | temporary
+#                     permanent = always restart on exit
+#                     transient = restart only on abnormal (non-zero) exit
+#                     temporary = never auto-restart
+#   name            shown in the worker's prompt box (claude --name)
+#   permission_mode default | acceptEdits | plan | bypassPermissions (optional)
+#   seed            initial prompt used ONLY on a fresh start; once a session
+#                   exists, `fleet up` resumes it instead of re-seeding.
+
+[[child]]
+id              = "composer"
+cwd             = "r2-composer"
+restart         = "permanent"
+name            = "composer-worker"
+permission_mode = "default"
+seed            = "Resume work on the composer UI. Check git status first."
+
+[[child]]
+id      = "core-tests"
+cwd     = "r2-core"
+restart = "transient"
+name    = "core-test-runner"
+seed    = "Run the r2-core conformance vectors and report any failures."
+
+# Add as many children as you run in parallel. Delete the examples above.

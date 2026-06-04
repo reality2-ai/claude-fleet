@@ -1,0 +1,17 @@
+{
+  "_comment": "Illustrative only. `fleet init` generates this block with the ABSOLUTE path to this checkout's hooks/ and merges it into <workspace>/.claude/settings.json. Replace /path/to/claude-fleet below if you wire it up by hand.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/session-start.sh" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/prompt-submit.sh" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/post-edit.sh" } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/session-end.sh" } ] }
+    ]
+  }
+}

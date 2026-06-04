@@ -1,0 +1,77 @@
+# shellcheck shell=bash
+# tmux.sh — host worker sessions as windows in a single `fleet` tmux session.
+# All functions degrade gracefully (return non-zero) when tmux is absent, so
+# Tier-1 monitoring works without it.
+
+FLEET_TMUX_SESSION="${FLEET_TMUX_SESSION:-fleet}"
+
+fleet_has_tmux() { command -v tmux >/dev/null 2>&1; }
+
+fleet_tmux_session_exists() {
+  fleet_has_tmux || return 1
+  tmux has-session -t "$FLEET_TMUX_SESSION" 2>/dev/null
+}
+
+fleet_tmux_ensure_session() {
+  fleet_has_tmux || die "tmux is not installed (needed for 'up/down/restart'). Run: sudo apt install tmux"
+  fleet_tmux_session_exists && return 0
+  # a detached, placeholder-free session; the first child becomes window 0
+  tmux new-session -d -s "$FLEET_TMUX_SESSION" -n __fleet_root "true; sleep 0.2" 2>/dev/null || true
+}
+
+# does a window named after <id> exist?
+fleet_tmux_has_window() {
+  fleet_tmux_session_exists || return 1
+  tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null | grep -qx "$1"
+}
+
+# Start one child in its own window. fleet_tmux_start_child <id>
+# Resumes from run/<id>.session when present, else seeds a fresh session.
+fleet_tmux_start_child() {
+  local id="$1"
+  fleet_tmux_ensure_session
+  fleet_tmux_has_window "$id" && { warn "child '$id' already has a window"; return 0; }
+
+  local rel cwd name pm seed sid
+  rel="$(fleet_child_get "$id" cwd ".")"
+  cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
+  [[ -d "$cwd" ]] || die "child '$id': cwd does not exist: $cwd"
+  name="$(fleet_child_get "$id" name "$id")"
+  pm="$(fleet_child_get "$id" permission_mode "")"
+  seed="$(fleet_child_get "$id" seed "")"
+  sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
+
+  local -a claude_args=("${FLEET_CLAUDE_BIN:-claude}" --name "$name")
+  [[ -n "$pm" ]] && claude_args+=(--permission-mode "$pm")
+  if [[ -n "$sid" ]]; then
+    claude_args+=(--resume "$sid")
+    fleet_log resume "$id" "session=$sid"
+  elif [[ -n "$seed" ]]; then
+    claude_args+=("$seed")
+    fleet_log start "$id" "fresh seed"
+  fi
+
+  mkdir -p "$RUN_DIR"
+  local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"
+  # -e sets env in the new window (tmux ≥3.0); command + args passed as argv so
+  # no shell-quoting of the seed prompt is needed.
+  tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+    -e "FLEET_CHILD_ID=$id" \
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${claude_args[@]}"
+
+  fleet_state_ensure "$id" "$cwd" true
+  fleet_state_jq "$id" '.state="running" | .reason=null' >/dev/null
+}
+
+# Stop a child's window. fleet_tmux_stop_child <id>
+fleet_tmux_stop_child() {
+  local id="$1"
+  fleet_tmux_has_window "$id" || return 0
+  tmux kill-window -t "$FLEET_TMUX_SESSION:$id" 2>/dev/null || true
+}
+
+# Read the recorded exit code of a child's last run (empty if none).
+fleet_child_exit_code() {
+  local id="$1" f="$RUN_DIR/$1.exit"
+  [[ -f "$f" ]] && cat "$f" || printf ''
+}

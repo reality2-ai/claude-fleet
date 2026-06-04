@@ -1,0 +1,6 @@
+# claude-fleet has no build artifacts; runtime state lives in each workspace's
+# .fleet/ dir, never in this repo. Ignore the usual local noise.
+*.tmp
+*.tmp.*
+*~
+.DS_Store

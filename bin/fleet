@@ -1,0 +1,316 @@
+#!/usr/bin/env bash
+# fleet — an OTP-style supervisor for parallel Claude Code sessions.
+# See README.md. Subcommands: init status conflicts logs up down restart
+# dispatch attach reap help version.
+
+set -euo pipefail
+
+# --- locate the tool + load libraries ---------------------------------------
+_self="$(readlink -f "${BASH_SOURCE[0]}")"
+TOOL_ROOT="$(dirname "$(dirname "$_self")")"
+export TOOL_ROOT
+# shellcheck source=../lib/common.sh
+source "$TOOL_ROOT/lib/common.sh"
+source "$TOOL_ROOT/lib/manifest.sh"
+source "$TOOL_ROOT/lib/registry.sh"
+source "$TOOL_ROOT/lib/tmux.sh"
+source "$TOOL_ROOT/lib/restart.sh"
+
+FLEET_VERSION="0.1.0"
+
+usage() {
+  cat <<'EOF'
+fleet — supervise parallel Claude Code sessions (OTP-style)
+
+  fleet init [--no-hooks] [workspace]   scaffold .fleet/ and install self-reporting hooks
+  fleet install-hooks [workspace]       (re)install hooks into <ws>/.claude/settings.json
+  fleet status                  table of all known sessions (live/idle/dead, task, claims)
+  fleet conflicts               files being edited by more than one live session
+  fleet logs [id]               tail the aggregate event log, or summarise one child
+
+  fleet up [id]                 start the suite (or one child) in tmux  [needs tmux]
+  fleet down [id]               stop the suite (or one child), marked intentional
+  fleet restart <id>            force-restart one child (honours intensity breaker)
+  fleet dispatch <id> "<task>" [cwd]   start a fresh worker seeded with a task
+  fleet attach <id>             attach your terminal to a child's tmux window
+  fleet reap                    detect crashed children and apply restart policy
+
+  fleet help | version
+EOF
+}
+
+# ----------------------------------------------------------------------------
+cmd_init() {
+  local no_hooks=0
+  case "${1:-}" in --no-hooks) no_hooks=1; shift ;; esac
+  local ws="${1:-$PWD}"
+  ws="$(readlink -f "$ws")"
+  [[ -d "$ws" ]] || die "workspace does not exist: $ws"
+  local sd="$ws/.fleet"
+  mkdir -p "$sd/state" "$sd/run" "$sd/log"
+
+  if [[ -f "$sd/fleet.toml" ]]; then
+    info "kept existing $sd/fleet.toml"
+  else
+    cp "$TOOL_ROOT/templates/fleet.toml.example" "$sd/fleet.toml"
+    info "wrote   $sd/fleet.toml  (edit this — it is your supervision tree)"
+  fi
+
+  # merge hooks into the workspace .claude/settings.json (NOT settings.local.json)
+  if [[ "$no_hooks" == "1" ]]; then
+    info "skipped self-reporting hooks (--no-hooks). Install later with: fleet install-hooks $ws"
+  else
+    fleet_install_hooks "$ws"
+  fi
+  info ""
+  info "Done. Next: 'fleet status' (works now), and for lifecycle install tmux then 'fleet up'."
+  FLEET_WORKSPACE="$ws" fleet_load_paths
+  fleet_log init "-" "workspace=$ws"
+}
+
+# Merge the self-reporting hooks into <ws>/.claude/settings.json (idempotent).
+fleet_install_hooks() {
+  local ws="$1"; ws="$(readlink -f "$ws")"
+  local cdir="$ws/.claude"; mkdir -p "$cdir"
+  local settings="$cdir/settings.json"
+  local hooks_json; hooks_json="$(_render_hooks_json)"
+  if [[ -f "$settings" ]]; then
+    local merged; merged="$(jq --argjson h "$hooks_json" '.hooks = ((.hooks // {}) * $h)' "$settings")"
+    printf '%s\n' "$merged" >"$settings"
+    info "merged self-reporting hooks into $settings"
+  else
+    jq -n --argjson h "$hooks_json" '{hooks: $h}' >"$settings"
+    info "wrote   $settings  (self-reporting hooks)"
+  fi
+}
+
+# emit the hooks object that points at this checkout's hook scripts
+_render_hooks_json() {
+  local h="$TOOL_ROOT/hooks"
+  jq -n --arg h "$h" '
+    def hk(script): [ { hooks: [ { type: "command", command: ($h + "/" + script) } ] } ];
+    def hkm(matcher; script): [ { matcher: matcher, hooks: [ { type: "command", command: ($h + "/" + script) } ] } ];
+    {
+      SessionStart:      hk("session-start.sh"),
+      UserPromptSubmit:  hk("prompt-submit.sh"),
+      PostToolUse:       hkm("Edit|Write|MultiEdit|NotebookEdit"; "post-edit.sh"),
+      SessionEnd:        hk("session-end.sh")
+    }'
+}
+
+# ----------------------------------------------------------------------------
+cmd_status() {
+  fleet_load_paths
+  [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+
+  # union of manifest ids and ids that have state on disk
+  local -A seen=(); local -a ids=()
+  local id
+  for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] || continue; seen["$id"]=1; ids+=("$id"); done
+  while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen["$id"]=1; ids+=("$id"); }; done < <(fleet_state_ids)
+
+  if [[ ${#ids[@]} -eq 0 ]]; then
+    info "no sessions known yet. Start a Claude session in this workspace, or 'fleet up'."
+    return
+  fi
+
+  # manifest membership → "managed" even before a child has started
+  local -A MAN=(); for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && MAN["$id"]=1; done
+
+  _conflict_set   # populates CONFLICT_PATHS assoc array
+
+  printf '%s%-14s %-7s %-10s %-9s %-7s %-5s %-3s %s%s\n' "$c_bold" \
+    "CHILD" "STATE" "MANAGED" "SESSION" "ACTIVE" "CLAIMS" "WIN" "TASK" "$c_reset"
+  for id in "${ids[@]}"; do
+    local live managed sid act ago claims win mark task color
+    live="$(fleet_liveness "$id")"
+    managed="$(fleet_state_get "$id" '.managed' false)"
+    if [[ -n "${MAN[$id]:-}" || "$managed" == "true" ]]; then managed="managed"; else managed="ad-hoc"; fi
+    sid="$(fleet_state_get "$id" '.session_id' "")"; sid="${sid:0:8}"; [[ -z "$sid" ]] && sid="-"
+    ago="$(fleet_ago "$(fleet_last_activity "$id")")"
+    claims="$(fleet_state_get "$id" '.claims | length' 0)"
+    win="-"; fleet_tmux_has_window "$id" 2>/dev/null && win="y"
+    task="$(fleet_state_get "$id" '.current_task' "")"; task="${task:0:48}"
+    mark=" "; _child_has_conflict "$id" && mark="⚠"
+    case "$live" in
+      live)   color="$c_grn" ;;
+      idle)   color="$c_yel" ;;
+      dead)   color="$c_dim" ;;
+      failed) color="$c_red" ;;
+      *)      color="$c_dim" ;;
+    esac
+    printf '%s%-14s %-7s%s %-10s %-9s %-7s %-5s %-3s %s %s\n' \
+      "$color" "$id" "$live" "$c_reset" "$managed" "$sid" "$ago" "$claims" "$win" "$mark" "$task"
+  done
+}
+
+# Build CONFLICT_PATHS[path]="id1 id2 ..." across LIVE/IDLE children only.
+declare -gA CONFLICT_PATHS=()
+declare -gA CHILD_CONFLICT=()
+_conflict_set() {
+  CONFLICT_PATHS=(); CHILD_CONFLICT=()
+  local -A pathmap=()
+  local id live p
+  while read -r id; do
+    [[ -n "$id" ]] || continue
+    live="$(fleet_liveness "$id")"
+    [[ "$live" == "dead" || "$live" == "stopped" || "$live" == "failed" ]] && continue
+    while read -r p; do
+      [[ -n "$p" ]] || continue
+      pathmap["$p"]="${pathmap[$p]:-} $id"
+    done < <(fleet_state_get "$id" '.claims[]' "" 2>/dev/null)
+  done < <(fleet_state_ids)
+  for p in "${!pathmap[@]}"; do
+    # unique ids
+    local u; u="$(printf '%s\n' ${pathmap[$p]} | sort -u | tr '\n' ' ')"
+    if [[ "$(wc -w <<<"$u")" -gt 1 ]]; then
+      CONFLICT_PATHS["$p"]="$u"
+      local cid; for cid in $u; do CHILD_CONFLICT["$cid"]=1; done
+    fi
+  done
+}
+_child_has_conflict() { [[ -n "${CHILD_CONFLICT[$1]:-}" ]]; }
+
+cmd_conflicts() {
+  fleet_load_paths
+  _conflict_set
+  if [[ ${#CONFLICT_PATHS[@]} -eq 0 ]]; then
+    info "no conflicts: no file is claimed by more than one live session."
+    return
+  fi
+  warn "${#CONFLICT_PATHS[@]} file(s) claimed by multiple live sessions:"
+  local p
+  for p in "${!CONFLICT_PATHS[@]}"; do
+    printf '  %s%s%s\n      ↳ %s\n' "$c_yel" "$p" "$c_reset" "${CONFLICT_PATHS[$p]# }"
+  done
+}
+
+# ----------------------------------------------------------------------------
+cmd_logs() {
+  fleet_load_paths
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    [[ -f "$LOG_FILE" ]] || { info "(no events logged yet)"; return; }
+    tail -n 40 "$LOG_FILE"
+    return
+  fi
+  local cwd sid t
+  cwd="$(fleet_state_get "$id" '.cwd' "")"; sid="$(fleet_state_get "$id" '.session_id' "")"
+  info "child:        $id"
+  info "state:        $(fleet_liveness "$id")"
+  info "session:      ${sid:-<none>}"
+  info "cwd:          ${cwd:-<unknown>}"
+  info "current task: $(fleet_state_get "$id" '.current_task' '<none>')"
+  info "claims:       $(fleet_state_get "$id" '.claims | length' 0) file(s)"
+  t="$(fleet_transcript_path "$cwd" "$sid")"
+  [[ -f "$t" ]] && info "transcript:   $t ($(fleet_ago "$(fleet_mtime "$t")") ago)"
+}
+
+# ----------------------------------------------------------------------------
+cmd_up() {
+  fleet_load_paths; fleet_manifest_load "$MANIFEST"
+  local only="${1:-}"
+  local id started=0
+  for id in "${CHILD_IDS[@]:-}"; do
+    [[ -n "$id" ]] || continue
+    [[ -n "$only" && "$id" != "$only" ]] && continue
+    fleet_tmux_start_child "$id"; started=$(( started + 1 ))
+    info "up: started '$id'"
+  done
+  (( started == 0 )) && warn "nothing started (check id / manifest)"
+  info "tmux session '$FLEET_TMUX_SESSION' — attach with: fleet attach <id>"
+}
+
+cmd_down() {
+  fleet_load_paths
+  local only="${1:-}"
+  if [[ -n "$only" ]]; then
+    fleet_tmux_stop_child "$only"
+    fleet_state_jq "$only" '.state="stopped" | .reason="fleet down"' >/dev/null || true
+    fleet_log down "$only" "intentional"
+    info "down: stopped '$only'"
+    return
+  fi
+  [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  local id
+  for id in $(fleet_state_ids); do
+    fleet_tmux_has_window "$id" 2>/dev/null || continue
+    fleet_tmux_stop_child "$id"
+    fleet_state_jq "$id" '.state="stopped" | .reason="fleet down"' >/dev/null || true
+    info "down: stopped '$id'"
+  done
+  fleet_tmux_session_exists && tmux kill-session -t "$FLEET_TMUX_SESSION" 2>/dev/null || true
+  fleet_log down "-" "suite"
+}
+
+cmd_restart() {
+  local id="${1:?usage: fleet restart <id>}"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_restart_child "$id" force
+  info "restart: '$id'"
+}
+
+cmd_dispatch() {
+  local id="${1:?usage: fleet dispatch <id> \"<task>\" [cwd]}"
+  local task="${2:?provide a task prompt}"; local cwd="${3:-$WORKSPACE}"
+  fleet_load_paths
+  fleet_has_tmux || die "tmux required for dispatch. Run: sudo apt install tmux"
+  cwd="${cwd:-$WORKSPACE}"; [[ "$cwd" != /* ]] && cwd="$WORKSPACE/$cwd"
+  fleet_tmux_ensure_session
+  fleet_tmux_has_window "$id" && die "child '$id' already running — pick another id"
+  local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" -e "FLEET_CHILD_ID=$id" \
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${FLEET_CLAUDE_BIN:-claude}" --name "$id" "$task"
+  fleet_state_ensure "$id" "$cwd" true
+  fleet_state_jq "$id" --arg t "$task" '.state="running" | .current_task=$t' >/dev/null
+  fleet_log dispatch "$id" "$task"
+  info "dispatched '$id' in $cwd — attach with: fleet attach $id"
+}
+
+cmd_attach() {
+  local id="${1:?usage: fleet attach <id>}"
+  fleet_load_paths
+  fleet_tmux_has_window "$id" || die "no live window for '$id' (try 'fleet status')"
+  tmux select-window -t "$FLEET_TMUX_SESSION:$id" 2>/dev/null || true
+  if [[ -n "${TMUX:-}" ]]; then tmux switch-client -t "$FLEET_TMUX_SESSION:$id"
+  else tmux attach -t "$FLEET_TMUX_SESSION" \; select-window -t "$id"; fi
+}
+
+cmd_reap() {
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  local id reaped=0
+  for id in "${CHILD_IDS[@]:-}"; do
+    [[ -n "$id" ]] || continue
+    # a managed child with no window but not intentionally stopped → crashed
+    fleet_tmux_has_window "$id" 2>/dev/null && continue
+    local st; st="$(fleet_state_get "$id" '.state' unknown)"
+    [[ "$st" == "stopped" || "$st" == "failed" ]] && continue
+    [[ "$st" == "running" ]] || continue
+    warn "child '$id' is down (rc=$(fleet_child_exit_code "$id"):-?) — applying policy"
+    fleet_restart_child "$id" && reaped=$(( reaped + 1 )) || true
+  done
+  (( reaped == 0 )) && info "reap: nothing to restart"
+}
+
+# ----------------------------------------------------------------------------
+main() {
+  fleet_require_jq
+  local cmd="${1:-help}"; shift || true
+  case "$cmd" in
+    init)      cmd_init "$@" ;;
+    install-hooks) fleet_install_hooks "${1:-$PWD}" ;;
+    status|ls) cmd_status "$@" ;;
+    conflicts) cmd_conflicts "$@" ;;
+    logs|log)  cmd_logs "$@" ;;
+    up)        cmd_up "$@" ;;
+    down)      cmd_down "$@" ;;
+    restart)   cmd_restart "$@" ;;
+    dispatch)  cmd_dispatch "$@" ;;
+    attach)    cmd_attach "$@" ;;
+    reap)      cmd_reap "$@" ;;
+    version|-v|--version) echo "fleet $FLEET_VERSION" ;;
+    help|-h|--help) usage ;;
+    *) usage; die "unknown command: $cmd" ;;
+  esac
+}
+main "$@"
