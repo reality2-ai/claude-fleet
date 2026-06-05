@@ -68,11 +68,11 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
   fleet remote-control [on|off] [id]    enable/disable Claude /remote-control on member(s)
   fleet remote [id]             show remote-control status of member(s)
 
-  fleet ask <to> "<question>"   ask a peer via a fresh expert session in its repo,
-                                  without disturbing its main session  [needs tmux]
-  fleet send <to> "<msg>"       inject a message into a peer's live session
-  fleet broadcast "<msg>"       message all peer agents
-  fleet inbox [id]              show a child's message mailbox
+  fleet ask <to> "<question>"   consult a peer off-thread: a fork of its live
+                                  context answers; reply → asker's inbox  [needs tmux]
+  fleet send <to> "<msg>"       brief FYI into a peer's live thread (no reply)
+  fleet broadcast "<msg>"       brief FYI to all peer agents
+  fleet inbox [id]              read a mailbox (full answers + audit trail)
 
   fleet help | version
 EOF
@@ -668,9 +668,9 @@ cmd_reap() {
 }
 
 # --- inter-agent comms ------------------------------------------------------
-# Shared delivery for ask/send — both land in the TARGET'S OWN live thread, where
-# it answers visibly and routes the reply back. kind is "ask" (reply expected) or
-# "msg" (info). _fleet_parse_msg sets _F_FROM/_F_TO/_F_TEXT from [--from] <to> <text>.
+# `ask` (cmd_ask) answers off-thread via a forked responder. `send` delivers a
+# brief FYI into the target's live thread via _fleet_deliver below.
+# _fleet_parse_msg sets _F_FROM/_F_TO/_F_TEXT from [--from] <to> <text>.
 _fleet_parse_msg() {
   _F_FROM=""; local rest=()
   while [[ $# -gt 0 ]]; do case "$1" in --from) _F_FROM="$2"; shift 2 ;; *) rest+=("$1"); shift ;; esac; done
@@ -708,8 +708,29 @@ cmd_ask() {
   [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet ask <to> \"<question>\" [--from <id>]"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_has_tmux || die "tmux required. Run: sudo apt install tmux"
-  _fleet_deliver ask "$_F_TO" "$_F_FROM" "$_F_TEXT"
-  info "  '$_F_TO' will answer in its own thread and route the reply back to '$_F_FROM'."
+  local to="$_F_TO" from="$_F_FROM" q="$_F_TEXT"
+  [[ "$to" == "$from" ]] && die "cannot ask yourself ($to)"
+  local cap; cap="$(fleet_max_hops)"
+  local hop; hop="$(fleet_next_hop "$from")" || {
+    fleet_log hop-limit "$to" "from=$from cap=$cap"
+    die "hop limit ($cap) reached for this thread — not asking '$to'. Start a fresh thread, or raise [supervisor] max_hops."
+  }
+  local rel cwd; rel="$(fleet_child_get "$to" cwd "")"
+  [[ -n "$rel" ]] || die "unknown target '$to' (not in the manifest)"
+  cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
+  [[ -d "$cwd" ]] || die "target '$to' cwd does not exist: $cwd"
+  fleet_tmux_ensure_session
+  # A transient window in the target's repo runs the forked responder: it answers
+  # off-thread from a fork of the target's context, then routes the reply back
+  # (full → asker's inbox, one-line summary → asker's thread, brief FYI → target's
+  # thread). The window closes itself when done.
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "ask:$to" -c "$cwd" \
+    -e "TOOL_ROOT=$TOOL_ROOT" -e "FLEET_WORKSPACE=$WORKSPACE" \
+    -e "FLEET_TMUX_SOCKET=$FLEET_TMUX_SOCKET" -e "FLEET_CLAUDE_BIN=${FLEET_CLAUDE_BIN:-claude}" \
+    "$TOOL_ROOT/lib/responder.sh" "$to" "$from" "$q" "$hop"
+  fleet_log ask "$to" "from=$from hop=$hop (forked responder)"
+  info "asked '$to' — a forked copy of its context is answering (its live thread is untouched)."
+  info "  reply lands in '$from's inbox (fleet inbox $from) + a one-line note in its thread."
 }
 
 cmd_broadcast() {
@@ -729,7 +750,7 @@ cmd_inbox() {
   [[ -z "$id" ]] && die "usage: fleet inbox <id>  (or set FLEET_CHILD_ID)"
   local f; f="$(fleet_inbox_file "$id")"
   [[ -f "$f" ]] || { info "(no messages for $id)"; return; }
-  jq -r '"\(.ts|strftime("%H:%M:%S"))  \(if .delivered then "✓" else "•" end) [\(.from)] \(.text)"' "$f"
+  jq -r '"\(.ts|strftime("%H:%M:%S"))  \(if .delivered then "✓" else "•" end) [\(.kind // "msg") from \(.from)] \(.text)"' "$f"
 }
 
 # --- remote control (Claude Code's /remote-control slash command) -----------

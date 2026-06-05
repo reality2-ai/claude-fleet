@@ -243,9 +243,9 @@ fleet reap                        # detect crashed members, apply restart policy
 fleet install-service             # per-user systemd unit: auto-start on boot + resume
 
 # inter-agent comms (tmux)
-fleet ask <to> "<question>"  # ask a member (lands in its thread; it answers + replies back)
-fleet send <to> "<msg>"      # tell a member something (lands in its thread; no reply needed)
-fleet broadcast "<msg>"      # message every member
+fleet ask <to> "<question>"  # consult a peer off-thread (forked context); reply → your inbox
+fleet send <to> "<msg>"      # brief FYI into a member's thread (no reply)
+fleet broadcast "<msg>"      # brief FYI to every member
 fleet supervise              # start (or point you to) the supervisor session
 
 # remote control (tmux + Claude login)
@@ -313,25 +313,33 @@ systemctl --user start fleet.service  # 'fleet up' now; starts on boot thereafte
 ## Inter-agent communication
 
 Each member is primed at launch knowing it's the resident expert on its repo, who
-its peers are, and how to reach them. Both verbs deliver into the **target's own
-live session** — the message appears in its thread, it answers there (visible to
-you), and the reply routes back. Nothing happens off-thread.
+its peers are, and how to reach them. The design goal: **a peer's question never
+hijacks your live thread.**
 
-- **`fleet ask <to> "q"`** — a question; the peer answers and replies back. Arrives
-  prefixed `[fleet ask from <id>]`.
-- **`fleet send <to> "msg"`** — info / a heads-up; reply only if useful. Arrives
-  prefixed `[fleet msg from <id>]`.
+- **`fleet ask <to> "q"`** — consult a peer. A transient responder resumes a
+  **fork of the target's live session** (`claude --fork-session`) — its real
+  working context — answers the question **off-thread**, and closes. The target's
+  own session is never interrupted; it only gets a brief *"peer asked you X —
+  answered from a forked copy, no action needed"* note when it's next idle. The
+  answer routes back to **the asker**: a one-line summary in its thread, the full
+  reply saved in its inbox (`fleet inbox`).
+- **`fleet send <to> "msg"`** — a brief FYI delivered into the target's thread
+  (held until it's at its prompt, so no mid-task corruption). No reply expected.
 
-Delivery is **hybrid**: if the peer is at its prompt the message goes in now; if
-it's mid-task the message waits and is delivered the moment it returns to its
-prompt (its Stop hook drains the mailbox). Replies route back to whoever asked —
-the prefix names the sender, and members are instructed to always answer that id.
-Long replies are delivered in full (typed in keystroke chunks, one turn).
-Mailboxes live at `<workspace>/.fleet/inbox/<id>.jsonl` as an audit trail.
+So an `ask` costs the target nothing but a one-line heads-up, while the asker gets
+a real answer informed by the peer's current context. Members are told they do
+**not** answer incoming asks themselves — the fork does. Mailboxes live at
+`<workspace>/.fleet/inbox/<id>.jsonl` (full answers + an audit trail of who asked
+whom).
 
-**Hop cap.** To stop two agents ping-ponging forever, every message carries a hop
-depth (a reply inherits hop+1; a fresh thread resets to 1). Sends past
-`[supervisor] max_hops` are refused.
+> Why the fork? An earlier version delivered the question straight into the
+> target's live thread — visible, but disruptive. A still-earlier one answered in a
+> *fresh* headless session that didn't know what the target was working on. Forking
+> the live session gets both: off-thread **and** context-aware.
+
+**Hop cap.** To stop chains running away, every message carries a hop depth (a
+reply inherits hop+1; a fresh thread resets to 1). Messages past `[supervisor]
+max_hops` are refused.
 
 ### Shared context — `primer.md`
 

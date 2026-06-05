@@ -129,6 +129,28 @@ holder=$!; sleep 0.3
 has "second concurrent 'fleet up' is skipped" "$TMP/lock.out" "another 'fleet up' is in progress"
 wait "$holder" 2>/dev/null || true
 
+# --- 8. forked responder (fleet ask plumbing) -------------------------------
+section "8. forked responder"
+# a stub claude that prints a fixed answer and logs its argv
+RSTUB="$TMP/claude-responder"
+cat > "$RSTUB" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$TMP/responder.args"
+echo "FORKED-ANSWER: the registry lives in lib/registry.sh"
+EOF
+chmod +x "$RSTUB"
+echo "sid-TARGET-99" > "$WS2/.fleet/run/beta.session"   # pretend beta has a live session
+mkdir -p "$WS2/repoB"
+TOOL_ROOT="$ROOT" FLEET_WORKSPACE="$WS2" FLEET_TMUX_SOCKET="$SOCK" FLEET_CLAUDE_BIN="$RSTUB" \
+  bash "$ROOT/lib/responder.sh" beta alpha "where does the registry live?" 1 >/dev/null 2>&1
+has "responder forked the target session (--fork-session)" "$TMP/responder.args" "--fork-session"
+hasline "responder resumed the target's session id"        "$TMP/responder.args" "sid-TARGET-99"
+has "full answer stored in asker's inbox"     "$WS2/.fleet/inbox/alpha.jsonl" "FORKED-ANSWER"
+has "one-line summary queued for the asker"   "$WS2/.fleet/inbox/alpha.jsonl" "answered"
+has "brief no-action FYI queued for target"   "$WS2/.fleet/inbox/beta.jsonl"  "no action needed"
+has   "target gets a fyi-kind note"                 "$WS2/.fleet/inbox/beta.jsonl" "\"kind\":\"fyi\""
+lacks "target is NOT handed an 'ask' to answer"     "$WS2/.fleet/inbox/beta.jsonl" "\"kind\":\"ask\""
+
 # --- summary ----------------------------------------------------------------
 printf '\n%s\n' "------------------------------------------"
 printf 'smoke: %d passed, %d failed\n' "$pass" "$fail"

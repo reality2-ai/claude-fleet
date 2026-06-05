@@ -25,10 +25,10 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - `fleet restart <id>` — restart one child.
 - `fleet dispatch <id> "<task>" [cwd]` — start a fresh worker on a task.
 - `fleet attach <id>` — (for the human) jump into a worker's tmux window.
-- `fleet ask <to> "<q>"` — ask a worker a question; it lands in that worker's own thread, it answers there, reply routes back.
-- `fleet send <to> "<msg>"` — tell a worker something (same delivery; no reply expected).
-- `fleet broadcast "<msg>"` — message every worker at once.
-- `fleet inbox <id>` — read a worker's message mailbox (the audit trail of who asked whom).
+- `fleet ask <to> "<q>"` — ask a worker a question. A forked copy of that worker's context answers it off-thread (its live session is untouched); the reply comes back to YOU — a one-line summary in your thread, the full answer in your inbox.
+- `fleet send <to> "<msg>"` — a brief FYI into a worker's thread (no reply expected).
+- `fleet broadcast "<msg>"` — a brief FYI to every worker at once.
+- `fleet inbox [<id>]` — read a mailbox: full answers to your asks, and the audit trail of who asked whom.
 
 ## How to behave
 
@@ -46,10 +46,12 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 
 ## Honest limits (do not overstate to the user)
 
-- `fleet ask`/`send` both deliver into a worker's own live thread (hybrid: held
-  until it's at its prompt, so no mid-task corruption — but it does add a turn).
-  Your message always shows up as a visible turn in its session; nothing is steered
-  silently or off-thread.
+- `fleet ask` answers from a **forked copy** of the target's context, so it never
+  interrupts that worker's live thread — the worker only gets a brief "no action
+  needed" note. The full answer comes to the asker's inbox. `fleet send` drops a
+  short FYI into the target's thread (held until it's at its prompt). The forked
+  answer is informed by the target's working memory but is a snapshot — it can't
+  act, only answer.
 - Agent-to-agent threads are hop-capped (`max_hops`); past the cap, sends are
   refused. If agents hit the cap a lot, the work probably needs a human decision.
 - Conflict handling is **detection only** — you warn, you do not block edits.

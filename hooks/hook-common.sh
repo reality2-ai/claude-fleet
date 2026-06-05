@@ -11,6 +11,10 @@ export TOOL_ROOT
 
 command -v jq >/dev/null 2>&1 || exit 0
 
+# An ephemeral fleet process (e.g. the `fleet ask` forked responder) sets this so
+# its short-lived session never self-reports into the registry.
+[[ -n "${FLEET_NO_REPORT:-}" ]] && exit 0
+
 # minimal subset of common/registry (avoid pulling tmux/restart into hooks)
 # shellcheck source=../lib/common.sh
 source "$TOOL_ROOT/lib/common.sh" 2>/dev/null || exit 0

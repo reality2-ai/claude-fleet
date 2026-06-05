@@ -16,15 +16,26 @@ fleet_max_hops() { printf '%s\n' "${FLEET_MAX_HOPS:-${SUP_MAX_HOPS:-6}}"; }
 
 fleet_inbox_file() { printf '%s/inbox/%s.jsonl\n' "$STATE_DIR" "$1"; }
 
-# enqueue a message as undelivered, carrying its hop depth and kind (ask|msg)
+# enqueue a message carrying its hop depth and kind (ask|msg|fyi|answer).
+# notify=true (default) → pending injection into the thread; notify=false → stored
+# as a read-only record (e.g. a full answer the asker reads via `fleet inbox`).
 fleet_enqueue() {
-  local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}" f ts
+  local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}" notify="${6:-true}" f ts delivered=false
+  [[ "$notify" == "false" ]] && delivered=true
   f="$(fleet_inbox_file "$to")"; mkdir -p "$(dirname "$f")"
   ts="$(date +%s)"
   exec 9>"$f.lock"; flock 9 2>/dev/null || true
-  jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" --argjson hops "$hops" --arg kind "$kind" \
-    '{ts:$ts, from:$from, to:$to, text:$text, hops:$hops, kind:$kind, delivered:false}' >>"$f"
+  jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" --argjson hops "$hops" --arg kind "$kind" --argjson delivered "$delivered" \
+    '{ts:$ts, from:$from, to:$to, text:$text, hops:$hops, kind:$kind, delivered:$delivered}' >>"$f"
   flock -u 9 2>/dev/null || true; exec 9>&-
+}
+
+# Deliver a brief note into <to>'s thread now if it's idle, else queue it for the
+# next idle drain. Used by the forked responder and by `fleet send`.
+fleet_notify() {
+  local to="$1" from="$2" text="$3" hop="${4:-1}"
+  fleet_enqueue "$to" "$from" "$text" "$hop" fyi true
+  fleet_drain_inbox "$to" >/dev/null 2>&1 || true
 }
 
 # Compute the hop depth for a message <from> is about to send: one deeper than
@@ -110,35 +121,28 @@ on: ${me_cwd}.
 Your peers — consult them when a question is genuinely about THEIR area:
 ${peers}
 To reach a peer (run in Bash):
-  - Ask a question (you expect an answer back):
-        fleet ask <peer-id> "your question"
-  - Tell them something (no answer needed):
-        fleet send <peer-id> "a heads-up"
+  - Ask a question:   fleet ask <peer-id> "your question"
+  - Send a heads-up:  fleet send <peer-id> "info"
 
-How it works: the message is delivered into the PEER'S OWN session as a normal
-turn — it appears in their thread, they answer there (visible to the human
-operator), and their reply comes back to you the same way. There is no hidden
-side-channel; everything happens in the actual sessions.
+How \`ask\` works: it does NOT interrupt the peer's live session. The fleet spins
+up a forked copy of that peer's current context and answers your question
+off-thread. The answer comes back to YOU — a one-line summary appears in your
+thread, and the full reply is saved in your inbox. Read it with:  fleet inbox
+
+How incoming messages work: you do NOT answer peers' questions yourself. When a
+peer asks YOU something, the fleet answers it from a forked copy of your context;
+you'll just see a brief "no action needed" note. A "fleet send" from a peer is a
+short FYI — act on it only if it actually affects your current work. Nothing ever
+hijacks your thread with someone else's question. Read anything queued any time
+with:  fleet inbox
 
 There is also a "supervisor" coordinating the fleet. Escalate to it (blockers,
 cross-cutting decisions, "who owns X?") with:  fleet send supervisor "..."
 
-Messages arrive in your input prefixed:
-    [fleet ask from <id> · hop N/MAX] ...   ← a question; answer it
-    [fleet msg from <id> · hop N/MAX] ...   ← info; reply only if useful
-Answer in your normal response (the human can see it), THEN route your answer back
-to the asker:  fleet send <that-id> "your answer". The hop number is the
-conversation depth; at MAX, don't reply further (the fleet refuses it) — wrap up or
-escalate to the supervisor. Read queued mail anytime with:  fleet inbox
-
-REPLY ROUTING (a firm rule):
-  - A "[fleet ask from <id>]" you leave unanswered is a dropped message — the
-    asker is blocked on you. Always close the loop, even if it's "I don't know" or
-    "that's outside <your-repo>; ask <other-peer>".
-  - Keep cross-agent messages short and specific. Avoid loops: only reply when you
-    are answering a question or adding genuinely new information — a bare "thanks"
-    needs no message. Prefer asking the right peer over guessing about a repo that
-    isn't yours.
+Keep cross-agent messages short and specific, and prefer asking the right peer
+over guessing about a repo that isn't yours. Notes are tagged with a hop counter
+(N/MAX) that caps how deep a chain can go before the fleet refuses further
+messages.
 EOF
   # Optional workspace-supplied context (architecture, ownership rules, etc.),
   # appended verbatim so the generic tool stays domain-agnostic.
