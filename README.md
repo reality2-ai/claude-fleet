@@ -151,19 +151,10 @@ fleet attach api                            # drop into a member's tmux window
 After a reboot, `fleet up` brings the whole suite back, resuming each member's
 conversation.
 
-`fleet status` looks like this:
-
-```text
-CHILD          STATE   MANAGED    SESSION   ACTIVE  CLAIMS WIN TASK
-specs          live    managed    8755ee60  2m      7     y   drafting the licensing spec
-core           idle    managed    64952d0e  11m     14    y   ⚠ refactoring the registry
-api            dead    managed    43197d4e  3h      0     -   (transcript ends here)
-supervisor     live    managed    32889324  1m      0     y   overseeing the fleet
-```
-
-`STATE` is derived honestly from the transcript (live / idle / dead / failed),
-`WIN` shows a live tmux window, `CLAIMS` counts files the member has touched, and
-a `⚠` flags a file claimed by more than one live member.
+In `fleet status`, `STATE` is derived honestly from the transcript
+(live / idle / dead / failed), `WIN` shows a live tmux window, `CLAIMS` counts
+files the member has touched, and a `⚠` flags a file claimed by more than one
+live member.
 
 ## The manifest — `fleet.toml`
 
