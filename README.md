@@ -1,5 +1,7 @@
 # claude-fleet
 
+[![CI](https://github.com/reality2-ai/claude-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/reality2-ai/claude-fleet/actions/workflows/ci.yml)
+
 An **OTP-style supervisor for parallel Claude Code sessions.**
 
 If you run several Claude Code sessions at once across a multi-repo workspace,
@@ -447,6 +449,8 @@ hooks/                 self-reporting hooks: session-start, prompt-submit,
 skill/SUPERVISOR.md    role prompt for the supervising session
 commands/fleet.md      the /fleet slash command (installed into .claude/commands/)
 templates/             example fleet.toml + primer.md + illustrative hooks block
+tests/smoke.sh         self-contained smoke test (syntax + lifecycle vs a stub)
+.github/workflows/     CI: runs the smoke test on every push / PR
 ```
 
 Runtime state lives per-workspace under `<workspace>/.fleet/` (manifest, state,
@@ -459,8 +463,10 @@ A small, pragmatic bash toolkit — primarily developed and tested on **Linux
 untested. Expect rough edges.
 
 Issues and pull requests welcome at
-<https://github.com/reality2-ai/claude-fleet>. There's no automated test suite
-yet, so please describe how you verified a change. Match the surrounding style:
+<https://github.com/reality2-ai/claude-fleet>. A smoke test runs in CI on every
+push/PR (syntax + a full `up` / resume / `down` lifecycle against a stub
+`claude`); run it locally with `tests/smoke.sh` (needs `bash`, `jq`, `tmux`).
+Please add coverage for behaviour you change, and match the surrounding style:
 POSIX-ish bash, `jq` for all JSON, and graceful degradation when `tmux` is absent
 (observe-only commands must keep working without it).
 

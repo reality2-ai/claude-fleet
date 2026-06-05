@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y tmux jq shellcheck
+
+      - name: Tool versions
+        run: { bash --version | head -1; tmux -V; jq --version; }
+
+      - name: Syntax check (bash -n)
+        run: |
+          bash -n bin/fleet
+          for f in lib/*.sh hooks/*.sh tests/*.sh; do bash -n "$f"; done
+
+      - name: ShellCheck (advisory)
+        continue-on-error: true
+        run: shellcheck -S warning bin/fleet lib/*.sh hooks/*.sh tests/*.sh
+
+      - name: Smoke test
+        run: tests/smoke.sh
