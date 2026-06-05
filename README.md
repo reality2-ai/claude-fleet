@@ -14,6 +14,10 @@ It's a small set of `bash` scripts wrapping `tmux` and the `claude` CLI. No
 daemon, no background services; all runtime state is plain JSON files under your
 workspace.
 
+![The fleet supervisor session coordinating members: inter-agent messages, a live fleet status, the member windows along the bottom, and Remote Control active](docs/fleet-supervisor.png)
+
+*The supervisor coordinating the fleet — inter-agent messages (`fleet msg from hive · hop 1/6`), a `fleet status` it ran itself, the member windows along the bottom (`0:supervisor 1:specs 2:core 3:hive …`), and Remote Control active.*
+
 ## The model (Erlang/OTP)
 
 Each Claude session is a supervised "child"; you describe the set declaratively
