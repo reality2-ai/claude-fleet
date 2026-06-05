@@ -151,6 +151,33 @@ has "brief no-action FYI queued for target"   "$WS2/.fleet/inbox/beta.jsonl"  "n
 has   "target gets a fyi-kind note"                 "$WS2/.fleet/inbox/beta.jsonl" "\"kind\":\"fyi\""
 lacks "target is NOT handed an 'ask' to answer"     "$WS2/.fleet/inbox/beta.jsonl" "\"kind\":\"ask\""
 
+# --- 9. auto-approve PreToolUse hook ----------------------------------------
+section "9. auto-approve hook"
+APHOOK="$ROOT/hooks/auto-approve.sh"
+# run the hook with a payload (+ optional env=val args); pass/fail on whether it
+# emitted an "allow" decision.
+ap_allow()  { local d="$1" pay="$2"; shift 2
+  if printf '%s' "$pay" | env "$@" bash "$APHOOK" 2>/dev/null | grep -q '"permissionDecision":"allow"'; then ok "$d"; else no "$d"; fi; }
+ap_prompt() { local d="$1" pay="$2"; shift 2
+  if [ -z "$(printf '%s' "$pay" | env "$@" bash "$APHOOK" 2>/dev/null)" ]; then ok "$d"; else no "$d"; fi; }
+mkp() { jq -nc --arg t "$1" --arg cwd "$WS2" --arg cmd "$2" --arg fp "$3" \
+  '{tool_name:$t, cwd:$cwd, tool_input:({} + (if $cmd!="" then {command:$cmd} else {} end) + (if $fp!="" then {file_path:$fp} else {} end))}'; }
+
+ap_allow  "Read is auto-allowed"                 "$(mkp Read '' "$WS2/x")"
+ap_allow  "Bash 'git status' is auto-allowed"    "$(mkp Bash 'git status' '')"
+ap_allow  "Bash 'ls -la src' is auto-allowed"    "$(mkp Bash 'ls -la src' '')"
+ap_allow  "in-workspace Edit is auto-allowed"    "$(mkp Edit '' "$WS2/repoA/file.txt")"
+ap_prompt "Bash 'rm -rf build' prompts"          "$(mkp Bash 'rm -rf build' '')"
+ap_prompt "Bash 'git push' prompts"              "$(mkp Bash 'git push origin main' '')"
+ap_prompt "Bash with a pipe prompts"             "$(mkp Bash 'cat x | tee y' '')"
+ap_prompt "Bash redirection prompts"             "$(mkp Bash 'echo hi > f' '')"
+ap_prompt "edit outside the workspace prompts"   "$(mkp Edit '' '/etc/hosts')"
+ap_prompt "unknown tool prompts"                 "$(mkp Frobnicate '' '')"
+ap_prompt "FLEET_AUTOCONFIRM=off disables it"    "$(mkp Read '' "$WS2/x")"     FLEET_AUTOCONFIRM=off
+ap_prompt "FLEET_AUTOCONFIRM_EDITS=off keeps edit prompts" "$(mkp Edit '' "$WS2/a")" FLEET_AUTOCONFIRM_EDITS=off
+# outside any .fleet workspace → never acts
+ap_prompt "outside a fleet workspace it stays silent" "$(jq -nc '{tool_name:"Read",cwd:"/tmp",tool_input:{file_path:"/tmp/x"}}')"
+
 # --- summary ----------------------------------------------------------------
 printf '\n%s\n' "------------------------------------------"
 printf 'smoke: %d passed, %d failed\n' "$pass" "$fail"

@@ -7,6 +7,9 @@
     "UserPromptSubmit": [
       { "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/prompt-submit.sh" } ] }
     ],
+    "PreToolUse": [
+      { "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/auto-approve.sh" } ] }
+    ],
     "PostToolUse": [
       { "matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": "/path/to/claude-fleet/hooks/post-edit.sh" } ] }
     ],

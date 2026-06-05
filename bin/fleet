@@ -270,6 +270,7 @@ _render_hooks_json() {
     {
       SessionStart:      hk("session-start.sh"),
       UserPromptSubmit:  hk("prompt-submit.sh"),
+      PreToolUse:        hk("auto-approve.sh"),
       PostToolUse:       hkm("Edit|Write|MultiEdit|NotebookEdit"; "post-edit.sh"),
       Stop:              hk("on-stop.sh"),
       SessionEnd:        hk("session-end.sh")

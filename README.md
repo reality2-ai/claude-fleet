@@ -81,6 +81,11 @@ same care as any agent you let act unattended:
 - **Run them in version control.** Members work directly in your working trees;
   commit or stash anything you don't want touched, and review their diffs like any
   other contributor's.
+- **Routine prompts are auto-confirmed by default.** A `PreToolUse` hook
+  auto-approves a non-destructive set (reads, in-repo edits, read-only shell) so
+  members don't stall on every "press-enter-for-yes" — destructive/ambiguous
+  actions still prompt. See [Auto-confirming routine prompts](#auto-confirming-routine-prompts);
+  disable with `FLEET_AUTOCONFIRM=off`.
 - **Remote control is opt-in and per-member.** `fleet remote-control` exposes a
   session to claude.ai/code and the mobile app (signed in as you) — enable it
   deliberately and turn it off when done.
@@ -408,6 +413,32 @@ that gap:
   `fleet install-hooks --user`. These hooks no-op instantly outside any `.fleet`
   workspace, so a global install has no effect on your other projects.
 
+## Auto-confirming routine prompts
+
+Fleet members are semi-autonomous, so stopping to approve every routine action
+gets in the way. A `PreToolUse` hook (`hooks/auto-approve.sh`) auto-approves a
+**curated, non-destructive set** so members don't wait on the usual
+press-enter-for-yes prompts — while anything risky or ambiguous still stops for
+you. It **never auto-denies**: worst case it stays silent and the normal prompt
+appears.
+
+**Auto-approved:** read-only tools (`Read`, `Glob`, `Grep`, `LS`, `NotebookRead`,
+`WebSearch`); file edits **inside the workspace**; and read-only shell — a safe
+leading command (`ls`, `cat`, `grep`, `rg`, `find` without `-exec`/`-delete`,
+read-only `git` like `status`/`diff`/`log` …) with **no** pipes, redirection, or
+command substitution.
+
+**Still prompts (everything else):** writes outside the repo, `rm`/`mv`/`dd`,
+installs, network (`curl`/`ssh` …), `sudo`, `git push`/`reset`/`commit`, runners
+(`make`/`npm`/`node` …), any compound/piped command, and unknown tools. Genuine
+decision questions an agent raises ("which approach?") aren't permission prompts,
+so they always wait for you.
+
+It only acts inside a `.fleet` workspace, and is **on by default** for managed
+members. Toggles (env): `FLEET_AUTOCONFIRM=off` disables it entirely;
+`FLEET_AUTOCONFIRM_EDITS=off` keeps prompting for edits while still auto-approving
+reads. Tune the safe set in `hooks/auto-approve.sh` (the `bash_safe` allowlist).
+
 ## What it does NOT do (by design)
 
 - **Conflict prevention is detection-only.** It warns when two live sessions claim
@@ -448,7 +479,8 @@ bin/fleet              the CLI (the only entrypoint)
 lib/                   common, manifest parser, registry, tmux, restart,
                        comms (mailboxes, ask/send), run-child
 hooks/                 self-reporting hooks: session-start, prompt-submit,
-                       post-edit, on-stop, session-end
+                       post-edit, on-stop, session-end; plus auto-approve
+                       (PreToolUse, auto-confirms routine prompts)
 skill/SUPERVISOR.md    role prompt for the supervising session
 commands/fleet.md      the /fleet slash command (installed into .claude/commands/)
 templates/             example fleet.toml + primer.md + illustrative hooks block
