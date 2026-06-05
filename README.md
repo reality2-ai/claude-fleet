@@ -160,6 +160,11 @@ prompt used **only on a fresh start** — once a session exists, `fleet up` resu
 it (`claude --resume`) instead of re-seeding. Window order follows manifest
 order (supervisor first); see `fleet order`.
 
+A resumed session reopens **idle at its prompt**, so `fleet up` nudges each
+resumed member to pick its work back up — by default with `carry on`. Override
+per child with `resume_nudge = "…"` in `fleet.toml`, or globally with
+`FLEET_RESUME_NUDGE`; set either to `""` to leave members idle on resume.
+
 ## Portability — version your config
 
 `fleet init` drops a `.gitignore` into `<workspace>/.fleet/` that excludes runtime

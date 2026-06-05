@@ -63,7 +63,7 @@ fleet_tmux_ensure_session() {
 # does a window named after <id> exist?
 fleet_tmux_has_window() {
   fleet_tmux_session_exists || return 1
-  fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null | grep -qx "$1"
+  fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null | grep -qxF -- "$1"
 }
 
 # Start one child in its own window. fleet_tmux_start_child <id>
@@ -94,7 +94,12 @@ fleet_tmux_start_child() {
   [[ -n "$pm" ]] && claude_args+=(--permission-mode "$pm")
   if [[ -n "$sid" ]]; then
     claude_args+=(--resume "$sid")
-    fleet_log resume "$id" "session=$sid"
+    # A resumed session reopens idle at its prompt — nudge it to pick its work
+    # back up. Per-child 'resume_nudge', else $FLEET_RESUME_NUDGE, else "carry
+    # on"; set any of them empty to leave it idle.
+    local nudge; nudge="$(fleet_child_get "$id" resume_nudge "${FLEET_RESUME_NUDGE-carry on}")"
+    [[ -n "$nudge" ]] && claude_args+=("$nudge")
+    fleet_log resume "$id" "session=$sid${nudge:+ nudge=$nudge}"
   elif [[ -n "$seed" ]]; then
     claude_args+=("$seed")
     fleet_log start "$id" "fresh seed"

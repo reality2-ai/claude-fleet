@@ -466,7 +466,7 @@ fleet_reorder_windows() {
   local -a want=(supervisor) desired=(); local -A seen=(); local w id
   for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && want+=("$id"); done
   for w in "${want[@]}"; do
-    printf '%s\n' "${current[@]}" | grep -qx "$w" && { desired+=("$w"); seen["$w"]=1; }
+    printf '%s\n' "${current[@]}" | grep -qxF -- "$w" && { desired+=("$w"); seen["$w"]=1; }
   done
   for w in "${current[@]}"; do [[ -z "${seen[$w]:-}" ]] && desired+=("$w"); done
   local i=0
@@ -496,7 +496,12 @@ fleet_start_supervisor() {
   local primer; primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
   [[ -n "$primer" ]] && cargs+=(--append-system-prompt "$primer")
   local sid=""; [[ -f "$RUN_DIR/supervisor.session" ]] && sid="$(<"$RUN_DIR/supervisor.session")"
-  [[ -n "$sid" ]] && cargs+=(--resume "$sid")
+  if [[ -n "$sid" ]]; then
+    cargs+=(--resume "$sid")
+    # nudge the resumed supervisor to re-survey the fleet (see fleet_tmux_start_child)
+    local nudge="${FLEET_RESUME_NUDGE-carry on}"
+    [[ -n "$nudge" ]] && cargs+=("$nudge")
+  fi
   local exitfile="$RUN_DIR/supervisor.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n supervisor -c "$WORKSPACE" -e "FLEET_CHILD_ID=supervisor" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
@@ -520,6 +525,12 @@ cmd_up() {
   local no_sup=0
   case "${1:-}" in --no-supervisor) no_sup=1; shift ;; esac
   fleet_load_paths; fleet_manifest_load "$MANIFEST"
+  # Serialize 'fleet up' per workspace so two starts (e.g. the boot service and
+  # a manual run) can't race into duplicate windows/agents. The per-window
+  # has-window guard is checked-then-acted, so without this a tight race could
+  # double-resume a session.
+  mkdir -p "$RUN_DIR"; exec 8>"$RUN_DIR/up.lock"
+  if ! flock -n 8; then warn "another 'fleet up' is in progress for this workspace — skipping"; return 0; fi
   fleet_ensure_managed_settings
   local only="${1:-}"
   local id started=0
