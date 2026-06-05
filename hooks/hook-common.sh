@@ -3,6 +3,8 @@
 # sources this, then mutates state/<id>.json. Hooks must be fast and must never
 # fail the session, so everything here is best-effort and exits 0 on trouble.
 
+# resolve `# shellcheck source=` paths relative to this file's dir, not the CWD
+# shellcheck source-path=SCRIPTDIR
 # resolve the tool checkout from this file's location (hooks/ -> TOOL_ROOT)
 TOOL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export TOOL_ROOT
@@ -10,6 +12,7 @@ export TOOL_ROOT
 command -v jq >/dev/null 2>&1 || exit 0
 
 # minimal subset of common/registry (avoid pulling tmux/restart into hooks)
+# shellcheck source=../lib/common.sh
 source "$TOOL_ROOT/lib/common.sh" 2>/dev/null || exit 0
 
 # read the hook payload from stdin
@@ -29,6 +32,7 @@ while [[ "$_d" != "/" ]]; do
 done
 [[ -z "$FLEET_WORKSPACE" ]] && exit 0
 fleet_load_paths 0 || exit 0
+# shellcheck source=../lib/registry.sh
 source "$TOOL_ROOT/lib/registry.sh" 2>/dev/null || exit 0
 
 # resolve this session's child id: managed sessions carry FLEET_CHILD_ID;
@@ -54,4 +58,5 @@ CHILD_ID="$(hc_resolve_id)"
 [[ -z "$CHILD_ID" ]] && exit 0
 MANAGED=false; [[ -n "${FLEET_CHILD_ID:-}" ]] && MANAGED=true
 fleet_state_ensure "$CHILD_ID" "$CWD" "$MANAGED" 2>/dev/null || exit 0
+# shellcheck disable=SC2034  # consumed by the hook scripts that source this prelude
 NOW="$(date +%s)"

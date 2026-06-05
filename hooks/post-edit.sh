@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse hook (Edit|Write|MultiEdit|NotebookEdit) — record the edited file
 # as a claim for conflict detection. Keeps the most recent 50 claims.
+# shellcheck source-path=SCRIPTDIR source=hook-common.sh
 source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
 FP="$(hjq '.tool_input.file_path')"

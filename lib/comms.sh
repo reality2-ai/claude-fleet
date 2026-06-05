@@ -50,7 +50,8 @@ fleet_inject() {
   local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}"
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
   local tag="fleet msg"; [[ "$kind" == "ask" ]] && tag="fleet ask"
-  local full="[$tag from $from · hop $hops/$(fleet_max_hops)] $text"
+  local full
+  full="[$tag from $from · hop $hops/$(fleet_max_hops)] $text"
   local tgt="$FLEET_TMUX_SESSION:$to" i=0 n=${#full}
   while (( i < n )); do
     fleet_tmux send-keys -t "$tgt" -l "${full:i:FLEET_INJECT_CHUNK}" 2>/dev/null || return 1

@@ -2,8 +2,11 @@
 # Stop hook — fires when the agent finishes a turn (it's now at its prompt).
 # Marks the child ready and drains any queued peer messages into it (the
 # "deliver when it next returns to its prompt" half of hybrid delivery).
+# shellcheck source-path=SCRIPTDIR source=hook-common.sh
 source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
+# shellcheck source=../lib/tmux.sh
 source "$TOOL_ROOT/lib/tmux.sh" 2>/dev/null || exit 0
+# shellcheck source=../lib/comms.sh
 source "$TOOL_ROOT/lib/comms.sh" 2>/dev/null || exit 0
 
 fleet_state_jq "$CHILD_ID" --argjson now "$NOW" '.ready=true | .heartbeat=$now' >/dev/null 2>&1 || true

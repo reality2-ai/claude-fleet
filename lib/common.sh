@@ -84,7 +84,7 @@ fleet_log() {
 c_reset=$'\033[0m'; c_dim=$'\033[2m'; c_red=$'\033[31m'; c_grn=$'\033[32m'
 c_yel=$'\033[33m'; c_blu=$'\033[34m'; c_bold=$'\033[1m'
 if [[ ! -t 1 || -n "${NO_COLOR:-}" ]]; then
-  c_reset= c_dim= c_red= c_grn= c_yel= c_blu= c_bold=
+  c_reset='' c_dim='' c_red='' c_grn='' c_yel='' c_blu='' c_bold=''
 fi
 
 warn() { printf '%sfleet:%s %s\n' "$c_yel" "$c_reset" "$*" >&2; }

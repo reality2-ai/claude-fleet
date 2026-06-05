@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook — record the latest prompt as the child's current task.
+# shellcheck source-path=SCRIPTDIR source=hook-common.sh
 source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
 PROMPT="$(hjq '.prompt')"

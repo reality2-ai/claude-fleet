@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # SessionEnd hook — mark the child stopped and record the reason. Does NOT clear
 # session_id/run file, so 'fleet up' can still resume the conversation later.
+# shellcheck source-path=SCRIPTDIR source=hook-common.sh
 source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
 REASON="$(hjq '.reason')"; [[ -z "$REASON" ]] && REASON="exit"

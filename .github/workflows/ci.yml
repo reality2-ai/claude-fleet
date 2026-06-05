@@ -25,9 +25,10 @@ jobs:
           bash -n bin/fleet
           for f in lib/*.sh hooks/*.sh tests/*.sh; do bash -n "$f"; done
 
-      - name: ShellCheck (advisory)
-        continue-on-error: true
-        run: shellcheck -S warning bin/fleet lib/*.sh hooks/*.sh tests/*.sh
+      - name: ShellCheck
+        # -x follows `source` directives so lib/*.sh are checked in context
+        # (cross-file vars resolve); entry points cover every lib transitively.
+        run: shellcheck -x -S warning bin/fleet hooks/*.sh tests/*.sh
 
       - name: Smoke test
         run: tests/smoke.sh

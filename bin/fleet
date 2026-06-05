@@ -2,6 +2,8 @@
 # fleet — an OTP-style supervisor for parallel Claude Code sessions.
 # See README.md. Subcommands: init status conflicts logs up down restart
 # dispatch attach reap help version.
+# resolve `# shellcheck source=` paths relative to this file's dir, not the CWD
+# shellcheck source-path=SCRIPTDIR
 
 set -euo pipefail
 
@@ -22,10 +24,15 @@ TOOL_ROOT="$(cd -P "$(dirname "$_src")/.." && pwd)"
 export TOOL_ROOT
 # shellcheck source=../lib/common.sh
 source "$TOOL_ROOT/lib/common.sh"
+# shellcheck source=../lib/manifest.sh
 source "$TOOL_ROOT/lib/manifest.sh"
+# shellcheck source=../lib/registry.sh
 source "$TOOL_ROOT/lib/registry.sh"
+# shellcheck source=../lib/tmux.sh
 source "$TOOL_ROOT/lib/tmux.sh"
+# shellcheck source=../lib/restart.sh
 source "$TOOL_ROOT/lib/restart.sh"
+# shellcheck source=../lib/comms.sh
 source "$TOOL_ROOT/lib/comms.sh"
 
 FLEET_VERSION="0.1.0"
@@ -75,7 +82,7 @@ EOF
 _wizard_expand() {
   local sel="$1" max="$2"; local -a out=(); local tok n
   for tok in $sel; do
-    if [[ "$tok" == "all" ]]; then out=($(seq 1 "$max")); break
+    if [[ "$tok" == "all" ]]; then mapfile -t out < <(seq 1 "$max"); break
     elif [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
       for (( n=${BASH_REMATCH[1]}; n<=${BASH_REMATCH[2]}; n++ )); do (( n>=1 && n<=max )) && out+=("$n"); done
     elif [[ "$tok" =~ ^[0-9]+$ ]]; then (( tok>=1 && tok<=max )) && out+=("$tok")
@@ -293,7 +300,7 @@ cmd_status() {
   printf '%s%-14s %-7s %-10s %-9s %-7s %-5s %-3s %s%s\n' "$c_bold" \
     "CHILD" "STATE" "MANAGED" "SESSION" "ACTIVE" "CLAIMS" "WIN" "TASK" "$c_reset"
   for id in "${ids[@]}"; do
-    local live managed sid act ago claims win mark task color
+    local live managed sid ago claims win mark task color
     live="$(fleet_liveness "$id")"
     managed="$(fleet_state_get "$id" '.managed' false)"
     if [[ -n "${MAN[$id]:-}" || "$managed" == "true" ]]; then managed="managed"; else managed="ad-hoc"; fi
@@ -408,7 +415,7 @@ cmd_brief() {
     [[ "${mail:-0}" -gt 0 ]] && attention+=("$id — $mail unanswered peer message(s) · 'fleet inbox $id'")
   done
   # only surface conflicts between MANAGED members (ignore ad-hoc/driving sessions)
-  local -a confs=(); local p o owners mgr
+  local -a confs=(); local p o mgr
   for p in "${!CONFLICT_PATHS[@]}"; do
     mgr=""
     for o in ${CONFLICT_PATHS[$p]}; do
