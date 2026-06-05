@@ -18,9 +18,9 @@ no() { printf '  %sFAIL%s %s\n' "$_red" "$_rst" "$1"; fail=$((fail+1)); }
 # assert a command succeeds
 assert()  { local d="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else no "$d"; fi; }
 # assert a file contains / lacks a fixed string, or has an exact line
-has()     { grep -qF  -- "$3" "$2" 2>/dev/null && ok "$1" || no "$1"; }
-hasline() { grep -qxF -- "$3" "$2" 2>/dev/null && ok "$1" || no "$1"; }
-lacks()   { grep -qiF -- "$3" "$2" 2>/dev/null && no "$1" || ok "$1"; }
+has()     { if grep -qF  -- "$3" "$2" 2>/dev/null; then ok "$1"; else no "$1"; fi; }
+hasline() { if grep -qxF -- "$3" "$2" 2>/dev/null; then ok "$1"; else no "$1"; fi; }
+lacks()   { if grep -qiF -- "$3" "$2" 2>/dev/null; then no "$1"; else ok "$1"; fi; }
 section() { printf '\n%s\n' "$1"; }
 
 # --- hermetic environment ---------------------------------------------------
@@ -47,7 +47,7 @@ syntax_ok=1
 for f in "$ROOT/bin/fleet" "$ROOT"/lib/*.sh "$ROOT"/hooks/*.sh; do
   bash -n "$f" 2>/dev/null || { syntax_ok=0; echo "    bad syntax: $f"; }
 done
-[ "$syntax_ok" = 1 ] && ok "bash -n clean on all scripts" || no "bash -n clean on all scripts"
+if [ "$syntax_ok" = 1 ]; then ok "bash -n clean on all scripts"; else no "bash -n clean on all scripts"; fi
 "$FLEET" version > "$TMP/ver.out" 2>&1; has "fleet version prints version" "$TMP/ver.out" "fleet 0."
 assert "fleet help exits 0" "$FLEET" help
 

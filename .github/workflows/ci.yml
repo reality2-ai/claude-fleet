@@ -26,9 +26,10 @@ jobs:
           for f in lib/*.sh hooks/*.sh tests/*.sh; do bash -n "$f"; done
 
       - name: ShellCheck
-        # -x follows `source` directives so lib/*.sh are checked in context
-        # (cross-file vars resolve); entry points cover every lib transitively.
-        run: shellcheck -x -S warning bin/fleet hooks/*.sh tests/*.sh
+        # .shellcheckrc enables external-sources (follow `source`, so the sourced
+        # libs are checked in context) and documents the SC2016 exception.
+        # Gated at the strictest standard severity.
+        run: shellcheck -S style bin/fleet hooks/*.sh tests/*.sh
 
       - name: Smoke test
         run: tests/smoke.sh

@@ -84,7 +84,7 @@ _wizard_expand() {
   for tok in $sel; do
     if [[ "$tok" == "all" ]]; then mapfile -t out < <(seq 1 "$max"); break
     elif [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
-      for (( n=${BASH_REMATCH[1]}; n<=${BASH_REMATCH[2]}; n++ )); do (( n>=1 && n<=max )) && out+=("$n"); done
+      for (( n=BASH_REMATCH[1]; n<=BASH_REMATCH[2]; n++ )); do (( n>=1 && n<=max )) && out+=("$n"); done
     elif [[ "$tok" =~ ^[0-9]+$ ]]; then (( tok>=1 && tok<=max )) && out+=("$tok")
     fi
   done
@@ -149,7 +149,7 @@ cmd_wizard() {
     if [[ -d "$ws/$name" ]]; then info "  have   $name"
     else
       local yn; read -rp "  clone $owner/$name into the workspace? [Y/n] " yn
-      [[ "$yn" =~ ^[Nn] ]] || { info "  cloning $name…"; gh repo clone "$owner/$name" "$ws/$name" >/dev/null 2>&1 && info "  cloned $name" || warn "  clone failed: $name"; }
+      [[ "$yn" =~ ^[Nn] ]] || { info "  cloning $name…"; if gh repo clone "$owner/$name" "$ws/$name" >/dev/null 2>&1; then info "  cloned $name"; else warn "  clone failed: $name"; fi; }
     fi
   done
 
@@ -340,7 +340,8 @@ _conflict_set() {
   done < <(fleet_state_ids)
   for p in "${!pathmap[@]}"; do
     # unique ids
-    local u; u="$(printf '%s\n' ${pathmap[$p]} | sort -u | tr '\n' ' ')"
+    local -a uids; read -ra uids <<<"${pathmap[$p]}"
+    local u; u="$(printf '%s\n' "${uids[@]}" | sort -u | tr '\n' ' ')"
     if [[ "$(wc -w <<<"$u")" -gt 1 ]]; then
       CONFLICT_PATHS["$p"]="$u"
       local cid; for cid in $u; do CHILD_CONFLICT["$cid"]=1; done
@@ -573,10 +574,10 @@ cmd_down() {
     fleet_state_jq "$id" '.state="stopped" | .reason="fleet down"' >/dev/null || true
     info "down: stopped '$id'"
   done
-  fleet_tmux_session_exists && fleet_tmux kill-session -t "$FLEET_TMUX_SESSION" 2>/dev/null || true
+  if fleet_tmux_session_exists; then fleet_tmux kill-session -t "$FLEET_TMUX_SESSION" 2>/dev/null || true; fi
   # killing the session ends the tmux server, so its transient user unit goes
   # inactive on its own; just clear any leftover failed state.
-  fleet_tmux_user_manager_ok && systemctl --user reset-failed "$FLEET_TMUX_UNIT" 2>/dev/null || true
+  if fleet_tmux_user_manager_ok; then systemctl --user reset-failed "$FLEET_TMUX_UNIT" 2>/dev/null || true; fi
   fleet_log down "-" "suite"
 }
 
@@ -661,7 +662,7 @@ cmd_reap() {
     [[ "$st" == "stopped" || "$st" == "failed" ]] && continue
     [[ "$st" == "running" ]] || continue
     warn "child '$id' is down (rc=$(fleet_child_exit_code "$id"):-?) — applying policy"
-    fleet_restart_child "$id" && reaped=$(( reaped + 1 )) || true
+    if fleet_restart_child "$id"; then reaped=$(( reaped + 1 )); fi
   done
   (( reaped == 0 )) && info "reap: nothing to restart"
 }

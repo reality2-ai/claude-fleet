@@ -24,6 +24,7 @@ fleet_find_workspace() {
 }
 
 # Resolve workspace + derived dirs into globals. `need_init=1` errors if absent.
+# shellcheck disable=SC2120  # $1 is optional (defaults to 1); most callers pass none
 fleet_load_paths() {
   local need_init="${1:-1}"
   if ! WORKSPACE="$(fleet_find_workspace)"; then

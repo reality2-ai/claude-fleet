@@ -1,0 +1,11 @@
+# claude-fleet — shellcheck configuration.
+
+# Follow `source` directives so cross-file vars in the sourced libs resolve
+# (same as passing -x). Combined with the `# shellcheck source=…` /
+# `source-path=SCRIPTDIR` directives in the scripts.
+external-sources=true
+
+# jq filter programs are intentionally single-quoted: the $name tokens are jq
+# variables bound via --arg/--argjson, not shell expansions. SC2016 ("expressions
+# don't expand in single quotes") is therefore noise across this jq-heavy code.
+disable=SC2016
