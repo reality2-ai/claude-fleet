@@ -4,25 +4,66 @@
 # Tier-1 monitoring works without it.
 
 FLEET_TMUX_SESSION="${FLEET_TMUX_SESSION:-fleet}"
+# The fleet runs on its OWN tmux socket (server), not the user's default one.
+# This isolates it from any personal tmux the user runs, and — crucially — means
+# the server is always spawned fresh by us, so it actually lands in the
+# per-user systemd unit below instead of joining a pre-existing server that
+# might sit in a login-session cgroup. Change in lockstep on all hosts.
+FLEET_TMUX_SOCKET="${FLEET_TMUX_SOCKET:-fleet}"
+# Transient per-user systemd unit that owns the tmux server (see
+# fleet_tmux_ensure_session). One per tmux session name so distinct fleets don't
+# collide.
+FLEET_TMUX_UNIT="${FLEET_TMUX_UNIT:-fleet-tmux-$FLEET_TMUX_SESSION}"
 
 fleet_has_tmux() { command -v tmux >/dev/null 2>&1; }
 
+# Every fleet tmux call goes through this so they all hit the fleet's own
+# socket/server. (The server-spawning command in fleet_tmux_ensure_session is
+# the one exception — it must invoke the real binary so systemd-run can exec it.)
+fleet_tmux() { command tmux -L "$FLEET_TMUX_SOCKET" "$@"; }
+
 fleet_tmux_session_exists() {
   fleet_has_tmux || return 1
-  tmux has-session -t "$FLEET_TMUX_SESSION" 2>/dev/null
+  fleet_tmux has-session -t "$FLEET_TMUX_SESSION" 2>/dev/null
+}
+
+# True when the tmux server can be parked in the per-user systemd manager
+# (user@.service). That manager outlives any individual login, so with
+# lingering enabled the fleet survives SSH/rdesktop logout even on hosts that
+# set KillUserProcesses=yes. Opt out with FLEET_TMUX_USER_SCOPE=off.
+fleet_tmux_user_manager_ok() {
+  [[ "${FLEET_TMUX_USER_SCOPE:-auto}" != "off" ]] || return 1
+  command -v systemd-run >/dev/null 2>&1 || return 1
+  [[ -n "${XDG_RUNTIME_DIR:-}" ]] || return 1
+  systemctl --user show-environment >/dev/null 2>&1
 }
 
 fleet_tmux_ensure_session() {
   fleet_has_tmux || die "tmux is not installed (needed for 'up/down/restart'). Run: sudo apt install tmux"
   fleet_tmux_session_exists && return 0
-  # a detached, placeholder-free session; the first child becomes window 0
-  tmux new-session -d -s "$FLEET_TMUX_SESSION" -n __fleet_root "true; sleep 0.2" 2>/dev/null || true
+  # A detached, placeholder-free session; the first child replaces window 0 once
+  # __fleet_root's keepalive command exits.
+  local -a srv=(tmux -L "$FLEET_TMUX_SOCKET" new-session -d -s "$FLEET_TMUX_SESSION" -n __fleet_root "true; sleep 1")
+  # A tmux server spawned inside a login session lives in that session's cgroup
+  # scope; on systemd hosts with KillUserProcesses=yes (common on xrdp/rdesktop
+  # boxes) it is reaped the moment the session ends — even with lingering on.
+  # Launch it as a transient unit of the per-user manager instead, so it lands
+  # under user@.service and outlives the login that started it.
+  if fleet_tmux_user_manager_ok; then
+    systemctl --user reset-failed "$FLEET_TMUX_UNIT" 2>/dev/null || true
+    if systemd-run --user --quiet --collect --unit="$FLEET_TMUX_UNIT" \
+         --property=Type=forking "${srv[@]}" 2>/dev/null; then
+      return 0
+    fi
+    warn "systemd-run --user failed; starting tmux in the login session (may not survive logout)"
+  fi
+  "${srv[@]}" 2>/dev/null || true
 }
 
 # does a window named after <id> exist?
 fleet_tmux_has_window() {
   fleet_tmux_session_exists || return 1
-  tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null | grep -qx "$1"
+  fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null | grep -qx "$1"
 }
 
 # Start one child in its own window. fleet_tmux_start_child <id>
@@ -63,7 +104,7 @@ fleet_tmux_start_child() {
   local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"
   # -e sets env in the new window (tmux ≥3.0); command + args passed as argv so
   # no shell-quoting of the seed prompt is needed.
-  tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
     -e "FLEET_CHILD_ID=$id" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${claude_args[@]}"
 
@@ -75,7 +116,7 @@ fleet_tmux_start_child() {
 fleet_tmux_stop_child() {
   local id="$1"
   fleet_tmux_has_window "$id" || return 0
-  tmux kill-window -t "$FLEET_TMUX_SESSION:$id" 2>/dev/null || true
+  fleet_tmux kill-window -t "$FLEET_TMUX_SESSION:$id" 2>/dev/null || true
 }
 
 # Read the recorded exit code of a child's last run (empty if none).

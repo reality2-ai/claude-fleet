@@ -53,12 +53,12 @@ fleet_inject() {
   local full="[$tag from $from · hop $hops/$(fleet_max_hops)] $text"
   local tgt="$FLEET_TMUX_SESSION:$to" i=0 n=${#full}
   while (( i < n )); do
-    tmux send-keys -t "$tgt" -l "${full:i:FLEET_INJECT_CHUNK}" 2>/dev/null || return 1
+    fleet_tmux send-keys -t "$tgt" -l "${full:i:FLEET_INJECT_CHUNK}" 2>/dev/null || return 1
     i=$(( i + FLEET_INJECT_CHUNK ))
     (( i < n )) && sleep 0.03
   done
   sleep "$FLEET_INJECT_DELAY"
-  tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
+  fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
 }
 
 # Deliver any undelivered mail to <to>. Returns 0 if delivered (or nothing to

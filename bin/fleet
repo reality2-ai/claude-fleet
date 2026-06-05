@@ -42,6 +42,8 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
                                            no-ops outside a .fleet workspace)
   fleet install-commands [<ws>|--user]  install the /fleet slash command
                                           (--user makes /fleet work in every session)
+  fleet install-service         install a per-user systemd unit so the fleet
+                                  auto-starts on boot + resumes  [systemd; needs linger]
   fleet status                  table of all known sessions (live/idle/dead, task, claims)
   fleet brief                   triage: what needs you, who's waiting at their prompt, who's working
   fleet conflicts               files being edited by more than one live session
@@ -459,7 +461,7 @@ cmd_logs() {
 # Done by parking every window at a high temp index, then placing back at 0..n-1.
 fleet_reorder_windows() {
   fleet_tmux_session_exists || return 0
-  local -a current=(); mapfile -t current < <(tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null)
+  local -a current=(); mapfile -t current < <(fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null)
   [[ ${#current[@]} -eq 0 ]] && return 0
   local -a want=(supervisor) desired=(); local -A seen=(); local w id
   for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && want+=("$id"); done
@@ -468,16 +470,16 @@ fleet_reorder_windows() {
   done
   for w in "${current[@]}"; do [[ -z "${seen[$w]:-}" ]] && desired+=("$w"); done
   local i=0
-  for w in "${desired[@]}"; do tmux move-window -d -s "$FLEET_TMUX_SESSION:$w" -t "$FLEET_TMUX_SESSION:$((900+i))" 2>/dev/null; i=$(( i+1 )); done
+  for w in "${desired[@]}"; do fleet_tmux move-window -d -s "$FLEET_TMUX_SESSION:$w" -t "$FLEET_TMUX_SESSION:$((900+i))" 2>/dev/null; i=$(( i+1 )); done
   i=0
-  for w in "${desired[@]}"; do tmux move-window -d -s "$FLEET_TMUX_SESSION:$((900+i))" -t "$FLEET_TMUX_SESSION:$i" 2>/dev/null; i=$(( i+1 )); done
+  for w in "${desired[@]}"; do fleet_tmux move-window -d -s "$FLEET_TMUX_SESSION:$((900+i))" -t "$FLEET_TMUX_SESSION:$i" 2>/dev/null; i=$(( i+1 )); done
 }
 
 cmd_order() {
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_has_tmux || die "tmux required for window ordering."
   fleet_reorder_windows
-  info "windows ordered: $(tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#{window_index}:#W' 2>/dev/null | tr '\n' ' ')"
+  info "windows ordered: $(fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#{window_index}:#W' 2>/dev/null | tr '\n' ' ')"
 }
 
 # Launch the supervisor: an interactive Claude session, primed with the
@@ -496,7 +498,7 @@ fleet_start_supervisor() {
   local sid=""; [[ -f "$RUN_DIR/supervisor.session" ]] && sid="$(<"$RUN_DIR/supervisor.session")"
   [[ -n "$sid" ]] && cargs+=(--resume "$sid")
   local exitfile="$RUN_DIR/supervisor.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
-  tmux new-window -t "$FLEET_TMUX_SESSION" -n supervisor -c "$WORKSPACE" -e "FLEET_CHILD_ID=supervisor" \
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n supervisor -c "$WORKSPACE" -e "FLEET_CHILD_ID=supervisor" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
   fleet_state_ensure supervisor "$WORKSPACE" true
   fleet_state_jq supervisor '.state="running" | .role="supervisor"' >/dev/null
@@ -553,8 +555,36 @@ cmd_down() {
     fleet_state_jq "$id" '.state="stopped" | .reason="fleet down"' >/dev/null || true
     info "down: stopped '$id'"
   done
-  fleet_tmux_session_exists && tmux kill-session -t "$FLEET_TMUX_SESSION" 2>/dev/null || true
+  fleet_tmux_session_exists && fleet_tmux kill-session -t "$FLEET_TMUX_SESSION" 2>/dev/null || true
+  # killing the session ends the tmux server, so its transient user unit goes
+  # inactive on its own; just clear any leftover failed state.
+  fleet_tmux_user_manager_ok && systemctl --user reset-failed "$FLEET_TMUX_UNIT" 2>/dev/null || true
   fleet_log down "-" "suite"
+}
+
+# Install a per-user systemd unit so the fleet auto-starts on boot and resumes
+# every agent. Renders templates/fleet.service.example for the current workspace.
+cmd_install_service() {
+  fleet_load_paths
+  command -v systemctl >/dev/null 2>&1 || die "systemctl not found — boot auto-start needs systemd user services."
+  local tmpl="$TOOL_ROOT/templates/fleet.service.example"
+  [[ -f "$tmpl" ]] || die "missing template: $tmpl"
+  local bin="$TOOL_ROOT/bin/fleet"
+  local dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  local unit="$dir/fleet.service"
+  mkdir -p "$dir"
+  sed -e "s|__WORKSPACE__|$WORKSPACE|g" -e "s|__FLEET_BIN__|$bin|g" "$tmpl" > "$unit"
+  systemctl --user daemon-reload 2>/dev/null || true
+  systemctl --user enable fleet.service >/dev/null 2>&1 || warn "could not enable fleet.service"
+  info "installed user service: $unit"
+  info "  workspace: $WORKSPACE"
+  if [[ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != "yes" ]]; then
+    warn "lingering is OFF — the service won't start until you log in, and the fleet"
+    warn "won't survive logout. Enable it once with:  loginctl enable-linger $USER"
+  fi
+  info "start now:     systemctl --user start fleet.service"
+  info "stop:          systemctl --user stop fleet.service    (runs 'fleet down')"
+  info "disable boot:  systemctl --user disable fleet.service"
 }
 
 cmd_restart() {
@@ -579,7 +609,7 @@ cmd_dispatch() {
   local primer; primer="$(fleet_peer_primer "$id")"
   [[ -n "$primer" ]] && cargs+=(--append-system-prompt "$primer")
   cargs+=("$task")
-  tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" -e "FLEET_CHILD_ID=$id" \
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" -e "FLEET_CHILD_ID=$id" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
   fleet_state_ensure "$id" "$cwd" true
   fleet_state_jq "$id" --arg t "$task" '.state="running" | .current_task=$t' >/dev/null
@@ -591,9 +621,15 @@ cmd_attach() {
   local id="${1:?usage: fleet attach <id>}"
   fleet_load_paths
   fleet_tmux_has_window "$id" || die "no live window for '$id' (try 'fleet status')"
-  tmux select-window -t "$FLEET_TMUX_SESSION:$id" 2>/dev/null || true
-  if [[ -n "${TMUX:-}" ]]; then tmux switch-client -t "$FLEET_TMUX_SESSION:$id"
-  else tmux attach -t "$FLEET_TMUX_SESSION" \; select-window -t "$id"; fi
+  fleet_tmux select-window -t "$FLEET_TMUX_SESSION:$id" 2>/dev/null || true
+  # switch-client only when we're already inside the fleet's own server; from any
+  # other tmux (the user's personal one, a different socket) attach nested with
+  # TMUX unset so tmux allows it.
+  if [[ -n "${TMUX:-}" && "${TMUX%%,*}" == */"$FLEET_TMUX_SOCKET" ]]; then
+    fleet_tmux switch-client -t "$FLEET_TMUX_SESSION:$id"
+  else
+    env -u TMUX tmux -L "$FLEET_TMUX_SOCKET" attach -t "$FLEET_TMUX_SESSION" \; select-window -t "$id"
+  fi
 }
 
 cmd_reap() {
@@ -690,7 +726,7 @@ _rc_members() {
 # status-bar lines (which show "Remote Control active" iff active) — NOT the
 # conversation scrollback, where stale "connecting…" lines would mislead.
 _rc_status() {
-  local bar; bar="$(tmux capture-pane -t "$FLEET_TMUX_SESSION:$1" -p 2>/dev/null | grep -vE '^\s*$' | tail -2)"
+  local bar; bar="$(fleet_tmux capture-pane -t "$FLEET_TMUX_SESSION:$1" -p 2>/dev/null | grep -vE '^\s*$' | tail -2)"
   grep -qi 'Remote Control active' <<<"$bar" && echo "active" || echo "-"
 }
 
@@ -708,12 +744,12 @@ cmd_remote_control() {
     st="$(_rc_status "$id")"
     if [[ "$mode" == "on" ]]; then
       [[ "$st" == "active" || "$st" == "connecting" ]] && { info "  $id: already $st"; continue; }
-      tmux send-keys -t "$FLEET_TMUX_SESSION:$id" -l "/remote-control $id" 2>/dev/null || continue
+      fleet_tmux send-keys -t "$FLEET_TMUX_SESSION:$id" -l "/remote-control $id" 2>/dev/null || continue
     else
       [[ "$st" != "active" && "$st" != "connecting" ]] && { info "  $id: already off"; continue; }
-      tmux send-keys -t "$FLEET_TMUX_SESSION:$id" -l "/remote-control" 2>/dev/null || continue
+      fleet_tmux send-keys -t "$FLEET_TMUX_SESSION:$id" -l "/remote-control" 2>/dev/null || continue
     fi
-    sleep 0.2; tmux send-keys -t "$FLEET_TMUX_SESSION:$id" Enter 2>/dev/null || continue
+    sleep 0.2; fleet_tmux send-keys -t "$FLEET_TMUX_SESSION:$id" Enter 2>/dev/null || continue
     fleet_log remote-control "$id" "$mode"
     info "→ turning remote-control $mode for '$id'"; acted=1
   done < <(_rc_members "$only")
@@ -751,6 +787,7 @@ main() {
     install-commands)
       if [[ "${1:-}" == "--user" ]]; then fleet_install_user_commands
       else fleet_install_commands "${1:-$PWD}"; fi ;;
+    install-service) cmd_install_service "$@" ;;
     status|ls) cmd_status "$@" ;;
     brief)     cmd_brief "$@" ;;
     conflicts) cmd_conflicts "$@" ;;

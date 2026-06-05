@@ -196,6 +196,7 @@ fleet dispatch <id> "<task>" [cwd]  # start a fresh worker seeded with a task
 fleet attach <id>                 # attach your terminal to a member's window
 fleet order                       # arrange windows: supervisor, then manifest order
 fleet reap                        # detect crashed members, apply restart policy
+fleet install-service             # per-user systemd unit: auto-start on boot + resume
 
 # inter-agent comms (tmux)
 fleet ask <to> "<question>"  # ask a member (lands in its thread; it answers + replies back)
@@ -223,6 +224,41 @@ Then, in any session: `/fleet brief`, `/fleet status`, `/fleet up`, `/fleet ask
 core "…"`, `/fleet remote-control on`, etc. It runs the `fleet` CLI and the session
 reports the result. Like the hooks, the user-level install is what makes it reach
 members running in sub-repos. (Commands load live — no restart.)
+
+## Surviving logout & reboot (remote hosts)
+
+The fleet runs in tmux on its **own** tmux socket (`-L fleet`), kept separate from
+any personal tmux you run. When you `fleet up` over SSH or a remote desktop you
+expect the fleet to keep running after you disconnect — and on most hosts it does.
+
+The exception is systemd hosts that set `KillUserProcesses=yes` (common on
+xrdp/rdesktop boxes). There, a tmux server started inside a login session lives
+in that session's cgroup scope and gets reaped the moment the session ends —
+even with lingering enabled. To avoid that, `fleet up` launches the tmux server
+as a **transient unit of your per-user systemd manager** (`systemd-run --user`,
+`Type=forking`). That manager outlives any single login, so the fleet survives
+SSH/rdesktop logout. This is automatic; opt out with `FLEET_TMUX_USER_SCOPE=off`.
+
+For the per-user manager to run before you log in (and to keep the fleet alive
+with no active session), enable lingering once:
+
+```sh
+loginctl enable-linger "$USER"
+```
+
+To also bring the fleet back **on reboot** — resuming every agent's recorded
+session — install the user service:
+
+```sh
+fleet install-service                 # renders ~/.config/systemd/user/fleet.service
+systemctl --user start fleet.service  # 'fleet up' now; starts on boot thereafter
+# systemctl --user stop fleet.service # runs 'fleet down'
+```
+
+> The user manager's `PATH` at boot is minimal — make sure `claude` is reachable
+> from it (the unit sets a sensible default `PATH`; otherwise set `FLEET_CLAUDE_BIN`
+> in the unit). `fleet up` resumes members via `--resume`, so a boot-time start
+> restores conversations, not just processes.
 
 ## Inter-agent communication
 
