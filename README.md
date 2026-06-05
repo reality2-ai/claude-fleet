@@ -60,11 +60,34 @@ remote-control need `tmux`.
 > bash 3.2 — install bash 4+ via Homebrew and put it ahead of `/bin/bash` on
 > `PATH` (the hooks themselves run on stock bash; only the `fleet` CLI needs 4+).
 
+## Safety & permissions
+
+`fleet` members are **autonomous Claude Code sessions** running in your repos —
+they read, edit files, and run shell commands on their own. Treat them with the
+same care as any agent you let act unattended:
+
+- **Mind `permission_mode`.** Each member can set `permission_mode` in `fleet.toml`
+  (`default` · `acceptEdits` · `plan` · `bypassPermissions`). `bypassPermissions`
+  skips Claude Code's per-action approval — handy for unattended runs, but the
+  session can then edit and execute without prompting. Start at `default` /
+  `acceptEdits` and only loosen it for repos you're willing to let an agent change
+  on its own.
+- **Run them in version control.** Members work directly in your working trees;
+  commit or stash anything you don't want touched, and review their diffs like any
+  other contributor's.
+- **Remote control is opt-in and per-member.** `fleet remote-control` exposes a
+  session to claude.ai/code and the mobile app (signed in as you) — enable it
+  deliberately and turn it off when done.
+- **State is local, not secret-scrubbed.** `<workspace>/.fleet/` holds tasks,
+  mailboxes, and logs as plain JSON. The bundled `.gitignore` already excludes the
+  runtime parts — keep it that way; don't commit a workspace's `.fleet/` runtime to
+  a public repo.
+
 ## Install
 
 ```sh
 # 1) clone
-git clone <this-repo-url> claude-fleet
+git clone https://github.com/reality2-ai/claude-fleet.git
 cd claude-fleet
 
 # 2) dependencies (Debian/Ubuntu shown; jq is often already present)
@@ -122,6 +145,20 @@ fleet attach api                            # drop into a member's tmux window
 After a reboot, `fleet up` brings the whole suite back, resuming each member's
 conversation.
 
+`fleet status` looks like this:
+
+```text
+CHILD          STATE   MANAGED    SESSION   ACTIVE  CLAIMS WIN TASK
+specs          live    managed    8755ee60  2m      7     y   drafting the licensing spec
+core           idle    managed    64952d0e  11m     14    y   ⚠ refactoring the registry
+api            dead    managed    43197d4e  3h      0     -   (transcript ends here)
+supervisor     live    managed    32889324  1m      0     y   overseeing the fleet
+```
+
+`STATE` is derived honestly from the transcript (live / idle / dead / failed),
+`WIN` shows a live tmux window, `CLAIMS` counts files the member has touched, and
+a `⚠` flags a file claimed by more than one live member.
+
 ## The manifest — `fleet.toml`
 
 `<workspace>/.fleet/fleet.toml` is your supervision tree. A neutral example —
@@ -139,6 +176,7 @@ id      = "core"               # stable name (also the tmux window name)
 cwd     = "core"               # working dir, relative to the workspace root (or absolute)
 restart = "permanent"          # permanent | transient | temporary
 name    = "core-worker"        # shown in the session's prompt box (claude --name)
+permission_mode = "acceptEdits"  # default | acceptEdits | plan | bypassPermissions (optional; see Safety)
 seed    = "Resume work in core. Run 'git status' first and summarise where things stand."
 
 [[child]]
@@ -159,6 +197,10 @@ only on abnormal exit; **temporary** never auto-restarts. `seed` is the initial
 prompt used **only on a fresh start** — once a session exists, `fleet up` resumes
 it (`claude --resume`) instead of re-seeding. Window order follows manifest
 order (supervisor first); see `fleet order`.
+
+Required per-child fields are `id` and `cwd`; `restart` defaults to `permanent`.
+Optional: `name`, `seed`, `permission_mode` (see [Safety & permissions](#safety--permissions)),
+and `resume_nudge` (below).
 
 A resumed session reopens **idle at its prompt**, so `fleet up` nudges each
 resumed member to pick its work back up — by default with `carry on`. Override
@@ -265,6 +307,12 @@ systemctl --user start fleet.service  # 'fleet up' now; starts on boot thereafte
 > in the unit). `fleet up` resumes members via `--resume`, so a boot-time start
 > restores conversations, not just processes.
 
+> **Linux/systemd only.** The per-user-manager trick, `loginctl`, and
+> `fleet install-service` are systemd features. On macOS there's no systemd: the
+> dedicated tmux socket already lets the fleet survive terminal/SSH disconnect the
+> normal way, and `fleet install-service` exits with a clear message. For boot
+> auto-start on macOS, wrap `fleet up` in a `launchd` agent.
+
 ## Inter-agent communication
 
 Each member is primed at launch knowing it's the resident expert on its repo, who
@@ -367,6 +415,27 @@ that gap:
   it won't corrupt a mid-task turn — but it does add a turn the peer must handle. That's
   by design (it's visible to you); just know inter-agent chatter consumes peer turns.
 
+## Troubleshooting
+
+- **`fleet status` shows everything `dead`, but the sessions are running.** `fleet`
+  only sees members on its own tmux socket (`-L fleet`). A fleet started by older
+  code, or a hand-rolled tmux, won't be matched — `fleet down` then `fleet up` to
+  bring it under management.
+- **The fleet dies when I close SSH / log out.** Your host sets
+  `KillUserProcesses=yes`. Run `loginctl enable-linger "$USER"` once; `fleet up`
+  already parks the tmux server under your per-user systemd manager so it survives.
+  See [Surviving logout & reboot](#surviving-logout--reboot-remote-hosts).
+- **Boot service starts but no agents appear, or `claude: not found`.** The systemd
+  user manager has a minimal `PATH`. Ensure `claude` is on the unit's `PATH` or set
+  `FLEET_CLAUDE_BIN` in `~/.config/systemd/user/fleet.service`.
+- **Members don't pick their work back up after `fleet up`.** A resumed session
+  idles at its prompt; `fleet up` nudges it (`carry on` by default). If you set
+  `FLEET_RESUME_NUDGE=""` (or `resume_nudge = ""`) that's expected — nudge them
+  yourself with `fleet send <id> "carry on"`.
+- **`fleet up` says "another 'fleet up' is in progress — skipping".** A boot service
+  and a manual run raced; the per-workspace lock is doing its job. It's already up,
+  or will be once the first run finishes.
+
 ## Project layout
 
 ```
@@ -382,6 +451,18 @@ templates/             example fleet.toml + primer.md + illustrative hooks block
 
 Runtime state lives per-workspace under `<workspace>/.fleet/` (manifest, state,
 run bindings, mailboxes, logs) — never in this repo.
+
+## Status & contributing
+
+A small, pragmatic bash toolkit — primarily developed and tested on **Linux
+(systemd)**. It works on macOS with the caveats noted above; other platforms are
+untested. Expect rough edges.
+
+Issues and pull requests welcome at
+<https://github.com/reality2-ai/claude-fleet>. There's no automated test suite
+yet, so please describe how you verified a change. Match the surrounding style:
+POSIX-ish bash, `jq` for all JSON, and graceful degradation when `tmux` is absent
+(observe-only commands must keep working without it).
 
 ## License
 
