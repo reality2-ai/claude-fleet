@@ -716,9 +716,14 @@ cmd_ask() {
     fleet_log hop-limit "$to" "from=$from cap=$cap"
     die "hop limit ($cap) reached for this thread — not asking '$to'. Start a fresh thread, or raise [supervisor] max_hops."
   }
-  local rel cwd; rel="$(fleet_child_get "$to" cwd "")"
-  [[ -n "$rel" ]] || die "unknown target '$to' (not in the manifest)"
-  cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
+  local rel cwd
+  if [[ "$to" == "supervisor" ]]; then
+    cwd="$WORKSPACE"                       # the supervisor lives at the workspace root
+  else
+    rel="$(fleet_child_get "$to" cwd "")"
+    [[ -n "$rel" ]] || die "unknown target '$to' (not in the manifest)"
+    cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
+  fi
   [[ -d "$cwd" ]] || die "target '$to' cwd does not exist: $cwd"
   fleet_tmux_ensure_session
   # A transient window in the target's repo runs the forked responder: it answers
