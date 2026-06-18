@@ -4,3 +4,8 @@
 *.tmp.*
 *~
 .DS_Store
+
+# Internal/per-workspace state — must never be committed (this repo is public).
+# .fleet/ = local fleet manifest + worker config; .claude/ = local Claude settings.
+.fleet/
+.claude/
