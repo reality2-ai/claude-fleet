@@ -64,12 +64,27 @@ cmd_safe() {
     find)   # read-only unless it executes or deletes
       case " $c " in *' -exec'* | *' -delete'* | *' -ok'* | *' -fls'* | *' -fprint'*) return 1 ;; esac
       return 0 ;;
-    git)    # read-only subcommands only
+    git)
       read -r _ sub _ <<<"$c"
       case "$sub" in
+        # read-only
         status|diff|log|show|ls-files|ls-tree|ls-remote|rev-parse|describe|blame|\
-        shortlog|cat-file|for-each-ref|reflog|grep|whatchanged|branch|tag|remote) return 0 ;;
-        *) return 1 ;;
+        shortlog|cat-file|for-each-ref|reflog|grep|whatchanged|fetch) return 0 ;;
+        # recoverable / checkpoint-creating (the GitHub-failsafe mechanism) — but NOT
+        # push: pushing is outward and can irreversibly leak to a public repo, so it
+        # stays a prompt (the one human glance that guards "share code, not secret").
+        commit) return 0 ;;
+        add)    # named staging only — reject bulk/force (secret-staging footgun)
+          case " $c " in *' -A'* | *' --all'* | *' -f'* | *' --force'*) return 1 ;; esac
+          case "$c" in *' .' | *' . '* | *' :/'* | *' :/') return 1 ;; esac
+          return 0 ;;
+        branch|tag)   # list/show only — reject delete/rename/force
+          case " $c " in *' -d'* | *' -D'* | *' -m'* | *' -M'* | *' --delete'* | *' --move'* | *' -f'* | *' --force'*) return 1 ;; esac
+          return 0 ;;
+        remote) # show/get-url only — reject add/remove/rename/set-url/prune
+          case " $c " in *' add '* | *' remove '* | *' rm '* | *' rename '* | *' set-url'* | *' set-head'* | *' prune'*) return 1 ;; esac
+          return 0 ;;
+        *) return 1 ;;  # push/reset/rebase/merge/checkout/restore/clean/stash/cherry-pick … prompt
       esac ;;
     gh)     # read-only subcommands / GET-only api
       read -r _ sub act _ <<<"$c"
@@ -84,10 +99,12 @@ cmd_safe() {
           case "$act" in view|list|status|diff|checks|ls) return 0 ;; *) return 1 ;; esac ;;
         *) return 1 ;;
       esac ;;
-    fleet)  # read-only fleet introspection only (NOT send/ask/up/down/dispatch/commit/push)
+    fleet)  # read-only introspection + inter-agent messaging (Roy-approved: low-risk,
+            # internal, hop-capped). NOT ask (forks+cost) / up/down/restart/dispatch (lifecycle).
       read -r _ sub _ <<<"$c"
       case "$sub" in
-        status|brief|logs|log|inbox|conflicts|list|ls|tree|who|help|--help|-h) return 0 ;;
+        status|brief|logs|log|inbox|conflicts|list|ls|tree|who|help|--help|-h|\
+        send|broadcast) return 0 ;;
         *) return 1 ;;
       esac ;;
     *) return 1 ;;
