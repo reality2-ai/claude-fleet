@@ -22,7 +22,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 payload="$(cat 2>/dev/null || true)"
 [[ -n "$payload" ]] || exit 0
 
-meta="$(printf '%s' "$payload" | jq -r '[.tool_name // "", .cwd // ""] | @tsv' 2>/dev/null)" || exit 0
+meta="$(printf '%s' "$payload" | jq -r '[.tool_name // .tool // .tool.name // "", .cwd // .working_directory // ""] | @tsv' 2>/dev/null)" || exit 0
 tool="${meta%%$'\t'*}"; cwd="${meta#*$'\t'}"
 [[ -n "$tool" ]] || exit 0
 [[ -n "$cwd" ]] || cwd="$PWD"
@@ -38,38 +38,80 @@ done
 [[ -n "$ws" ]] || exit 0
 
 allow() {   # emit the permission decision and stop
+  local event="${FLEET_HOOK_EVENT:-}"
+  [[ -n "$event" ]] || event="$(printf '%s' "$payload" | jq -r '.hook_event_name // .event_name // "PreToolUse"' 2>/dev/null)"
   jq -nc --arg r "${1:-fleet auto-approve}" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:("fleet auto-confirm: " + $r)}}'
+    --arg e "$event" \
+    '{hookSpecificOutput:{hookEventName:$e,permissionDecision:"allow",permissionDecisionReason:("fleet auto-confirm: " + $r)}}'
   exit 0
 }
 # stay silent (exit 0, no output) → normal prompting
 ask() { exit 0; }
 
-# Is a single Bash command read-only enough to auto-allow?
-bash_safe() {
+# Is a SINGLE simple command (no pipes/chaining) read-only enough to auto-allow?
+cmd_safe() {
   local c="$1"
-  # any chaining / redirection / substitution → can't statically vouch for it
-  case "$c" in
-    *'|'* | *'&'* | *';'* | *'>'* | *'<'* | *'`'* | *'$('* | *$'\n'*) return 1 ;;
-  esac
+  c="${c#"${c%%[![:space:]]*}"}"          # ltrim
+  [[ -n "$c" ]] || return 1
   local first="${c%%[[:space:]]*}"
-  case "$first" in
+  local base="${first##*/}"               # basename, so /usr/bin/git → git, claude-fleet/bin/fleet → fleet
+  local _ sub act
+  case "$base" in
     ls|cat|head|tail|grep|egrep|fgrep|rg|pwd|echo|printf|wc|sort|uniq|cut|tr|nl|tac|\
     column|tree|stat|file|which|type|whoami|id|date|cal|basename|dirname|realpath|\
-    readlink|true|false|uname|hostname|uptime|df|du|diff|cmp|md5sum|sha256sum|jq|yq|env|comm)
-      return 0 ;;
+    readlink|true|false|uname|hostname|uptime|df|du|diff|cmp|md5sum|sha256sum|jq|yq|comm)
+      return 0 ;;   # NB: 'env' deliberately excluded — `env VAR=v cmd` can exec
     find)   # read-only unless it executes or deletes
       case " $c " in *' -exec'* | *' -delete'* | *' -ok'* | *' -fls'* | *' -fprint'*) return 1 ;; esac
       return 0 ;;
     git)    # read-only subcommands only
-      local sub; sub="${c#git}"; sub="${sub#"${sub%%[![:space:]]*}"}"; sub="${sub%%[[:space:]]*}"
+      read -r _ sub _ <<<"$c"
       case "$sub" in
-        status|diff|log|show|ls-files|ls-tree|rev-parse|describe|blame|shortlog|\
-        cat-file|for-each-ref|reflog|grep|whatchanged) return 0 ;;
+        status|diff|log|show|ls-files|ls-tree|ls-remote|rev-parse|describe|blame|\
+        shortlog|cat-file|for-each-ref|reflog|grep|whatchanged|branch|tag|remote) return 0 ;;
+        *) return 1 ;;
+      esac ;;
+    gh)     # read-only subcommands / GET-only api
+      read -r _ sub act _ <<<"$c"
+      case "$sub" in
+        api)  # reject anything that sends a body or non-GET method
+          case " $c " in
+            *' -X'* | *' --method'* | *' -f '* | *' -F '* | *' --field'* | *' --raw-field'* | *' --input'*) return 1 ;;
+            *) return 0 ;;
+          esac ;;
+        auth)   [[ "$act" == status ]] ;;
+        pr|issue|run|release|repo|workflow|search|cache|gist|label)
+          case "$act" in view|list|status|diff|checks|ls) return 0 ;; *) return 1 ;; esac ;;
+        *) return 1 ;;
+      esac ;;
+    fleet)  # read-only fleet introspection only (NOT send/ask/up/down/dispatch/commit/push)
+      read -r _ sub _ <<<"$c"
+      case "$sub" in
+        status|brief|logs|log|inbox|conflicts|list|ls|tree|who|help|--help|-h) return 0 ;;
         *) return 1 ;;
       esac ;;
     *) return 1 ;;
   esac
+}
+
+# Whole Bash command: auto-allow a single read-only command OR a read-only
+# PIPELINE (every `|` segment read-only). Anything with redirection, command
+# substitution, background/and/or/sequencing, or a here-doc/newline → prompt.
+bash_safe() {
+  local c="$1"
+  case "$c" in
+    *'>'* | *'<'* | *'`'* | *'$('* | *'&'* | *';'* | *$'\n'*) return 1 ;;
+  esac
+  local -a segs=()
+  IFS='|' read -ra segs <<<"$c"           # split on pipe only; no globbing
+  [[ ${#segs[@]} -gt 0 ]] || return 1
+  local s
+  for s in "${segs[@]}"; do
+    s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"   # trim both ends
+    [[ -n "$s" ]] || return 1             # empty segment ⇒ '||' / leading|trailing pipe ⇒ reject
+    cmd_safe "$s" || return 1
+  done
+  return 0
 }
 
 case "$tool" in
@@ -77,7 +119,7 @@ case "$tool" in
     allow "read-only tool" ;;
   Edit|Write|MultiEdit|NotebookEdit)
     [[ "${FLEET_AUTOCONFIRM_EDITS:-on}" == "off" ]] && ask
-    p="$(printf '%s' "$payload" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null)"
+    p="$(printf '%s' "$payload" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .input.file_path // .input.path // .params.file_path // .params.path // ""' 2>/dev/null)"
     [[ -n "$p" ]] || ask
     case "$p" in
       "$ws"/* | "$ws") allow "in-workspace edit" ;;   # absolute, inside workspace
@@ -85,7 +127,7 @@ case "$tool" in
       *)  allow "in-workspace edit (relative to cwd)" ;;
     esac ;;
   Bash)
-    c="$(printf '%s' "$payload" | jq -r '.tool_input.command // ""' 2>/dev/null)"
+    c="$(printf '%s' "$payload" | jq -r '.tool_input.command // .input.command // .params.command // .command // ""' 2>/dev/null)"
     [[ -n "$c" ]] || ask
     if bash_safe "$c"; then allow "read-only shell"; else ask; fi ;;
   *) ask ;;
