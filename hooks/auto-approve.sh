@@ -78,6 +78,15 @@ cmd_safe() {
           case " $c " in *' -A'* | *' --all'* | *' -f'* | *' --force'*) return 1 ;; esac
           case "$c" in *' .' | *' . '* | *' :/'* | *' :/') return 1 ;; esac
           return 0 ;;
+        switch) # branch switch / create-branch — non-destructive (git refuses to clobber
+                # uncommitted work); reject force-create / discard variants
+          case " $c " in *' -C '* | *' --force-create'* | *' -f '* | *' --force'* | *' --discard-changes'*) return 1 ;; esac
+          return 0 ;;
+        checkout) # ONLY the non-destructive create-branch form (-b); bare `checkout <path>`
+                  # / `checkout .` / `checkout -- file` can DISCARD uncommitted work → prompt
+          case " $c " in *' -b '*) ;; *) return 1 ;; esac
+          case " $c " in *' -B '* | *' -f '* | *' --force'*) return 1 ;; esac
+          return 0 ;;
         branch|tag)   # list/show only — reject delete/rename/force
           case " $c " in *' -d'* | *' -D'* | *' -m'* | *' -M'* | *' --delete'* | *' --move'* | *' -f'* | *' --force'*) return 1 ;; esac
           return 0 ;;
