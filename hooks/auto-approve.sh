@@ -116,6 +116,23 @@ cmd_safe() {
         send|broadcast) return 0 ;;
         *) return 1 ;;
       esac ;;
+    # Build/test runners — auto-approved UNDER the GitHub failsafe (work is recoverable).
+    # Scoped to build/check/test verbs only; run/install/publish/add/update (arbitrary exec,
+    # deps, supply-chain) still prompt.
+    cargo)
+      read -r _ sub _ <<<"$c"
+      case "$sub" in
+        check|build|test|clippy|fmt|doc|nextest|bench|tree|metadata|version|--version|-V) return 0 ;;
+        *) return 1 ;;   # run / install / publish / add / remove / update → prompt
+      esac ;;
+    npm|pnpm|yarn|bun)
+      read -r _ sub act _ <<<"$c"
+      case "$sub" in
+        test) return 0 ;;
+        run)  case "$act" in test|build|lint|typecheck|check|fmt|format|tsc|types|ci|coverage) return 0 ;; *) return 1 ;; esac ;;
+        *) return 1 ;;   # install / ci / add / publish / exec / x / dlx / create → prompt
+      esac ;;
+    tsc) return 0 ;;
     *) return 1 ;;
   esac
 }
