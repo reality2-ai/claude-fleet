@@ -57,7 +57,7 @@ cmd_safe() {
   local base="${first##*/}"               # basename, so /usr/bin/git → git, claude-fleet/bin/fleet → fleet
   local _ sub act
   case "$base" in
-    ls|cat|head|tail|grep|egrep|fgrep|rg|pwd|echo|printf|wc|sort|uniq|cut|tr|nl|tac|\
+    cd|ls|cat|head|tail|grep|egrep|fgrep|rg|pwd|echo|printf|wc|sort|uniq|cut|tr|nl|tac|\
     column|tree|stat|file|which|type|whoami|id|date|cal|basename|dirname|realpath|\
     readlink|true|false|uname|hostname|uptime|df|du|diff|cmp|md5sum|sha256sum|jq|yq|comm)
       return 0 ;;   # NB: 'env' deliberately excluded — `env VAR=v cmd` can exec
@@ -125,6 +125,17 @@ cmd_safe() {
 # substitution, background/and/or/sequencing, or a here-doc/newline → prompt.
 bash_safe() {
   local c="$1"
+  c="${c#"${c%%[![:space:]]*}"}"          # ltrim
+  # Tolerate ONE leading `cd <path> &&` (just changes directory — the fleet's most common
+  # prefix) and judge the REST; the cd target must carry no substitution/expansion danger.
+  case "$c" in
+    'cd '*' && '*)
+      local cdpart="${c%%' && '*}"
+      case "$cdpart" in *'$('* | *'`'* | *';'* | *'|'* | *'>'* | *'<'* | *'&'*) return 1 ;; esac
+      c="${c#*' && '}"
+      c="${c#"${c%%[![:space:]]*}"}"
+      ;;
+  esac
   case "$c" in
     *'>'* | *'<'* | *'`'* | *'$('* | *'&'* | *';'* | *$'\n'*) return 1 ;;
   esac
@@ -156,5 +167,16 @@ case "$tool" in
     c="$(printf '%s' "$payload" | jq -r '.tool_input.command // .input.command // .params.command // .command // ""' 2>/dev/null)"
     [[ -n "$c" ]] || ask
     if bash_safe "$c"; then allow "read-only shell"; else ask; fi ;;
+  mcp__*)
+    # Read-only MCP (get/list/search/read/view/fetch/find/query) auto-approves; anything whose
+    # name implies a write/side-effect (create/update/delete/send/post/…) still prompts. The
+    # write check runs FIRST so e.g. get_or_create → prompt. Case-insensitive.
+    shopt -s nocasematch
+    case "$tool" in
+      *create*|*update*|*delete*|*remove*|*_set*|*_add*|*post*|*patch*|*write*|*send*|*edit*|\
+      *move*|*archive*|*transition*|*complete*|*draft*|*assign*|*cancel*|*upload*|*label*|*revoke*) ask ;;
+      *get*|*list*|*search*|*read*|*view*|*fetch*|*find*|*query*|*describe*|*info*|*status*|*available*|*recordings*) allow "read-only MCP" ;;
+      *) ask ;;
+    esac ;;
   *) ask ;;
 esac
