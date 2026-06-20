@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
+# This is the failsafe that makes auto-approved `git push` leak-safe: a push to a
+# public repo can never carry a token/key/.env out, because the push is refused
+# here at the git layer regardless of who (human or fleet agent) initiated it.
+#
+# Never auto-FAILS open: on any internal error it lets the push proceed only if
+# it found nothing; a real match always blocks (exit 1). Bypass (rare, deliberate):
+#   FLEET_SKIP_SECRET_SCAN=1 git push …
+# Chains to a repo-local hook if one pre-existed (saved as pre-push.local).
+set -uo pipefail
+
+[[ "${FLEET_SKIP_SECRET_SCAN:-0}" == "1" ]] && exit 0
+
+zero='0000000000000000000000000000000000000000'
+findings=""
+
+scan_range() {  # $1 = git rev range or single sha
+  local range="$1" added names
+  # added lines (+ lines) in the range, capped so a huge push can't hang the hook
+  added="$(git diff "$range" 2>/dev/null | grep '^+' | grep -v '^+++' | head -50000 || true)"
+  names="$(git diff --name-only --diff-filter=AM "$range" 2>/dev/null || true)"
+
+  # 1) secret-bearing filenames being added/modified
+  printf '%s\n' "$names" | grep -qiE '(^|/)(\.env(\..*)?$|.*\.pem$|.*\.key$|.*\.priv(\.bin)?$|id_rsa$|id_ed25519$|.*secret.*|tg_priv)' \
+    && findings+="  • a secret-bearing filename (.env/.key/.pem/.priv/id_rsa/tg_priv…)\n"
+
+  # 2) high-signal secret VALUES in added content
+  printf '%s\n' "$added" | grep -qE '[0-9]{8,10}:[A-Za-z0-9_-]{35}'      && findings+="  • a Telegram-bot-token pattern\n"
+  printf '%s\n' "$added" | grep -qE 'BEGIN [A-Z ]*PRIVATE KEY'          && findings+="  • a PRIVATE KEY block\n"
+  printf '%s\n' "$added" | grep -qE 'AKIA[0-9A-Z]{16}'                  && findings+="  • an AWS access-key id\n"
+  printf '%s\n' "$added" | grep -qE 'sk-(ant-)?[A-Za-z0-9_-]{20,}'      && findings+="  • an sk-/sk-ant- API key\n"
+  printf '%s\n' "$added" | grep -qiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_\-]{16,}' \
+    && findings+="  • a hardcoded secret/token/password assignment\n"
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -z "${local_sha:-}" || "$local_sha" == "$zero" ]] && continue   # ref deletion → nothing pushed
+  if [[ "${remote_sha:-$zero}" == "$zero" ]]; then
+    # new branch on the remote: scan commits not on any existing remote ref
+    range="$(git rev-list "$local_sha" --not --remotes 2>/dev/null | tail -1)"
+    [[ -n "$range" ]] && range="${range}^..${local_sha}" || range="$local_sha"
+  else
+    range="${remote_sha}..${local_sha}"
+  fi
+  scan_range "$range"
+done
+
+if [[ -n "$findings" ]]; then
+  printf '\n\033[1;31m✗ PUSH BLOCKED — possible secret in the commits being pushed:\033[0m\n' >&2
+  printf '%b' "$findings" >&2
+  printf '\nFix: remove the secret + rewrite the commit, or (if a false positive) FLEET_SKIP_SECRET_SCAN=1 git push …\n\n' >&2
+  exit 1
+fi
+
+# preserve any pre-existing repo-local hook
+hookdir="$(git rev-parse --git-path hooks 2>/dev/null)"
+if [[ -x "$hookdir/pre-push.local" ]]; then exec "$hookdir/pre-push.local" "$@"; fi
+exit 0
