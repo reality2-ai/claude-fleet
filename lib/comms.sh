@@ -71,6 +71,21 @@ fleet_inject() {
   done
   sleep "$FLEET_INJECT_DELAY"
   fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
+  # A flaky Enter can leave the message sitting UNSUBMITTED in the TUI input box
+  # (Roy observed messages waiting at the prompt for a manual Enter) — the single
+  # Enter raced the TUI's render or the pane was briefly busy. Verify: if the
+  # message's tail is still in the bottom input area, the Enter didn't land —
+  # re-send it. A spurious extra Enter at an empty prompt is a harmless no-op in
+  # Claude Code, so erring toward re-sending is safe. Disable with FLEET_INJECT_VERIFY=off.
+  [[ "${FLEET_INJECT_VERIFY:-on}" == "off" ]] && return 0
+  local marker="${full: -32}" try pane
+  for try in 1 2 3 4; do
+    sleep 0.3
+    pane="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null | tail -n 2)"
+    case "$pane" in *"$marker"*) ;; *) return 0 ;; esac   # tail gone from input → submitted
+    fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
+  done
+  return 0
 }
 
 # Deliver any undelivered mail to <to>. Returns 0 if delivered (or nothing to
