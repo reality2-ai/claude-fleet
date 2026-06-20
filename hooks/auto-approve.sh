@@ -93,7 +93,10 @@ cmd_safe() {
         remote) # show/get-url only — reject add/remove/rename/set-url/prune
           case " $c " in *' add '* | *' remove '* | *' rm '* | *' rename '* | *' set-url'* | *' set-head'* | *' prune'*) return 1 ;; esac
           return 0 ;;
-        *) return 1 ;;  # push/reset/rebase/merge/checkout/restore/clean/stash/cherry-pick … prompt
+        push)  # checkpoint push under the GitHub failsafe (Roy-directed). Reject force/delete/mirror.
+          case " $c " in *' --force'* | *' -f '* | *' --mirror'* | *' --delete'* | *' --prune'* | *' :'*) return 1 ;; esac
+          return 0 ;;
+        *) return 1 ;;  # reset/rebase/merge/pull/checkout/restore/clean/stash/cherry-pick … prompt
       esac ;;
     gh)     # read-only subcommands / GET-only api
       read -r _ sub act _ <<<"$c"
@@ -137,25 +140,9 @@ cmd_safe() {
   esac
 }
 
-# Whole Bash command: auto-allow a single read-only command OR a read-only
-# PIPELINE (every `|` segment read-only). Anything with redirection, command
-# substitution, background/and/or/sequencing, or a here-doc/newline → prompt.
-bash_safe() {
+# One '&&'-free command, possibly a PIPELINE: every `|` segment must be read-only-safe.
+pipe_safe() {
   local c="$1"
-  c="${c#"${c%%[![:space:]]*}"}"          # ltrim
-  # Tolerate ONE leading `cd <path> &&` (just changes directory — the fleet's most common
-  # prefix) and judge the REST; the cd target must carry no substitution/expansion danger.
-  case "$c" in
-    'cd '*' && '*)
-      local cdpart="${c%%' && '*}"
-      case "$cdpart" in *'$('* | *'`'* | *';'* | *'|'* | *'>'* | *'<'* | *'&'*) return 1 ;; esac
-      c="${c#*' && '}"
-      c="${c#"${c%%[![:space:]]*}"}"
-      ;;
-  esac
-  case "$c" in
-    *'>'* | *'<'* | *'`'* | *'$('* | *'&'* | *';'* | *$'\n'*) return 1 ;;
-  esac
   local -a segs=()
   IFS='|' read -ra segs <<<"$c"           # split on pipe only; no globbing
   [[ ${#segs[@]} -gt 0 ]] || return 1
@@ -164,6 +151,31 @@ bash_safe() {
     s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"   # trim both ends
     [[ -n "$s" ]] || return 1             # empty segment ⇒ '||' / leading|trailing pipe ⇒ reject
     cmd_safe "$s" || return 1
+  done
+  return 0
+}
+
+# Whole Bash command: auto-allow read-only/checkpoint commands, pipelines, and
+# '&&' chains where EVERY part is itself auto-approvable (so `cd repo && git add x
+# && git commit && git push` flows). Reject redirection, command substitution, a
+# lone '&' (background / &> / |&), ';' sequencing, here-docs/newlines.
+bash_safe() {
+  local c="$1"
+  c="${c#"${c%%[![:space:]]*}"}"          # ltrim
+  case "$c" in
+    *'>'* | *'<'* | *'`'* | *'$('* | *$'\n'*) return 1 ;;
+  esac
+  case "${c//&&/}" in *'&'*) return 1 ;; esac   # allow '&&'/';' chaining but reject a lone '&'
+  # treat '&&' and ';' alike: every command in the sequence must be auto-approvable
+  local rest="${c//&&/;}" part done=0
+  while [[ $done -eq 0 ]]; do
+    case "$rest" in
+      *';'*) part="${rest%%;*}"; rest="${rest#*;}" ;;
+      *)     part="$rest"; done=1 ;;
+    esac
+    part="${part#"${part%%[![:space:]]*}"}"; part="${part%"${part##*[![:space:]]}"}"   # trim
+    [[ -n "$part" ]] || continue          # skip empty parts (trailing / doubled separators)
+    pipe_safe "$part" || return 1
   done
   return 0
 }
