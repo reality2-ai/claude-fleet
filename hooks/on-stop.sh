@@ -26,7 +26,12 @@ fleet_drain_inbox "$CHILD_ID" force >/dev/null 2>&1 || true
 if [[ "${FLEET_IDLE_NOTIFY:-on}" != "off" && "$MANAGED" == true ]]; then
   _coord="${FLEET_IDLE_NOTIFY_TO:-supervisor}"
   if [[ "$CHILD_ID" != "$_coord" && "${_pending:-0}" -eq 0 ]]; then
-    fleet_notify "$_coord" "$CHILD_ID" "[auto:idle] $CHILD_ID is at its prompt with nothing queued — awaiting direction, or my current task is complete (any substantive report was sent separately)." 1 >/dev/null 2>&1 || true
+    # BACKGROUND it (`&`) + disown: fleet_notify injects into the coordinator's tmux pane, which
+    # BLOCKS while that pane is busy (e.g. the supervisor running a sweep). A blocking Stop hook
+    # hangs the worker after its turn → `.ready` never goes true → subsequent sends queue forever
+    # → fleet-wide stall. The notify must NEVER stall hook completion; fire-and-forget only.
+    ( fleet_notify "$_coord" "$CHILD_ID" "[auto:idle] $CHILD_ID is at its prompt with nothing queued — awaiting direction, or my current task is complete (any substantive report was sent separately)." 1 >/dev/null 2>&1 || true ) >/dev/null 2>&1 &
+    disown 2>/dev/null || true
   fi
 fi
 exit 0
