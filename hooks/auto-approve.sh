@@ -180,6 +180,35 @@ bash_safe() {
   return 0
 }
 
+# --- Net 2: auto-checkpoint before a recoverable-but-tree-changing git op ------
+# Snapshot current WIP WITHOUT touching the working tree, so reset/checkout/restore/
+# merge/pull can auto-approve AND be unwound (recovery: git stash apply <ref-sha>).
+do_checkpoint() {
+  local s ref
+  s="$(git -C "$cwd" stash create "fleet auto-checkpoint" 2>/dev/null)" || return 0
+  [[ -n "$s" ]] || return 0                          # clean tree → nothing to save
+  ref="refs/auto-checkpoint/$(date +%Y%m%d-%H%M%S)-$$"
+  git -C "$cwd" update-ref "$ref" "$s" 2>/dev/null || return 0
+  # keep only the 20 most recent checkpoints (bounded ref growth)
+  git -C "$cwd" for-each-ref --sort=-refname --format='%(refname)' refs/auto-checkpoint/ 2>/dev/null \
+    | tail -n +21 | while read -r r; do git -C "$cwd" update-ref -d "$r" 2>/dev/null; done
+}
+
+# A SINGLE git op that's safe to auto-approve once a checkpoint is taken first.
+checkpointable_git() {
+  local c="$1"
+  case "$c" in *'|'* | *'&'* | *';'* | *'>'* | *'<'* | *'`'* | *'$('* | *$'\n'*) return 1 ;; esac
+  c="${c#"${c%%[![:space:]]*}"}"
+  local first="${c%%[[:space:]]*}"; [[ "${first##*/}" == git ]] || return 1
+  local _ sub; read -r _ sub _ <<<"$c"
+  case "$sub" in
+    reset|checkout|restore|merge|pull)
+      case " $c " in *' -b '*) return 1 ;; esac      # branch-create handled by cmd_safe
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 case "$tool" in
   Read|Glob|Grep|LS|NotebookRead|TodoWrite|WebSearch)
     allow "read-only tool" ;;
@@ -195,7 +224,9 @@ case "$tool" in
   Bash)
     c="$(printf '%s' "$payload" | jq -r '.tool_input.command // .input.command // .params.command // .command // ""' 2>/dev/null)"
     [[ -n "$c" ]] || ask
-    if bash_safe "$c"; then allow "read-only shell"; else ask; fi ;;
+    if bash_safe "$c"; then allow "read-only shell"
+    elif checkpointable_git "$c"; then do_checkpoint; allow "auto-checkpointed git op (recover: refs/auto-checkpoint/*)"
+    else ask; fi ;;
   mcp__*)
     # Read-only MCP (get/list/search/read/view/fetch/find/query) auto-approves; anything whose
     # name implies a write/side-effect (create/update/delete/send/post/…) still prompts. The
