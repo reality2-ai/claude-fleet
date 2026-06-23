@@ -28,6 +28,8 @@ source "$TOOL_ROOT/lib/common.sh"
 source "$TOOL_ROOT/lib/manifest.sh"
 # shellcheck source=../lib/registry.sh
 source "$TOOL_ROOT/lib/registry.sh"
+# shellcheck source=../lib/provider.sh
+source "$TOOL_ROOT/lib/provider.sh"
 # shellcheck source=../lib/tmux.sh
 source "$TOOL_ROOT/lib/tmux.sh"
 # shellcheck source=../lib/restart.sh
@@ -176,7 +178,17 @@ cmd_wizard() {
 # ----------------------------------------------------------------------------
 cmd_init() {
   local no_hooks=0
-  case "${1:-}" in --no-hooks) no_hooks=1; shift ;; esac
+  local hooks_provider="${FLEET_INIT_PROVIDER:-claude}"
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --no-hooks) no_hooks=1; shift ;;
+      --provider) hooks_provider="${2:?usage: fleet init [--provider claude|codex|all] [--no-hooks] [workspace]}"; shift 2 ;;
+      --claude) hooks_provider="claude"; shift ;;
+      --codex) hooks_provider="codex"; shift ;;
+      --all) hooks_provider="all"; shift ;;
+      *) break ;;
+    esac
+  done
   local ws="${1:-$PWD}"
   ws="$(fleet_realpath "$ws")"
   [[ -d "$ws" ]] || die "workspace does not exist: $ws"
@@ -213,7 +225,7 @@ GI
     info "skipped hooks + /fleet command (--no-hooks). Install later:"
     info "  fleet install-hooks $ws   and   fleet install-commands $ws"
   else
-    fleet_install_hooks "$ws"
+    fleet_install_hooks_for_provider "$hooks_provider" "$ws"
     fleet_install_commands "$ws"
   fi
   info ""
@@ -236,13 +248,64 @@ _merge_hooks_into() {
   fi
 }
 
+_render_codex_hooks_json() {
+  local h="$TOOL_ROOT/hooks"
+  jq -n --arg h "$h" '
+    def hk(script): [ { hooks: [ { type: "command", command: ($h + "/" + script) } ] } ];
+    def hke(event; script): [ { hooks: [ { type: "command", command: ("FLEET_HOOK_EVENT=" + event + " " + $h + "/" + script) } ] } ];
+    def hkm(matcher; script): [ { matcher: matcher, hooks: [ { type: "command", command: ($h + "/" + script) } ] } ];
+    def hkme(event; matcher; script): [ { matcher: matcher, hooks: [ { type: "command", command: ("FLEET_HOOK_EVENT=" + event + " " + $h + "/" + script) } ] } ];
+    {
+      SessionStart:      [ { matcher: "startup|resume", hooks: [ { type: "command", command: ($h + "/session-start.sh") } ] } ],
+      UserPromptSubmit:  hk("prompt-submit.sh"),
+      PermissionRequest: hkme("PermissionRequest"; "Bash|apply_patch|Edit|Write|MultiEdit|NotebookEdit"; "auto-approve.sh"),
+      PostToolUse:       hkm("Bash|apply_patch|Edit|Write|MultiEdit|NotebookEdit"; "post-edit.sh"),
+      Stop:              hk("on-stop.sh")
+    }'
+}
+
+_merge_codex_hooks_into() {
+  local hooks_file="$1"; mkdir -p "$(dirname "$hooks_file")"
+  local hooks_json; hooks_json="$(_render_codex_hooks_json)"
+  if [[ -f "$hooks_file" ]]; then
+    local merged; merged="$(jq --argjson h "$hooks_json" '.hooks = ((.hooks // {}) * $h)' "$hooks_file")"
+    printf '%s\n' "$merged" >"$hooks_file"
+    info "merged self-reporting hooks into $hooks_file"
+  else
+    jq -n --argjson h "$hooks_json" '{hooks: $h}' >"$hooks_file"
+    info "wrote   $hooks_file  (self-reporting hooks)"
+  fi
+}
+
 # Project-scoped install (one workspace's sessions started at its root).
 fleet_install_hooks() { _merge_hooks_into "$(fleet_realpath "$1")/.claude/settings.json"; }
+fleet_install_codex_hooks() { _merge_codex_hooks_into "$(fleet_realpath "$1")/.codex/hooks.json"; }
 
 # User-scoped install (every session, anywhere — the hooks no-op outside a
 # .fleet workspace, so this is safe globally). Covers hand-started sessions in
 # sub-repos that don't inherit the workspace-root settings.
 fleet_install_user_hooks() { _merge_hooks_into "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"; }
+fleet_install_user_codex_hooks() { _merge_codex_hooks_into "${CODEX_HOME:-$HOME/.codex}/hooks.json"; }
+
+fleet_install_hooks_for_provider() {
+  local provider="$1" ws="${2:-$PWD}"
+  case "$provider" in
+    claude) fleet_install_hooks "$ws" ;;
+    codex)  fleet_install_codex_hooks "$ws" ;;
+    all)    fleet_install_hooks "$ws"; fleet_install_codex_hooks "$ws" ;;
+    *) die "unknown provider '$provider' (expected claude, codex, or all)" ;;
+  esac
+}
+
+fleet_install_user_hooks_for_provider() {
+  local provider="$1"
+  case "$provider" in
+    claude) fleet_install_user_hooks ;;
+    codex)  fleet_install_user_codex_hooks ;;
+    all)    fleet_install_user_hooks; fleet_install_user_codex_hooks ;;
+    *) die "unknown provider '$provider' (expected claude, codex, or all)" ;;
+  esac
+}
 
 # Install the /fleet slash command into a .claude/commands dir.
 _install_command_to() {
@@ -374,10 +437,11 @@ _undelivered_count() {
 
 # the last thing a member said (last assistant text from its transcript), collapsed
 _last_said() {
-  local id="$1" cwd sid tf txt
+  local id="$1" cwd sid provider tf txt
   cwd="$(fleet_state_get "$id" '.cwd' "")"; sid="$(fleet_state_get "$id" '.session_id' "")"
+  provider="$(fleet_state_get "$id" '.provider' claude)"
   [[ -n "$cwd" && -n "$sid" ]] || return 0
-  tf="$(fleet_transcript_path "$cwd" "$sid")"; [[ -f "$tf" ]] || return 0
+  tf="$(fleet_transcript_path "$cwd" "$sid" "$provider")"; [[ -f "$tf" ]] || return 0
   txt="$(tail -n 3000 "$tf" 2>/dev/null \
     | jq -rc 'select(.type=="assistant") | (.message.content // []) | map(select(.type=="text")|.text)[]' 2>/dev/null \
     | tail -1 || true)"
@@ -452,15 +516,16 @@ cmd_logs() {
     tail -n 40 "$LOG_FILE"
     return
   fi
-  local cwd sid t
+  local cwd sid provider t
   cwd="$(fleet_state_get "$id" '.cwd' "")"; sid="$(fleet_state_get "$id" '.session_id' "")"
+  provider="$(fleet_state_get "$id" '.provider' claude)"
   info "child:        $id"
   info "state:        $(fleet_liveness "$id")"
   info "session:      ${sid:-<none>}"
   info "cwd:          ${cwd:-<unknown>}"
   info "current task: $(fleet_state_get "$id" '.current_task' '<none>')"
   info "claims:       $(fleet_state_get "$id" '.claims | length' 0) file(s)"
-  t="$(fleet_transcript_path "$cwd" "$sid")"
+  t="$(fleet_transcript_path "$cwd" "$sid" "$provider")"
   [[ -f "$t" ]] && info "transcript:   $t ($(fleet_ago "$(fleet_mtime "$t")") ago)"
 }
 
@@ -498,24 +563,25 @@ fleet_start_supervisor() {
   fleet_tmux_has_window supervisor && return 0
   fleet_ensure_managed_settings
   fleet_tmux_ensure_session
-  local -a cargs=("${FLEET_CLAUDE_BIN:-claude}" --name fleet-supervisor)
-  [[ -n "${MANAGED_SETTINGS:-}" ]] && cargs+=(--settings "$MANAGED_SETTINGS")
+  local provider; provider="$(fleet_default_provider)"
   # always apply the supervisor role prompt — including on resume (so doc updates
   # take effect when recycled); --append-system-prompt composes with --resume.
   local primer; primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
-  [[ -n "$primer" ]] && cargs+=(--append-system-prompt "$primer")
   local sid=""; [[ -f "$RUN_DIR/supervisor.session" ]] && sid="$(<"$RUN_DIR/supervisor.session")"
+  local prompt=""
   if [[ -n "$sid" ]]; then
-    cargs+=(--resume "$sid")
     # nudge the resumed supervisor to re-survey the fleet (see fleet_tmux_start_child)
     local nudge="${FLEET_RESUME_NUDGE-carry on}"
-    [[ -n "$nudge" ]] && cargs+=("$nudge")
+    [[ -n "$nudge" ]] && prompt="$nudge"
   fi
+  local -a cargs=()
+  fleet_agent_build_args cargs "$provider" supervisor fleet-supervisor "$WORKSPACE" "$primer" "$prompt" "$sid" ""
   local exitfile="$RUN_DIR/supervisor.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n supervisor -c "$WORKSPACE" -e "FLEET_CHILD_ID=supervisor" \
+    -e "FLEET_AGENT_PROVIDER=$provider" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
   fleet_state_ensure supervisor "$WORKSPACE" true
-  fleet_state_jq supervisor '.state="running" | .role="supervisor"' >/dev/null
+  fleet_state_jq supervisor --arg p "$provider" '.state="running" | .role="supervisor" | .provider=$p' >/dev/null
   fleet_log supervisor - "started"
 }
 
@@ -624,15 +690,15 @@ cmd_dispatch() {
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && die "child '$id' already running — pick another id"
   local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
-  local -a cargs=("${FLEET_CLAUDE_BIN:-claude}" --name "$id")
-  [[ -n "${MANAGED_SETTINGS:-}" ]] && cargs+=(--settings "$MANAGED_SETTINGS")
+  local provider; provider="${FLEET_DISPATCH_PROVIDER:-$(fleet_default_provider)}"
   local primer; primer="$(fleet_peer_primer "$id")"
-  [[ -n "$primer" ]] && cargs+=(--append-system-prompt "$primer")
-  cargs+=("$task")
+  local -a cargs=()
+  fleet_agent_build_args cargs "$provider" "$id" "$id" "$cwd" "$primer" "$task" "" ""
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" -e "FLEET_CHILD_ID=$id" \
+    -e "FLEET_AGENT_PROVIDER=$provider" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
   fleet_state_ensure "$id" "$cwd" true
-  fleet_state_jq "$id" --arg t "$task" '.state="running" | .current_task=$t' >/dev/null
+  fleet_state_jq "$id" --arg t "$task" --arg p "$provider" '.state="running" | .current_task=$t | .provider=$p' >/dev/null
   fleet_log dispatch "$id" "$task"
   info "dispatched '$id' in $cwd — attach with: fleet attach $id"
 }
@@ -732,7 +798,8 @@ cmd_ask() {
   # thread). The window closes itself when done.
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "ask:$to" -c "$cwd" \
     -e "TOOL_ROOT=$TOOL_ROOT" -e "FLEET_WORKSPACE=$WORKSPACE" \
-    -e "FLEET_TMUX_SOCKET=$FLEET_TMUX_SOCKET" -e "FLEET_CLAUDE_BIN=${FLEET_CLAUDE_BIN:-claude}" \
+    -e "FLEET_TMUX_SOCKET=$FLEET_TMUX_SOCKET" \
+    -e "FLEET_CLAUDE_BIN=${FLEET_CLAUDE_BIN:-claude}" -e "FLEET_CODEX_BIN=${FLEET_CODEX_BIN:-codex}" \
     "$TOOL_ROOT/lib/responder.sh" "$to" "$from" "$q" "$hop"
   fleet_log ask "$to" "from=$from hop=$hop (forked responder)"
   info "asked '$to' — a forked copy of its context is answering (its live thread is untouched)."
@@ -828,8 +895,19 @@ main() {
     wizard|setup) cmd_wizard "$@" ;;
     init)      cmd_init "$@" ;;
     install-hooks)
-      if [[ "${1:-}" == "--user" ]]; then fleet_install_user_hooks
-      else fleet_install_hooks "${1:-$PWD}"; fi ;;
+      local hook_provider="claude" user_scope=0
+      while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+          --user) user_scope=1; shift ;;
+          --provider) hook_provider="${2:?usage: fleet install-hooks [--provider claude|codex|all] [--user|workspace]}"; shift 2 ;;
+          --claude) hook_provider="claude"; shift ;;
+          --codex) hook_provider="codex"; shift ;;
+          --all) hook_provider="all"; shift ;;
+          *) break ;;
+        esac
+      done
+      if [[ "$user_scope" == "1" ]]; then fleet_install_user_hooks_for_provider "$hook_provider"
+      else fleet_install_hooks_for_provider "$hook_provider" "${1:-$PWD}"; fi ;;
     install-commands)
       if [[ "${1:-}" == "--user" ]]; then fleet_install_user_commands
       else fleet_install_commands "${1:-$PWD}"; fi ;;

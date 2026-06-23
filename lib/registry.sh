@@ -2,7 +2,7 @@
 # registry.sh — per-child runtime state (state/<id>.json) and liveness.
 #
 # A child state document:
-#   { id, managed, session_id, cwd, pid, state, current_task, claims[],
+#   { id, managed, provider, session_id, cwd, pid, state, current_task, claims[],
 #     started_at, heartbeat, reason, restarts[] }
 # `state` here is the *declared* lifecycle (running/idle/stopped/failed); the
 # *derived* liveness (live/idle/dead) is computed by fleet_liveness from the
@@ -29,7 +29,7 @@ fleet_state_ensure() {
   mkdir -p "$CHILDSTATE_DIR"
   [[ -f "$f" ]] && return 0
   jq -n --arg id "$id" --arg cwd "$cwd" --argjson managed "$managed" '
-    { id: $id, managed: $managed, session_id: null, cwd: $cwd, pid: null,
+    { id: $id, managed: $managed, provider: "claude", session_id: null, cwd: $cwd, pid: null,
       state: "unknown", current_task: null, claims: [],
       started_at: null, heartbeat: null, reason: null, restarts: [] }' >"$f"
 }
@@ -87,9 +87,10 @@ fleet_liveness() {
 
 # Last-activity epoch for a child (max of heartbeat and transcript mtime).
 fleet_last_activity() {
-  local id="$1" hb mt cwd sid
+  local id="$1" hb mt cwd sid provider
   hb="$(fleet_state_get "$id" '.heartbeat' 0)"; [[ "$hb" == "null" ]] && hb=0
   cwd="$(fleet_state_get "$id" '.cwd' "")"; sid="$(fleet_state_get "$id" '.session_id' "")"
-  mt=0; [[ -n "$cwd" && -n "$sid" ]] && mt="$(fleet_mtime "$(fleet_transcript_path "$cwd" "$sid")")"
+  provider="$(fleet_state_get "$id" '.provider' claude)"
+  mt=0; [[ -n "$cwd" && -n "$sid" ]] && mt="$(fleet_mtime "$(fleet_transcript_path "$cwd" "$sid" "$provider")")"
   (( hb > mt )) && printf '%s\n' "$hb" || printf '%s\n' "$mt"
 }

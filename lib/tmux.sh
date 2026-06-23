@@ -73,48 +73,46 @@ fleet_tmux_start_child() {
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && { warn "child '$id' already has a window"; return 0; }
 
-  local rel cwd name pm seed sid
+  local rel cwd name pm seed sid provider primer
   rel="$(fleet_child_get "$id" cwd ".")"
   cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
   [[ -d "$cwd" ]] || die "child '$id': cwd does not exist: $cwd"
   name="$(fleet_child_get "$id" name "$id")"
   pm="$(fleet_child_get "$id" permission_mode "")"
   seed="$(fleet_child_get "$id" seed "")"
+  provider="$(fleet_provider_for_child "$id")"
   sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
 
-  local -a claude_args=("${FLEET_CLAUDE_BIN:-claude}" --name "$name")
-  # inject the hooks settings so the worker self-reports even when its cwd is a
-  # sub-repo that doesn't inherit the workspace-root settings (see fleet up).
-  [[ -n "${MANAGED_SETTINGS:-}" ]] && claude_args+=(--settings "$MANAGED_SETTINGS")
   # prime the worker with its identity, peers, and the mailbox protocol
   if declare -F fleet_peer_primer >/dev/null 2>&1; then
-    local primer; primer="$(fleet_peer_primer "$id")"
-    [[ -n "$primer" ]] && claude_args+=(--append-system-prompt "$primer")
+    primer="$(fleet_peer_primer "$id")"
   fi
-  [[ -n "$pm" ]] && claude_args+=(--permission-mode "$pm")
+  local prompt=""
   if [[ -n "$sid" ]]; then
-    claude_args+=(--resume "$sid")
     # A resumed session reopens idle at its prompt — nudge it to pick its work
     # back up. Per-child 'resume_nudge', else $FLEET_RESUME_NUDGE, else "carry
     # on"; set any of them empty to leave it idle.
     local nudge; nudge="$(fleet_child_get "$id" resume_nudge "${FLEET_RESUME_NUDGE-carry on}")"
-    [[ -n "$nudge" ]] && claude_args+=("$nudge")
+    [[ -n "$nudge" ]] && prompt="$nudge"
     fleet_log resume "$id" "session=$sid${nudge:+ nudge=$nudge}"
   elif [[ -n "$seed" ]]; then
-    claude_args+=("$seed")
+    prompt="$seed"
     fleet_log start "$id" "fresh seed"
   fi
+
+  local -a agent_args=()
+  fleet_agent_build_args agent_args "$provider" "$id" "$name" "$cwd" "$primer" "$prompt" "$sid" "$pm"
 
   mkdir -p "$RUN_DIR"
   local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"
   # -e sets env in the new window (tmux ≥3.0); command + args passed as argv so
   # no shell-quoting of the seed prompt is needed.
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
-    -e "FLEET_CHILD_ID=$id" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${claude_args[@]}"
+    -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${agent_args[@]}"
 
   fleet_state_ensure "$id" "$cwd" true
-  fleet_state_jq "$id" '.state="running" | .reason=null' >/dev/null
+  fleet_state_jq "$id" --arg p "$provider" '.state="running" | .reason=null | .provider=$p' >/dev/null
 }
 
 # Stop a child's window. fleet_tmux_stop_child <id>

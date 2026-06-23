@@ -5,8 +5,9 @@
 source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
 fleet_state_jq "$CHILD_ID" \
-  --arg sid "$SESSION_ID" --arg cwd "$CWD" --argjson now "$NOW" --argjson pid "$PPID" '
+  --arg sid "$SESSION_ID" --arg cwd "$CWD" --arg p "$PROVIDER" --argjson now "$NOW" --argjson pid "$PPID" '
     .session_id = $sid | .cwd = $cwd | .pid = $pid
+  | .provider = $p
   | .state = "running" | .started_at = (.started_at // $now) | .heartbeat = $now
   | .reason = null' >/dev/null 2>&1 || true
 

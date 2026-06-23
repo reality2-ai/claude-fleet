@@ -43,15 +43,34 @@ fleet_load_paths() {
 
 # --- transcript helpers ------------------------------------------------------
 # Claude Code stores transcripts at ~/.claude/projects/<encoded-cwd>/<sid>.jsonl
-# where <encoded-cwd> is the absolute cwd with every '/' replaced by '-'.
+# where <encoded-cwd> is the absolute cwd with every '/' replaced by '-'. Codex
+# stores local sessions under $CODEX_HOME/sessions; that layout is searched by
+# session id because it is date-sharded and provider-owned.
 fleet_encode_path() { printf '%s\n' "$1" | sed 's:/:-:g'; }
 
 fleet_projects_dir() { printf '%s\n' "${CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"; }
+fleet_codex_home() { printf '%s\n' "${CODEX_HOME:-$HOME/.codex}"; }
 
 # Path to a session's transcript given its cwd + session id (may not exist).
 fleet_transcript_path() {
-  local cwd="$1" sid="$2"
-  printf '%s/%s/%s.jsonl\n' "$(fleet_projects_dir)" "$(fleet_encode_path "$cwd")" "$sid"
+  local cwd="$1" sid="$2" provider="${3:-claude}"
+  case "$provider" in
+    codex)
+      fleet_codex_transcript_path "$sid"
+      ;;
+    claude|*)
+      printf '%s/%s/%s.jsonl\n' "$(fleet_projects_dir)" "$(fleet_encode_path "$cwd")" "$sid"
+      ;;
+  esac
+}
+
+fleet_codex_transcript_path() {
+  local sid="$1" root
+  root="$(fleet_codex_home)/sessions"
+  [[ -n "$sid" && -d "$root" ]] || { printf '%s/%s.jsonl\n' "$root" "$sid"; return; }
+  local f
+  f="$(find "$root" -type f \( -name "$sid.jsonl" -o -name "*$sid*.jsonl" \) -print -quit 2>/dev/null || true)"
+  printf '%s\n' "${f:-$root/$sid.jsonl}"
 }
 
 # mtime (epoch secs) of a file, or 0 if missing. GNU stat then BSD stat.

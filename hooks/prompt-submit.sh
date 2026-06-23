@@ -3,7 +3,7 @@
 # shellcheck source-path=SCRIPTDIR source=hook-common.sh
 source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
-PROMPT="$(hjq '.prompt')"
+PROMPT="$(hjq '.prompt // .user_prompt // .input // .message // .text')"
 # collapse whitespace, keep it short
 TASK="$(printf '%s' "$PROMPT" | tr '\n' ' ' | sed 's/  */ /g')"
 TASK="${TASK:0:160}"

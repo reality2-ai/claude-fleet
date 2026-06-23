@@ -22,31 +22,34 @@ hop="${4:-1}"
 source "$TOOL_ROOT/lib/common.sh"
 # shellcheck source=registry.sh
 source "$TOOL_ROOT/lib/registry.sh"
+# shellcheck source=manifest.sh
+source "$TOOL_ROOT/lib/manifest.sh"
+# shellcheck source=provider.sh
+source "$TOOL_ROOT/lib/provider.sh"
 # shellcheck source=tmux.sh
 source "$TOOL_ROOT/lib/tmux.sh"
 # shellcheck source=comms.sh
 source "$TOOL_ROOT/lib/comms.sh"
 fleet_load_paths
+[[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
 
 export FLEET_NO_REPORT=1   # the ephemeral fork must never self-report
 
 # A short, single-line form of the question for the notes.
 qshort="$q"; [ "${#qshort}" -gt 60 ] && qshort="${qshort:0:60}…"
 
-# Resume a FORK of the target's live session (new id; the live thread is untouched
-# and keeps its own id). If there's no recorded session, fall back to a fresh
-# expert that at least sees the repo.
+# Resume an off-thread target context when the provider supports it. Claude uses
+# a real fork. Codex uses a headless resumed run, which preserves context without
+# typing the question into the live tmux window.
 sid=""; [[ -f "$RUN_DIR/$to.session" ]] && sid="$(<"$RUN_DIR/$to.session")"
+provider="$(fleet_state_get "$to" '.provider' "")"
+[[ -z "$provider" && "$to" != "supervisor" ]] && provider="$(fleet_provider_for_child "$to")"
+[[ -z "$provider" ]] && provider="$(fleet_default_provider)"
 
 primer="You are \"$to\", answering a question from a peer agent \"$from\" in the same fleet. You have been resumed from a fork of your own working session, so you carry your current context. Answer ONLY the question — concisely and specifically, citing file paths where useful. Do NOT start new work, make edits, or message other agents; just answer. If it's outside your repo or expertise, say so in one line and name who might know."
 
 ans=""
-if [[ -n "$sid" ]]; then
-  ans="$("${FLEET_CLAUDE_BIN:-claude}" -p --resume "$sid" --fork-session \
-          --append-system-prompt "$primer" "$q" 2>/dev/null)"
-else
-  ans="$("${FLEET_CLAUDE_BIN:-claude}" -p --append-system-prompt "$primer" "$q" 2>/dev/null)"
-fi
+ans="$(fleet_agent_headless_answer "$provider" "$sid" "$primer" "$q" 2>/dev/null)"
 
 ans="${ans//$'\n'/ }"                       # single line for delivery
 maxlen="${FLEET_ANSWER_MAX:-16000}"

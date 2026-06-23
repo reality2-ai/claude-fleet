@@ -4,8 +4,8 @@
 # shellcheck source-path=SCRIPTDIR source=hook-common.sh
 source "$(cd "$(dirname "$0")" && pwd)/hook-common.sh"
 
-FP="$(hjq '.tool_input.file_path')"
-[[ -z "$FP" ]] && FP="$(hjq '.tool_input.notebook_path')"
+FP="$(hjq '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .input.file_path // .input.path // .params.file_path // .params.path // .file_path // .path')"
+[[ -z "$FP" ]] && FP="$(printf '%s' "$HOOK_JSON" | jq -r '[.. | objects | .file_path? // .path? // empty] | map(select(type=="string")) | .[0] // empty' 2>/dev/null)"
 [[ -z "$FP" ]] && exit 0
 # normalise to absolute
 [[ "$FP" != /* ]] && FP="$CWD/$FP"
