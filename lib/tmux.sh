@@ -66,6 +66,21 @@ fleet_tmux_has_window() {
   fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null | grep -qxF -- "$1"
 }
 
+# List the ids of live CHILD windows (one per line). This is ground truth: a
+# child shows here from its tmux window alone, independent of any state doc.
+# Filters out the placeholder root window and the transient `ask:<id>` responder
+# windows, which are not children.
+fleet_tmux_window_ids() {
+  fleet_tmux_session_exists || return 0
+  local w
+  while IFS= read -r w; do
+    [[ -z "$w" ]] && continue
+    [[ "$w" == "__fleet_root" ]] && continue
+    [[ "$w" == ask:* ]] && continue
+    printf '%s\n' "$w"
+  done < <(fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null)
+}
+
 # Start one child in its own window. fleet_tmux_start_child <id>
 # Resumes from run/<id>.session when present, else seeds a fresh session.
 fleet_tmux_start_child() {
@@ -113,6 +128,9 @@ fleet_tmux_start_child() {
 
   fleet_state_ensure "$id" "$cwd" true
   fleet_state_jq "$id" --arg p "$provider" '.state="running" | .reason=null | .provider=$p' >/dev/null
+  # record the transport that hosts this child (down-payment on a future
+  # native-primitives migration). No-op if the seam isn't sourced.
+  declare -F transport_register >/dev/null 2>&1 && transport_register "$id"
 }
 
 # Stop a child's window. fleet_tmux_stop_child <id>

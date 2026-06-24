@@ -51,6 +51,51 @@ fleet_next_hop() {
   printf '%s\n' "$hop"
 }
 
+# Is <to>'s pane sitting at its idle prompt (NOT mid-task)? Conservative by
+# construction: returns 0 (idle) ONLY when the pane tail shows the empty input
+# box AND shows no "working" signature; on any doubt (no window, capture failed,
+# any active-work marker) it returns non-zero so a mid-task worker is NEVER
+# injected into / unstuck. Reused by the .ready TTL unstick (fleet_reconcile) and
+# fleet doctor. Disable the whole idle-gate with FLEET_PANE_IDLE_CHECK=off (then
+# treats every live pane as idle — only for tests/degraded hosts).
+#   fleet_pane_is_idle <to>
+fleet_pane_is_idle() {
+  local to="$1"
+  [[ "${FLEET_PANE_IDLE_CHECK:-on}" == "off" ]] && return 0
+  fleet_tmux_has_window "$to" 2>/dev/null || return 1
+  local tgt="$FLEET_TMUX_SESSION:$to" pane
+  pane="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null)" || return 1
+  [[ -n "$pane" ]] || return 1
+  local tail; tail="$(printf '%s\n' "$pane" | grep -vE '^[[:space:]]*$' | tail -n 12)"
+  # WORKING signatures Claude Code surfaces while a turn is in flight — if ANY of
+  # these are present we are NOT idle (err toward "busy").
+  local working='esc to interrupt|to interrupt\)|[Ee]sc to|✶|✻|✽|·\s*[0-9]+\s*tokens|Running…|Thinking…|Working…|[Ww]aiting…|tool use|⏵⏵|Compacting'
+  printf '%s\n' "$tail" | grep -qE "$working" && return 1
+  # IDLE signatures: the empty Claude Code input box / prompt. Require a positive
+  # match so an unknown/garbled pane is treated as busy, never idle. (`?` escaped
+  # and POSIX classes used so the pattern is portable across grep variants.)
+  local promptbox='│ >|^[[:space:]]*>[[:space:]]*$|Try "|\? for shortcuts|╰─|╭─'
+  printf '%s\n' "$tail" | grep -qE "$promptbox" && return 0
+  return 1
+}
+
+# Is <to>'s pane currently blocked on an API rate-limit / transient API error
+# (i.e. "throttled")? Distinct from idle/dead: a throttled worker is HEALTHY but
+# waiting on the provider, and must NEVER be restarted for it (the api-watchdog
+# un-sticks it when the block lifts). Mirrors the signature set the api-watchdog
+# uses. Returns 0 when throttled. FLEET_THROTTLE_CHECK=off forces "not throttled".
+#   fleet_pane_is_throttled <to>
+fleet_pane_is_throttled() {
+  local to="$1"
+  [[ "${FLEET_THROTTLE_CHECK:-on}" == "off" ]] && return 1
+  fleet_tmux_has_window "$to" 2>/dev/null || return 1
+  local tgt="$FLEET_TMUX_SESSION:$to" tail
+  tail="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null | grep -vE '^[[:space:]]*$' | tail -n 8)" || return 1
+  [[ -n "$tail" ]] || return 1
+  local sig='temporarily (limiting|unavailable)|rate.?limit|Overloaded|overloaded_error|API [Ee]rror|error 529|529 |Internal server error|exceeded your|usage limit|temporarily limiting requests'
+  printf '%s\n' "$tail" | grep -qiE "$sig"
+}
+
 # Deliver one message into a target's tmux prompt and submit it. The full text is
 # typed in small keystroke chunks (gentle on a full-screen TUI — avoids the
 # reflow/blank a single huge keystroke blast causes), then a brief settle pause,
@@ -85,7 +130,11 @@ fleet_inject() {
     case "$pane" in *"$marker"*) ;; *) return 0 ;; esac   # tail gone from input → submitted
     fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
   done
-  return 0
+  # Verify loop exhausted: the message's tail is STILL in the input box after 4
+  # re-Enters — the inject did NOT land. Report failure so the caller leaves the
+  # line undelivered (at-least-once retry on the next drain) instead of the old
+  # optimistic `return 0` that silently dropped the line as "delivered".
+  return 1
 }
 
 # Deliver any undelivered mail to <to>. Returns 0 if delivered (or nothing to
@@ -102,17 +151,70 @@ fleet_drain_inbox() {
   exec 9>"$f.lock"; flock 9 2>/dev/null || true
   local n; n="$(jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0)"
   if [[ "${n:-0}" -gt 0 ]]; then
-    local line from text hops kind maxhop=0
-    while IFS= read -r line; do
+    # PER-LINE marking, stable by line position: read every line, inject each
+    # currently-undelivered one, and mark delivered=true ONLY for the lines whose
+    # fleet_inject returned 0. A failed inject leaves that line undelivered so the
+    # NEXT drain retries it (at-least-once, never silent loss); dedup stays stable
+    # by line position so a re-drain can't double-deliver a line already consumed.
+    local -a lines=(); local line
+    while IFS= read -r line; do lines+=("$line"); done <"$f"
+    local idx delivered from text hops kind maxhop=0 ok_count=0 fail_count=0
+    : >"$f.tmp"
+    for idx in "${!lines[@]}"; do
+      line="${lines[$idx]}"
+      [[ -z "$line" ]] && continue
+      delivered="$(jq -r '.delivered // false' <<<"$line" 2>/dev/null)"
+      if [[ "$delivered" == "true" ]]; then
+        printf '%s\n' "$line" >>"$f.tmp"; continue
+      fi
       from="$(jq -r '.from' <<<"$line")"; text="$(jq -r '.text' <<<"$line")"
       hops="$(jq -r '.hops // 1' <<<"$line")"; kind="$(jq -r '.kind // "msg"' <<<"$line")"
-      fleet_inject "$to" "$from" "$text" "$hops" "$kind" || break
-      (( hops > maxhop )) && maxhop="$hops"
-    done < <(jq -c 'select(.delivered==false)' "$f")
-    jq -c '.delivered=true' "$f" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
-    # record the deepest hop delivered so this agent's reply inherits hop+1
-    fleet_state_jq "$to" --argjson h "$maxhop" '.last_inbound_hops=$h' >/dev/null 2>&1 || true
-    fleet_log deliver "$to" "$n message(s)"
+      # inject call site — routed through the transport seam when present (its tmux
+      # branch IS fleet_inject; hooks that don't source transport.sh fall through
+      # to fleet_inject directly, so behaviour is identical on both paths).
+      local _injected=0
+      if declare -F transport_enqueue >/dev/null 2>&1; then
+        transport_enqueue "$to" "$from" "$text" "$hops" "$kind" && _injected=1
+      else
+        fleet_inject "$to" "$from" "$text" "$hops" "$kind" && _injected=1
+      fi
+      if (( _injected == 1 )); then
+        (( hops > maxhop )) && maxhop="$hops"
+        ok_count=$(( ok_count + 1 ))
+        printf '%s\n' "$(jq -c '.delivered=true' <<<"$line")" >>"$f.tmp"
+      else
+        # Leave undelivered for the next drain. Stop trying further lines this
+        # pass (the pane is likely wedged/busy); they too stay queued.
+        fail_count=$(( fail_count + 1 ))
+        printf '%s\n' "$line" >>"$f.tmp"
+        # copy the remaining lines verbatim (still undelivered) and bail.
+        local j
+        for (( j=idx+1; j<${#lines[@]}; j++ )); do
+          [[ -n "${lines[$j]}" ]] && printf '%s\n' "${lines[$j]}" >>"$f.tmp"
+        done
+        break
+      fi
+    done
+    mv "$f.tmp" "$f" 2>/dev/null || rm -f "$f.tmp"
+    if (( ok_count > 0 )); then
+      # record the deepest hop delivered so this agent's reply inherits hop+1
+      fleet_state_jq "$to" --argjson h "$maxhop" '.last_inbound_hops=$h' >/dev/null 2>&1 || true
+      fleet_log deliver "$to" "$ok_count message(s)"
+    fi
+    # Self-heal: a fully-clean drain (something delivered, nothing failed) clears
+    # the failure counter so fleet doctor goes quiet once mail flows again.
+    if (( ok_count > 0 && fail_count == 0 )); then
+      fleet_state_jq "$to" '.inject_failures = 0' >/dev/null 2>&1 || true
+    fi
+    if (( fail_count > 0 )); then
+      # Persisted, visible failure counter — fleet doctor reads this and screams.
+      local now; now="$(date +%s)"
+      fleet_state_jq "$to" --argjson n "$fail_count" --argjson t "$now" \
+        '.inject_failures = ((.inject_failures // 0) + $n) | .last_drain_attempt = $t' >/dev/null 2>&1 || true
+      fleet_log deliver-fail "$to" "$fail_count message(s) left queued (inject unverified)"
+      flock -u 9 2>/dev/null || true; exec 9>&-
+      return 1
+    fi
   fi
   flock -u 9 2>/dev/null || true; exec 9>&-
   return 0

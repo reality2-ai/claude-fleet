@@ -10,6 +10,8 @@ source "$TOOL_ROOT/lib/tmux.sh" 2>/dev/null || exit 0
 source "$TOOL_ROOT/lib/comms.sh" 2>/dev/null || exit 0
 
 fleet_state_jq "$CHILD_ID" --argjson now "$NOW" '.ready=true | .heartbeat=$now' >/dev/null 2>&1 || true
+# Optional ground-truth liveness journal (no-op unless FLEET_JOURNAL is set).
+fleet_journal_append "$CHILD_ID" "stop turn" 2>/dev/null || true
 
 # Count undelivered queued messages BEFORE draining — would this child keep working?
 _pending=0

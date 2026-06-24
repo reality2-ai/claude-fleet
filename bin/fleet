@@ -36,6 +36,8 @@ source "$TOOL_ROOT/lib/tmux.sh"
 source "$TOOL_ROOT/lib/restart.sh"
 # shellcheck source=../lib/comms.sh
 source "$TOOL_ROOT/lib/comms.sh"
+# shellcheck source=../lib/transport.sh
+source "$TOOL_ROOT/lib/transport.sh"
 
 FLEET_VERSION="0.1.0"
 
@@ -66,6 +68,8 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
   fleet dispatch <id> "<task>" [cwd]   start a fresh worker seeded with a task
   fleet attach <id>             attach your terminal to a child's tmux window
   fleet reap                    detect crashed children and apply restart policy
+  fleet doctor [--quiet]        self-check the oversight wire from ground truth
+                                  (state docs, mailboxes, watchdogs, throttling)
 
   fleet remote-control [on|off] [id]    enable/disable Claude /remote-control on member(s)
   fleet remote [id]             show remote-control status of member(s)
@@ -344,6 +348,11 @@ _render_hooks_json() {
 cmd_status() {
   fleet_load_paths
   [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+
+  # Re-derive the registry from ground truth FIRST, so a child with a deleted
+  # state doc but a live window is recreated before we enumerate (idempotent,
+  # creates-only, read-only on tmux). FLEET_RECONCILE=off restores old behaviour.
+  fleet_reconcile
 
   # union of manifest ids and ids that have state on disk
   local -A seen=(); local -a ids=()
@@ -734,6 +743,94 @@ cmd_reap() {
   (( reaped == 0 )) && info "reap: nothing to restart"
 }
 
+# --- health: fleet doctor ---------------------------------------------------
+# Self-check the oversight wire from GROUND TRUTH and report (or, with --quiet,
+# just exit non-zero) when an invariant is broken. Asserts, per live child:
+#   * a state doc with a session_id exists (reconcile should guarantee this);
+#   * no inbox line has been delivered==false longer than FLEET_MAIL_STALE_SECS;
+#   * sum(.inject_failures)==0 (the honest-inbox failure counter is clear);
+# and fleet-wide: both watchdogs are alive. A worker blocked on an API
+# rate-limit is reported as THROTTLED (healthy-but-waiting), kept DISTINCT from
+# idle/dead so it is never mistaken for stuck/dead and restarted.
+FLEET_MAIL_STALE_SECS="${FLEET_MAIL_STALE_SECS:-300}"
+cmd_doctor() {
+  local quiet=0
+  while [[ $# -gt 0 ]]; do case "$1" in --quiet|-q) quiet=1; shift ;; *) shift ;; esac; done
+  fleet_load_paths
+  [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_reconcile
+
+  local -a problems=()
+  local now; now="$(date +%s)"
+
+  # fleet-wide: both watchdogs must be running.
+  if ! pgrep -f 'fleet-watchdog\.sh' >/dev/null 2>&1; then problems+=("idle-watchdog (fleet-watchdog.sh) not running"); fi
+  if ! pgrep -f 'fleet-api-watchdog\.sh' >/dev/null 2>&1; then problems+=("api-watchdog (fleet-api-watchdog.sh) not running"); fi
+
+  # enumerate the same id set status uses (ground-truth union).
+  local -A seen=(); local -a ids=(); local id
+  for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] || continue; seen["$id"]=1; ids+=("$id"); done
+  while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen["$id"]=1; ids+=("$id"); }; done < <(fleet_state_ids)
+
+  local total_inject_failures=0
+  local -a throttled=()
+  for id in "${ids[@]}"; do
+    [[ -n "$id" ]] || continue
+    local has_win=0; fleet_tmux_has_window "$id" 2>/dev/null && has_win=1
+
+    # throttle is reported but is NOT a problem (worker is healthy-but-waiting).
+    if [[ "$has_win" == 1 ]] && fleet_pane_is_throttled "$id"; then throttled+=("$id"); fi
+
+    # live window ⇒ a state doc with a session_id must exist.
+    if [[ "$has_win" == 1 ]]; then
+      local sf; sf="$(fleet_state_path "$id")"
+      if [[ ! -f "$sf" ]]; then
+        problems+=("$id: live window but NO state doc (reconcile failed)")
+      else
+        local sid; sid="$(fleet_state_get "$id" '.session_id' "")"
+        [[ -z "$sid" || "$sid" == "null" ]] && problems+=("$id: live window but state doc has no session_id")
+      fi
+    fi
+
+    # honest-inbox failure counter.
+    local inf; inf="$(fleet_state_get "$id" '.inject_failures' 0)"; [[ "$inf" =~ ^[0-9]+$ ]] || inf=0
+    (( inf > 0 )) && { problems+=("$id: $inf unverified inject failure(s) (mail may be stranded)"); total_inject_failures=$(( total_inject_failures + inf )); }
+
+    # stale undelivered mail.
+    local inbox; inbox="$(fleet_inbox_file "$id" 2>/dev/null)"
+    if [[ -n "$inbox" && -f "$inbox" ]]; then
+      local oldest; oldest="$(jq -s --argjson now "$now" '
+        [.[] | select(.delivered==false) | ($now - (.ts // $now))] | (max // 0)' "$inbox" 2>/dev/null || echo 0)"
+      [[ "$oldest" =~ ^[0-9]+$ ]] || oldest=0
+      if (( oldest > FLEET_MAIL_STALE_SECS )); then
+        # A throttled target legitimately can't receive yet — don't flag it stale.
+        if [[ " ${throttled[*]:-} " != *" $id "* ]]; then
+          problems+=("$id: undelivered mail ${oldest}s old (> ${FLEET_MAIL_STALE_SECS}s stale)")
+        fi
+      fi
+    fi
+  done
+
+  if [[ "$quiet" == 1 ]]; then
+    [[ ${#problems[@]} -eq 0 ]] && return 0
+    # compact, single-line summary for the watchdog → supervisor note.
+    printf '%s\n' "$(IFS='; '; printf '%s' "${problems[*]}")"
+    return 1
+  fi
+
+  printf '%sfleet doctor%s\n' "$c_bold" "$c_reset"
+  if [[ ${#throttled[@]} -gt 0 ]]; then
+    printf '  %sthrottled%s (API rate-limit; healthy, NOT restarted): %s\n' "$c_yel" "$c_reset" "${throttled[*]}"
+  fi
+  if [[ ${#problems[@]} -eq 0 ]]; then
+    printf '  %sok%s   all invariants hold (%d child(ren), inject_failures=%d)\n' "$c_grn" "$c_reset" "${#ids[@]}" "$total_inject_failures"
+    return 0
+  fi
+  local p
+  for p in "${problems[@]}"; do printf '  %sFAIL%s %s\n' "$c_red" "$c_reset" "$p"; done
+  return 1
+}
+
 # --- inter-agent comms ------------------------------------------------------
 # `ask` (cmd_ask) answers off-thread via a forked responder. `send` delivers a
 # brief FYI into the target's live thread via _fleet_deliver below.
@@ -755,7 +852,9 @@ _fleet_deliver() {   # <kind> <to> <from> <text>
   }
   fleet_enqueue "$to" "$from" "$text" "$hop" "$kind"
   fleet_log "$kind" "$to" "from=$from hop=$hop"
-  if fleet_drain_inbox "$to"; then
+  # deliver call site — routed through the transport seam (tmux branch IS
+  # fleet_drain_inbox; behaviour identical).
+  if transport_deliver "$to"; then
     info "→ delivered to '$to' (from $from, hop $hop/$cap) — it's in '$to's thread now"
   else
     info "→ queued for '$to' (busy/offline, hop $hop/$cap) — lands in its thread when it's next at its prompt"
@@ -924,6 +1023,7 @@ main() {
     dispatch)  cmd_dispatch "$@" ;;
     attach)    cmd_attach "$@" ;;
     reap)      cmd_reap "$@" ;;
+    doctor)    cmd_doctor "$@" ;;
     remote-control|rc) cmd_remote_control "$@" ;;
     remote)    cmd_remote "$@" ;;
     ask)       cmd_ask "$@" ;;
