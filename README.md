@@ -2,17 +2,23 @@
 
 [![CI](https://github.com/reality2-ai/claude-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/reality2-ai/claude-fleet/actions/workflows/ci.yml)
 
-An **OTP-style supervisor for parallel Claude Code sessions.**
+An **OTP-style supervisor for parallel autonomous coding-agent sessions** —
+**Claude Code** and/or **OpenAI Codex.**
 
-If you run several Claude Code sessions at once across a multi-repo workspace,
+If you run several agent sessions at once across a multi-repo workspace,
 `fleet` gives you one place to: see them all at a glance, notice when two are
 editing the same file, keep an aggregate log, let them message each other, drive
 any of them from your phone — and, crucially, **bring the whole suite back after
 a crash or reboot.**
 
-It's a small set of `bash` scripts wrapping `tmux` and the `claude` CLI. No
-daemon, no background services; all runtime state is plain JSON files under your
-workspace.
+It's a small set of `bash` scripts wrapping `tmux` and the agent CLI (`claude`
+or `codex` — chosen per member). No daemon, no background services; all runtime
+state is plain JSON files under your workspace.
+
+> **Two co-evolving tracks.** `fleet` isn't just a runner — it carries a working
+> *doctrine* (autonomy with a failsafe, spec-first, refutation by a *different*
+> model, self-improvement). The tool is meant to be improved *alongside* the work
+> it drives, held to the same bar. See **[Operating doctrine](#operating-doctrine)**.
 
 ![The fleet supervisor session coordinating members: inter-agent messages, a live fleet status, the member windows along the bottom, and Remote Control active](docs/fleet-supervisor.png)
 
@@ -50,7 +56,8 @@ and `fleet` keeps it running.
 
 | Requirement | Why | Check / install |
 |---|---|---|
-| **Claude Code CLI** (`claude`) | the members and supervisor *are* Claude Code | `claude --version` (see the official install docs) |
+| **Claude Code CLI** (`claude`) | the default agent backend for members + supervisor | `claude --version` (see the official install docs) |
+| **OpenAI Codex CLI** (`codex`) *(optional)* | alternative agent backend (`provider = "codex"`); also powers `codex-review` / `codex-scan` | `codex --version` · https://github.com/openai/codex |
 | **bash ≥ 4** | the CLI, libs, and hooks are bash | `bash --version` — default on Linux; `brew install bash` on macOS |
 | **jq** | all state / manifest / message handling is JSON | `jq --version` · `sudo apt install jq` / `brew install jq` |
 | **tmux ≥ 3.0** | hosts the sessions; needed for everything except observe-only commands | `tmux -V` · `sudo apt install tmux` / `brew install tmux` |
@@ -81,11 +88,21 @@ same care as any agent you let act unattended:
 - **Run them in version control.** Members work directly in your working trees;
   commit or stash anything you don't want touched, and review their diffs like any
   other contributor's.
-- **Routine prompts are auto-confirmed by default.** A `PreToolUse` hook
-  auto-approves a non-destructive set (reads, in-repo edits, read-only shell) so
-  members don't stall on every "press-enter-for-yes" — destructive/ambiguous
-  actions still prompt. See [Auto-confirming routine prompts](#auto-confirming-routine-prompts);
-  disable with `FLEET_AUTOCONFIRM=off`.
+- **Autonomy with a failsafe, not a leash.** The intended model: managed
+  **workers run unattended** (`--dangerously-skip-permissions`, default for
+  managed non-supervisor members; toggle `FLEET_SKIP_PERMISSIONS=off`) so they
+  never stall waiting for a human, while the **supervisor stays prompt-gated and
+  *monitors*** them — that oversight, plus the hook below, is the safety layer.
+  The doctrine is to make risky changes *recoverable* (checkpoint to git) rather
+  than to block them. See [Operating doctrine](#operating-doctrine).
+- **Routine prompts auto-confirmed; high-stakes ops escalated.** A `PreToolUse`
+  hook auto-approves a non-destructive set (reads, in-repo edits, read-only shell)
+  so members don't stall on "press-enter-for-yes" — destructive/ambiguous actions
+  still prompt, and one high-stakes class (firmware-flash / firmware-sign /
+  key-mint / writes to key-or-signature artifacts) is **hard-denied and escalated
+  to you**, even under skip-permissions. See
+  [Auto-confirming routine prompts](#auto-confirming-routine-prompts); toggles
+  `FLEET_AUTOCONFIRM=off`, `FLEET_FIRMWARE_GATE=off`.
 - **Remote control is opt-in and per-member.** `fleet remote-control` exposes a
   session to claude.ai/code and the mobile app (signed in as you) — enable it
   deliberately and turn it off when done.
@@ -202,6 +219,7 @@ order (supervisor first); see `fleet order`.
 
 Required per-child fields are `id` and `cwd`; `restart` defaults to `permanent`.
 Optional: `name`, `seed`, `permission_mode` (see [Safety & permissions](#safety--permissions)),
+`provider` (`claude` *(default)* or `codex` — see [Providers](#providers--claude-code-or-codex)),
 and `resume_nudge` (below).
 
 A resumed session reopens **idle at its prompt**, so `fleet up` nudges each
@@ -225,6 +243,31 @@ cd <workspace> && fleet up
 ```
 
 (The repos your members work in are cloned separately, as usual.)
+
+## Providers — Claude Code or Codex
+
+Each member runs on an agent backend — **Claude Code** (`claude`, the default) or
+**OpenAI Codex** (`codex`) — chosen per member in `fleet.toml`:
+
+```toml
+[[child]]
+id       = "reviewer"
+cwd      = "core"
+provider = "codex"              # default is "claude"
+# optional codex tuning (or the FLEET_CODEX_* env equivalents):
+model           = "..."         # --model
+sandbox         = "read-only"   # --sandbox (read-only | workspace-write | …)
+approval_policy = "on-request"  # --ask-for-approval
+```
+
+`provider` is also settable fleet-wide with `FLEET_AGENT_PROVIDER=codex`, and the
+binary / model / profile / sandbox / approval via `FLEET_CODEX_BIN` ·
+`FLEET_CODEX_MODEL` · `FLEET_CODEX_PROFILE` · `FLEET_CODEX_SANDBOX` ·
+`FLEET_CODEX_APPROVAL`. The fleet wires its self-reporting + permission hooks into
+Codex too (via Codex's `--cd`, hook-config, and sandbox flags), so a Codex member
+self-reports, is messaged, and is gated just like a Claude one. Running a **mix**
+is deliberate: a different model is a different *perspective* — see
+[Codex as an adversarial helper](#codex-as-an-adversarial-helper).
 
 ## Commands
 
@@ -372,6 +415,39 @@ per-repo work belongs to the member experts, so there's no separate "root"
 worker. Just talk to it: *"status?"*, *"anything conflicting?"*, *"restart api"*,
 *"bring the suite back up"*. Use `fleet up --no-supervisor` to skip it.
 
+## Codex as an adversarial helper
+
+Beyond running members, the fleet ships two tools that use **Codex as an
+independent, _different-model_ adversary** — read-only, so it critiques but never
+edits, flashes, or commits. The premise (from
+[`docs/THURISAZ-WORKING-MODE.md`](docs/THURISAZ-WORKING-MODE.md), §TH-DISCOURSE):
+a significant design or fix isn't trustworthy until a *different* mind has
+genuinely tried to break it — and a different model/architecture catches what
+same-model self-review structurally can't.
+
+- **`bin/codex-review`** — point Codex at a finding, a design, or a git diff and
+  have it try to refute it:
+  ```sh
+  codex-review notes.md            # review a finding/design in a file
+  codex-review --diff HEAD~1       # adversarially review a diff
+  echo "<claim>" | codex-review -  # review piped text
+  ```
+- **`bin/codex-scan`** — a full-pass audit of a repo by Codex across
+  `security | usability | sovereignty | both`, supplied your project's **mission +
+  values** so it audits *against what you're building for*, not generic
+  best-practice:
+  ```sh
+  codex-scan ./core both
+  ```
+
+Run them **selectively** — Codex is quota-limited, so reserve them for high-stakes
+checks. Recurring scans are an **annealing** process: scan → harden → re-scan
+*converges* (each pass is also a closure-check on the last — did the fixes hold?),
+and the point of a *different* adversary is to shake the system out of a
+comfortable "all-green" local minimum that same-model verification settled into.
+`codex-scan` can be pointed at **claude-fleet itself** — the tool gets the same
+treatment as the code it builds.
+
 ## Remote control (phone / web)
 
 Claude Code's own **Remote Control** (`/remote-control`) lets you drive a local
@@ -419,8 +495,9 @@ Fleet members are semi-autonomous, so stopping to approve every routine action
 gets in the way. A `PreToolUse` hook (`hooks/auto-approve.sh`) auto-approves a
 **curated, non-destructive set** so members don't wait on the usual
 press-enter-for-yes prompts — while anything risky or ambiguous still stops for
-you. It **never auto-denies**: worst case it stays silent and the normal prompt
-appears.
+you. For most tools it never *forces* an outcome: worst case it stays silent and
+the normal prompt appears. The **one deliberate exception** is the high-stakes
+gate described below, which actively *denies* and escalates.
 
 **Auto-approved:** read-only tools (`Read`, `Glob`, `Grep`, `LS`, `NotebookRead`,
 `WebSearch`); file edits **inside the workspace**; and read-only shell — a safe
@@ -434,10 +511,85 @@ installs, network (`curl`/`ssh` …), `sudo`, `git push`/`reset`/`commit`, runne
 decision questions an agent raises ("which approach?") aren't permission prompts,
 so they always wait for you.
 
+**The firmware / key escalation gate (hard-deny).** Under
+`--dangerously-skip-permissions` a silent fall-through would *run* a dangerous
+action, so one high-stakes class is **actively denied and escalated to a human**
+instead — flashing/signing firmware and minting/handling key material, where a
+wrong move is irreversible. The hook denies (telling the agent to escalate with
+the exact artifact/target/authority/reason) on:
+
+- **commands** — `espflash` / `esptool` / `probe-rs download|run|erase` /
+  `dfu-util` / `openocd` / `nrfjprog` … (flash); `openssl genpkey|genrsa|-sign|dgst`
+  / `ssh-keygen` / `gpg --sign|--gen-key` … (key-gen / sign); `dd of=/dev/…`; and
+  explicit `ota … sign|push` / `mint … cert` / `… write-persona` verbs;
+- **writes** to key/signature artifacts — `*.key` `*.pem` `*.sig` `*.der` `*.p12`
+  `*.seed` `tg_priv*` `*persona*.bin` `keystore*.db` `wallet*.dat` …
+
+Source edits, builds, and reads are **unaffected** — only the dangerous
+operations escalate. See the `hs_bash` / `hs_path` patterns in
+`hooks/auto-approve.sh`.
+
 It only acts inside a `.fleet` workspace, and is **on by default** for managed
 members. Toggles (env): `FLEET_AUTOCONFIRM=off` disables it entirely;
 `FLEET_AUTOCONFIRM_EDITS=off` keeps prompting for edits while still auto-approving
-reads. Tune the safe set in `hooks/auto-approve.sh` (the `bash_safe` allowlist).
+reads; `FLEET_FIRMWARE_GATE=off` disables the firmware/key gate. Tune the safe
+set in `hooks/auto-approve.sh` (the `bash_safe` allowlist + the `hs_bash` /
+`hs_path` gate).
+
+## Operating doctrine
+
+`fleet` carries a working *doctrine*, not just mechanics. Two short, generic,
+project-agnostic docs hold it (project-specific context lives in a private
+`primer.md`, never here):
+
+- **[`docs/FLEET-WORKING-PRINCIPLES.md`](docs/FLEET-WORKING-PRINCIPLES.md)** —
+  spec-first; secure-over-calm; **GitHub as the failsafe** (checkpoint to git so
+  risky changes are *recoverable* rather than *blocked* — small named commits,
+  never `git add -A`, a pre-push secret-scan, commit + push each verified unit);
+  the permission / auto-approve + firmware-gate model; public-code /
+  private-context; and roles (a coordinating **supervisor** that monitors but
+  writes only its own infra repos; per-component **experts** do the hands-on work).
+- **[`docs/THURISAZ-WORKING-MODE.md`](docs/THURISAZ-WORKING-MODE.md)** — the
+  self-improving loop: honest conjecture → **cross-agent refutation (ideally by a
+  different model)** → reputation → memory → reproducible re-audit. A non-trivial
+  design isn't "fit" until a *peer* has tried to kill it; the human steers
+  *direction*, the refutation loop runs itself within the failsafe.
+
+Two principles worth stating outright:
+
+- **Verify-then-record.** Confidence is what *survives* a genuine attempt to break
+  it, not what looks right. Label work honestly; absence of counter-evidence is not
+  evidence. The Codex tools and cross-agent refutation are how it's enforced.
+- **Improve the tools alongside the work.** The fleet is the apparatus that builds
+  the product, so a better apparatus compounds — `fleet` is meant to be sharpened
+  *while* it runs, held to the same bar (refutation, a different-model perspective,
+  annealing convergence, verify-then-record). The firmware-gate and the Codex tools
+  are themselves examples.
+
+> **Editing a *running* fleet is hot-wiring a live circuit** — the supervisor runs
+> *on* the thing it's editing, so a bad change to the message bus / registry /
+> hooks can take down the supervisor and every worker at once. The rule: prefer
+> **additive** changes (new files/tools/toggles nothing depends on) over altering
+> the live critical path; **test offline** on a stub workspace first; keep every
+> change **one toggle from off** (hooks are read per-invocation, so a bad one is
+> instantly disable-able); do invasive surgery (bus changes) only in a **calm,
+> paused** window, never mid-flight.
+
+## Direction (roadmap, not shipped)
+
+Honest about where this is heading, not what's done:
+
+- **Self-regulation.** The fleet should sense its own **health and load** and
+  degrade *gracefully*. Today the message bus can degrade *silently*, and
+  concurrent members can collectively hit provider **rate limits**. The direction
+  is a fleet that detects both — backs off / re-routes / surfaces rather than
+  failing quietly — and **never goes silently blind** (the supervisor's view should
+  derive from ground truth — tmux, transcripts, git — that can't silently empty
+  out). Spreading load across providers (Claude *and* Codex) is part of this.
+- **Off the hand-rolled bus.** The tmux + file-mailbox + watchdog transport is
+  pragmatic but fragile; the longer arc moves delivery + liveness onto native
+  primitives (background sessions / agent-teams / a managed-agents API) behind the
+  same `fleet` surface — a seam-swap, not a rewrite.
 
 ## What it does NOT do (by design)
 
@@ -476,11 +628,13 @@ reads. Tune the safe set in `hooks/auto-approve.sh` (the `bash_safe` allowlist).
 
 ```
 bin/fleet              the CLI (the only entrypoint)
-lib/                   common, manifest parser, registry, tmux, restart,
-                       comms (mailboxes, ask/send), run-child
-hooks/                 self-reporting hooks: session-start, prompt-submit,
-                       post-edit, on-stop, session-end; plus auto-approve
-                       (PreToolUse, auto-confirms routine prompts)
+bin/codex-review       run Codex read-only as a different-model adversarial reviewer
+bin/codex-scan         recurring Codex full-pass audit (security/usability/sovereignty)
+lib/                   common, manifest parser, registry, tmux, restart, provider
+                       (claude|codex), comms (mailboxes, ask/send), responder, run-child
+hooks/                 self-reporting hooks: session-start, prompt-submit, post-edit,
+                       on-stop, session-end; plus auto-approve (PreToolUse: auto-confirms
+                       routine prompts + the firmware/key escalation gate)
 skill/SUPERVISOR.md    role prompt for the supervising session
 commands/fleet.md      the /fleet slash command (installed into .claude/commands/)
 templates/             example fleet.toml + primer.md + illustrative hooks block

@@ -23,17 +23,23 @@ test, never force-push shared history.
 
 ## 4. The permission / auto-approve model
 The fleet-wide PreToolUse hook (`hooks/auto-approve.sh`) auto-confirms what is read-only or recoverable, and
-gates what is irreversible or outward. It never auto-DENIES — worst case is a needless prompt.
+gates what is irreversible or outward. For most tools it never *forces* an outcome — worst case is a needless
+prompt — with **one deliberate exception**: a high-stakes class is actively DENIED and escalated (below).
 - **Auto-approved:** read-only commands + pipelines; `cd …&&` prefixes and `&&`/`;` chains where EVERY part is
   itself safe; read-only `gh`/MCP; inter-agent messaging; LOCAL git checkpoints (add-named / commit / fetch /
   branch / switch); `git push` (non-force); scoped build/test runners (check·build·test).
 - **Still prompts:** irreversible/destructive (rm, force-push, reset --hard, clean, repo/disk delete),
   arbitrary execution (ssh, interpreters, command-substitution, redirection), outward sends, bulk staging.
+- **Hard-deny + escalate (the one exception):** firmware-flash / firmware-sign / key-mint / writes to
+  key-or-signature artifacts (`espflash`/`probe-rs`/`esptool`, `openssl`/`gpg`/`ssh-keygen` sign+keygen,
+  `*.key`/`*.pem`/`*.sig`/`tg_priv*`/`persona*.bin` …). Under `--dangerously-skip-permissions` a silent
+  fall-through would *run* these, so the hook denies and tells the agent to escalate with the exact
+  artifact/target/authority/reason. Source edits/builds/reads unaffected. Toggle `FLEET_FIRMWARE_GATE=off`.
 - **Safety nets:** (1) a **pre-push secret-scan** git hook (`hooks/git/pre-push`) blocks any push that adds a
   token/key/.env — making auto-approved push leak-safe. (2) **auto-checkpoint before destructive ops** —
   snapshot first so the op is recoverable, then auto-approve it. Goal: only genuine decisions + a tiny
   truly-irreversible residue ever reach the human.
-- Kill-switch: `FLEET_AUTOCONFIRM=off`. Bypass the secret-scan once (rare, deliberate): `FLEET_SKIP_SECRET_SCAN=1`.
+- Kill-switches: `FLEET_AUTOCONFIRM=off` (the whole hook), `FLEET_FIRMWARE_GATE=off` (the deny gate). Bypass the secret-scan once (rare, deliberate): `FLEET_SKIP_SECRET_SCAN=1`.
 
 ## 5. Public code, private context (share the code, not the secret)
 The tooling/code is shareable; secrets and project context are not. Pattern: a **PUBLIC code repo + a PRIVATE
