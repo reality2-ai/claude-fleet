@@ -227,14 +227,14 @@ checkpointable_git() {
 # keystore/provision dirs are NOT gated — only the dangerous OPERATIONS + trust-material
 # artifacts — so #20/#17 source dev stays fast while flash/sign/mint require a human go.
 hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operation?
-  local c="$1" first base seg rest
+  local c="$1" first base seg rest cargo_sub cargo_d; local -a _cw
   rest="${c//&&/;}"; rest="${rest//|/;}"          # scan every pipe/&&/; segment
   while [[ -n "$rest" ]]; do
     case "$rest" in *';'*) seg="${rest%%;*}"; rest="${rest#*;}" ;; *) seg="$rest"; rest="" ;; esac
     seg="${seg#"${seg%%[![:space:]]*}"}"
     first="${seg%%[[:space:]]*}"; base="${first##*/}"
     case "$base" in
-      espflash|esptool|esptool.py|dfu-util|st-flash|stm32flash|openocd|nrfjprog|JLinkExe|teensy_loader_cli)
+      espflash|esptool|esptool.py|dfu-util|st-flash|stm32flash|openocd|nrfjprog|JLinkExe|teensy_loader_cli|cargo-embed|cargo-flash|probe-run|elf2uf2-rs)
         return 0 ;;
       probe-rs)
         case " $seg " in *' download'* | *' run'* | *' erase'* | *' flash'* | *' gdb'*) return 0 ;; esac ;;
@@ -246,6 +246,19 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
         case " $seg " in *' --sign'* | *' --clearsign'* | *' --detach-sig'* | *' --gen-key'* | *' --full-gen-key'* | *' --export-secret'*) return 0 ;; esac ;;
       dd)
         case " $seg " in *' of=/dev/'*) return 0 ;; esac ;;
+      cargo|cross)
+        # embed/flash/espflash always flash a device; `cargo run` flashes IFF the
+        # target's .cargo runner is a flasher (probe-rs/cargo-embed/espflash/…)
+        read -ra _cw <<<"$seg"; cargo_sub="${_cw[1]:-}"; [[ "$cargo_sub" == +* ]] && cargo_sub="${_cw[2]:-}"
+        case "$cargo_sub" in
+          embed|flash|espflash) return 0 ;;
+          run|r|rr|runner)
+            cargo_d="$cwd"
+            while [[ -n "$cargo_d" ]]; do
+              [[ -f "$cargo_d/.cargo/config.toml" ]] && grep -qiE 'runner[[:space:]]*=.*(probe-rs|probe-run|cargo-?embed|cargo-?flash|espflash|dfu-util|elf2uf2)' "$cargo_d/.cargo/config.toml" 2>/dev/null && return 0
+              [[ "$cargo_d" == "/" ]] && break; cargo_d="${cargo_d%/*}"; [[ -z "$cargo_d" ]] && cargo_d="/"
+            done ;;
+        esac ;;
     esac
     # explicit signed-OTA / cert-mint / persona-write verbs on any tool
     case " $seg " in
