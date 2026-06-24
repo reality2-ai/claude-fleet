@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# codex-scan — periodic FULL-PASS security + usability audit of an R2 repo, run by
+# OpenAI Codex (a different model than the fleet's Claude). This is the recurring,
+# institutionalised version of the external hackability probe: a fresh independent
+# adversary re-scanning the codebase "now and then" — run it when Codex token usage
+# has RESET (a full scan is quota-heavy). Read-only: Codex reads + reports, never edits.
+#
+# Findings still get TRIAGED against current bytes before any fix (an outside doc can
+# be partly stale/wrong) — same discipline as the 2026-06-25 probe.
+#
+# Usage:
+#   codex-scan <repo-dir> [security|usability|both]   # default: both
+#   codex-scan <repo-dir> both > findings.md
+#
+# Env: FLEET_CODEX_BIN (default codex), CODEX_SCAN_TIMEOUT (default 1800s).
+set -uo pipefail
+
+CODEX="${FLEET_CODEX_BIN:-codex}"
+command -v "$CODEX" >/dev/null 2>&1 || { echo "codex-scan: '$CODEX' not on PATH" >&2; exit 127; }
+
+repo="${1:?usage: codex-scan <repo-dir> [security|usability|both]}"
+focus="${2:-both}"
+[[ -d "$repo" ]] || { echo "codex-scan: '$repo' is not a directory" >&2; exit 2; }
+
+read -r -d '' SEC <<'EOF'
+SECURITY: trust/identity/keys, the wire + dataplane ordering (auth-before-record, dedup, replay),
+routing (source-hop, TTL, flood amplification), OTA (signed vs unsigned, recovery atomicity),
+provisioning/join (owner-binding, join-code, collision), CBOR canonicalisation, platform receivers
+vs the verified core, and any place a lower-level API accepts behaviour a higher gate only sometimes
+compensates for. Reproduce the worst finding through the public API if you can.
+EOF
+read -r -d '' USA <<'EOF'
+USABILITY: friction in the happy path (auth/connectivity that should be invisible), one-command-per-intent,
+hardcoded credentials / sudo setup / multi-tool sprawl, resumability of dropped steps, calm-by-default with
+escalation only at the right moments (key-bearing / ambiguous / ownership-crossing), and whether the operator
+ever has to understand crypto/network internals they shouldn't.
+EOF
+
+read -r -d '' MISSION <<'EOF'
+THE MISSION + VALUES THIS SYSTEM SERVES (audit AGAINST these, not generic best-practice):
+- CORE MISSION: design systems that BENEFIT THE PLANET AND ITS INHABITANTS, where distributed AI and the
+  natural world are a SYMBIOSIS — mutual benefit, NOT extraction — and that give people PURPOSE (agency,
+  kaitiakitanga/guardianship, meaningful participation). AI gains senses; the natural world gains sovereignty,
+  voice, protection, and a share of value; people gain meaning and a role.
+- DIGITAL SOVEREIGNTY FOR NATURAL ENTITIES: rivers, mountains, ecosystems, communities, and PEOPLE (a person
+  wearing devices is a natural entity) are first-class sovereign participants. The senses/data ABOUT an entity
+  belong to ITS trust group, stewarded by its kaitiaki (self or designated guardian), consent-governed — NOT
+  to whoever holds the sensor or the platform/manufacturer. The keystore/wallet = personal digital
+  self-sovereignty, the inverse of surveillance capitalism.
+- THE HOW: off- AND on-grid distributed intelligence + senses, through R2. Off-grid reliability
+  (partition-tolerant, store-carry-forward, transient networking) is the hard, essential part — it must deliver
+  intelligence + senses where there is NO grid (EarthGrids, disaster zones, underserved communities).
+- STANDING VALUES / tie-breakers: security WINS conflicts (prefer more secure over more convenient); calmer
+  technology in UX (calm-by-default, escalate only when genuinely needed); simplicity (Occam — complexity is a
+  liability); confidence is earned by surviving refutation, never by assertion.
+EOF
+
+read -r -d '' SOV <<'EOF'
+MISSION / SOVEREIGNTY: where is sovereignty merely DESCRIBED but not ENFORCED at runtime (no egress gate /
+consent record / provenance / revocation), so senses-about-an-entity could leak or be extracted against the
+entity's trust group? Where does the design tend toward extraction, central custody, surveillance, or
+lock-in rather than symbiosis + local ownership? Where does off-grid operation silently degrade or depend on
+infrastructure (a single gateway/broker) it claims not to need? Where is the person/entity unable to know or
+control what data leaves, or to leave? Flag mission-divergence with the same severity rigour as a security bug.
+EOF
+
+case "$focus" in
+  security) lens="$SEC" ;;
+  usability) lens="$USA" ;;
+  sovereignty|mission) lens="$SOV" ;;
+  both|all|*) lens="$SEC"$'\n\n'"$USA"$'\n\n'"$SOV" ;;
+esac
+
+PROMPT="You are an INDEPENDENT adversarial auditor (a different model from the team that wrote this code). \
+Do a FULL-PASS audit of this repository for the lenses below, JUDGED IN SERVICE OF THE MISSION + VALUES stated \
+first. Default to skepticism — find real problems, do not rubber-stamp. Read the code; cite concrete evidence \
+as file:line. For each finding give: an id, severity (critical/high/medium/low), the evidence (file:line), why \
+it matters (the concrete attack, friction, or mission-divergence), and a one-line fix. Group by lens. Be honest \
+about what is GOOD too (so the team can credit it). Prefer a shorter list of REAL, verified findings over a long \
+speculative one.
+
+$MISSION
+
+LENSES:
+$lens
+
+Output a structured findings list (markdown). This will be triaged against current code before any fix, \
+so cite exact locations."
+
+cd "$repo" || exit 2
+echo "# codex-scan: $repo ($focus)"
+echo "<!-- run when Codex quota is fresh; triage findings vs current bytes before fixing -->"
+echo
+exec timeout "${CODEX_SCAN_TIMEOUT:-1800}" "$CODEX" exec \
+  --sandbox read-only --skip-git-repo-check "$PROMPT" < /dev/null

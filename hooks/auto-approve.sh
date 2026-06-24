@@ -2,8 +2,10 @@
 # auto-approve.sh — PreToolUse hook. Auto-allows a curated, NON-DESTRUCTIVE set of
 # tool calls so fleet members don't stop for routine "press-enter-for-yes"
 # confirmations, while anything destructive or ambiguous still falls through to
-# the normal permission prompt. It NEVER auto-denies — worst case it stays silent
-# and you decide.
+# the normal permission prompt. It auto-denies ONE class — firmware-flash /
+# firmware-sign / key-mint / trust-material-artifact ops (probe A9) — because under
+# --dangerously-skip-permissions a silent fall-through would RUN them; everything else
+# it either allows or stays silent on and you decide.
 #
 # Auto-allowed: read-only tools (Read/Glob/Grep/LS/NotebookRead/TodoWrite/
 # WebSearch), edits to files inside the workspace, and read-only shell commands
@@ -14,6 +16,7 @@
 # Scope: only acts inside a `.fleet` workspace. Toggles:
 #   FLEET_AUTOCONFIRM=off        disable entirely (prompt as normal)
 #   FLEET_AUTOCONFIRM_EDITS=off  keep prompting for file edits
+#   FLEET_FIRMWARE_GATE=off      disable the firmware/key/OTA escalation (deny) gate
 set -uo pipefail
 
 [[ "${FLEET_AUTOCONFIRM:-on}" == "off" ]] && exit 0
@@ -47,6 +50,15 @@ allow() {   # emit the permission decision and stop
 }
 # stay silent (exit 0, no output) → normal prompting
 ask() { exit 0; }
+
+deny() {   # HARD deny → blocks even --dangerously-skip-permissions; escalates to a human
+  local event="${FLEET_HOOK_EVENT:-}"
+  [[ -n "$event" ]] || event="$(printf '%s' "$payload" | jq -r '.hook_event_name // .event_name // "PreToolUse"' 2>/dev/null)"
+  jq -nc --arg r "${1:-high-sensitivity op}" \
+    --arg e "$event" \
+    '{hookSpecificOutput:{hookEventName:$e,permissionDecision:"deny",permissionDecisionReason:("fleet firmware/key gate — escalate to a human: " + $r)}}'
+  exit 0
+}
 
 # Is a SINGLE simple command (no pipes/chaining) read-only enough to auto-allow?
 cmd_safe() {
@@ -209,6 +221,48 @@ checkpointable_git() {
   esac
 }
 
+# --- Firmware/key/OTA high-sensitivity gate (probe A9) ------------------------
+# Flashing, firmware signing, key generation/minting, and writes to KEY/SIGNATURE
+# artifacts are high-stakes + often irreversible. Source edits (.rs/.toml/.md) under
+# keystore/provision dirs are NOT gated — only the dangerous OPERATIONS + trust-material
+# artifacts — so #20/#17 source dev stays fast while flash/sign/mint require a human go.
+hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operation?
+  local c="$1" first base seg rest
+  rest="${c//&&/;}"; rest="${rest//|/;}"          # scan every pipe/&&/; segment
+  while [[ -n "$rest" ]]; do
+    case "$rest" in *';'*) seg="${rest%%;*}"; rest="${rest#*;}" ;; *) seg="$rest"; rest="" ;; esac
+    seg="${seg#"${seg%%[![:space:]]*}"}"
+    first="${seg%%[[:space:]]*}"; base="${first##*/}"
+    case "$base" in
+      espflash|esptool|esptool.py|dfu-util|st-flash|stm32flash|openocd|nrfjprog|JLinkExe|teensy_loader_cli)
+        return 0 ;;
+      probe-rs)
+        case " $seg " in *' download'* | *' run'* | *' erase'* | *' flash'* | *' gdb'*) return 0 ;; esac ;;
+      ssh-keygen|age-keygen|minisign|signify|certtool)
+        return 0 ;;
+      openssl)
+        case " $seg " in *' genpkey'* | *' genrsa'* | *' ecparam'* | *' gendsa'* | *' -sign'* | *' dgst'* | *' pkeyutl'* | *' req '* | *' pkcs12'*) return 0 ;; esac ;;
+      gpg|gpg2)
+        case " $seg " in *' --sign'* | *' --clearsign'* | *' --detach-sig'* | *' --gen-key'* | *' --full-gen-key'* | *' --export-secret'*) return 0 ;; esac ;;
+      dd)
+        case " $seg " in *' of=/dev/'*) return 0 ;; esac ;;
+    esac
+    # explicit signed-OTA / cert-mint / persona-write verbs on any tool
+    case " $seg " in
+      *' ota '*' sign'* | *' ota '*' push'* | *' sign-firmware'* | *' mint-cert'* | *' mint '*'cert'* | *' provision '*' write'* | *' write-persona'*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+hs_path() {   # is this Write/Edit target a key / signature / trust-material artifact?
+  case "$1" in
+    *.key | *.pem | *.sig | *.der | *.p12 | *.pfx | *.jks | *.seed | *.privkey) return 0 ;;
+    *tg_priv* | *_private_key* | *private-key* | *persona*.bin | *keystore*.db | *wallet*.dat) return 0 ;;
+  esac
+  return 1
+}
+
 case "$tool" in
   Read|Glob|Grep|LS|NotebookRead|TodoWrite|WebSearch)
     allow "read-only tool" ;;
@@ -216,6 +270,8 @@ case "$tool" in
     [[ "${FLEET_AUTOCONFIRM_EDITS:-on}" == "off" ]] && ask
     p="$(printf '%s' "$payload" | jq -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // .input.file_path // .input.path // .params.file_path // .params.path // ""' 2>/dev/null)"
     [[ -n "$p" ]] || ask
+    [[ "${FLEET_FIRMWARE_GATE:-on}" != "off" ]] && hs_path "$p" && \
+      deny "write to a key / signature / trust-material artifact ($p) — report to the supervisor with the exact artifact + authority + reason; do not auto-write"
     case "$p" in
       "$ws"/* | "$ws") allow "in-workspace edit" ;;   # absolute, inside workspace
       /*) ask ;;                                        # absolute, outside → prompt
@@ -224,6 +280,8 @@ case "$tool" in
   Bash)
     c="$(printf '%s' "$payload" | jq -r '.tool_input.command // .input.command // .params.command // .command // ""' 2>/dev/null)"
     [[ -n "$c" ]] || ask
+    [[ "${FLEET_FIRMWARE_GATE:-on}" != "off" ]] && hs_bash "$c" && \
+      deny "firmware flash / firmware sign / key-mint operation — report to the supervisor with the exact artifact + target + authority + reason; do not auto-run"
     if bash_safe "$c"; then allow "read-only shell"
     elif checkpointable_git "$c"; then do_checkpoint; allow "auto-checkpointed git op (recover: refs/auto-checkpoint/*)"
     else ask; fi ;;

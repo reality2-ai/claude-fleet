@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# codex-review — run OpenAI Codex as an independent, DIFFERENT-MODEL adversarial
+# reviewer over a target (a diff, a finding, a design, a spec section). Read-only:
+# Codex cannot edit/flash/commit — it only critiques. The value is the independent
+# architecture/training: it catches what same-model (Claude) verification structurally
+# can't. Use SPARINGLY — Codex is quota-limited; reserve it for high-stakes checks
+# (security-critical fixes, key designs), not routine review.
+#
+# Usage:
+#   codex-review <file>                 # review the prompt/target in <file>
+#   codex-review - < prompt.txt         # read the prompt from stdin
+#   echo "<text>" | codex-review -
+#   codex-review --diff <gitref> [paths]  # adversarially review a git diff
+#
+# Env: FLEET_CODEX_BIN (default: codex), CODEX_REVIEW_DIR (a trusted git dir to run in).
+set -uo pipefail
+
+CODEX="${FLEET_CODEX_BIN:-codex}"
+command -v "$CODEX" >/dev/null 2>&1 || { echo "codex-review: '$CODEX' not on PATH" >&2; exit 127; }
+
+PRIMER='You are an INDEPENDENT adversarial reviewer (a different model from the one that produced the work below). Your job is REFUTATION, not approval: find concrete ways the work is wrong, incomplete, or insecure. Do not explore the filesystem unless a path is given. Be concise and concrete — list specific failure scenarios with severity and a one-line mitigation each; if a class is genuinely sound, say so plainly. Default to skepticism.'
+
+mode="prompt"; target=""
+case "${1:-}" in
+  --diff) mode="diff"; shift; ref="${1:-HEAD}"; shift || true; paths=("$@") ;;
+  -)      target="$(cat)";;
+  "" )    echo "usage: codex-review <file|-> | --diff <ref> [paths]" >&2; exit 2 ;;
+  *)      [[ -f "$1" ]] && target="$(cat "$1")" || target="$1" ;;
+esac
+
+if [[ "$mode" == "diff" ]]; then
+  d="$(git diff "$ref" -- "${paths[@]}" 2>/dev/null)"
+  [[ -n "$d" ]] || { echo "codex-review: empty diff for '$ref'" >&2; exit 1; }
+  target=$'Adversarially review this diff for correctness/security regressions and missed edge cases:\n\n'"$d"
+fi
+
+prompt="$PRIMER"$'\n\n'"$target"
+# read-only sandbox + skip-git-check so it runs anywhere; never auto-edits/commits.
+run_dir="${CODEX_REVIEW_DIR:-$PWD}"
+cd "$run_dir" 2>/dev/null || true
+exec timeout "${CODEX_REVIEW_TIMEOUT:-420}" "$CODEX" exec \
+  --sandbox read-only --skip-git-repo-check "$prompt" < /dev/null
