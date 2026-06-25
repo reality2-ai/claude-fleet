@@ -228,6 +228,14 @@ checkpointable_git() {
 # artifacts — so #20/#17 source dev stays fast while flash/sign/mint require a human go.
 hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operation?
   local c="$1" first base seg rest cargo_sub cargo_d; local -a _cw
+  # fleet messaging (send/broadcast/ask) carries human TEXT about the work — OTA/
+  # cert/sign/mint WORDS in a status note are not operations, and the note may
+  # contain ';'/'&&' that the naive splitter below would expose as fragments. The
+  # wire only DELIVERS text, never executes it → exempt the whole messaging command.
+  read -ra _cw <<<"$c"
+  if [[ "${_cw[0]##*/}" == fleet ]]; then
+    case "${_cw[1]:-}" in send|broadcast|ask) return 1 ;; esac
+  fi
   rest="${c//&&/;}"; rest="${rest//|/;}"          # scan every pipe/&&/; segment
   while [[ -n "$rest" ]]; do
     case "$rest" in *';'*) seg="${rest%%;*}"; rest="${rest#*;}" ;; *) seg="$rest"; rest="" ;; esac
