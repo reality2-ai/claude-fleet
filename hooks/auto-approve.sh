@@ -236,11 +236,20 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
   if [[ "${_cw[0]##*/}" == fleet ]]; then
     case "${_cw[1]:-}" in send|broadcast|ask) return 1 ;; esac
   fi
+  # git is SOURCE CONTROL — commit/add/push never flash firmware or mint a key at
+  # RUNTIME; the commit message / diff may merely MENTION mint/sign/cert/firmware as
+  # prose. Exempt git ops (strip a leading `cd <dir> &&`, the common
+  # `cd repo && git commit -m "...mint cert..."` shape). The git-case downstream still
+  # applies its own source-control gating (commit/push prompts).
+  local _g="$c"
+  case "$_g" in cd\ *) _g="${_g#*&&}"; _g="${_g#"${_g%%[![:space:]]*}"}" ;; esac
+  case "${_g%%[[:space:]]*}" in git|*/git) return 1 ;; esac
   rest="${c//&&/;}"; rest="${rest//|/;}"          # scan every pipe/&&/; segment
   while [[ -n "$rest" ]]; do
     case "$rest" in *';'*) seg="${rest%%;*}"; rest="${rest#*;}" ;; *) seg="$rest"; rest="" ;; esac
     seg="${seg#"${seg%%[![:space:]]*}"}"
     first="${seg%%[[:space:]]*}"; base="${first##*/}"
+    [[ "$base" == git ]] && continue   # git segment = source control, never a runtime flash/mint
     case "$base" in
       espflash|esptool|esptool.py|dfu-util|st-flash|stm32flash|openocd|nrfjprog|JLinkExe|teensy_loader_cli|cargo-embed|cargo-flash|probe-run|elf2uf2-rs)
         return 0 ;;
