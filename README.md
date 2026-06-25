@@ -448,6 +448,19 @@ comfortable "all-green" local minimum that same-model verification settled into.
 `codex-scan` can be pointed at **claude-fleet itself** — the tool gets the same
 treatment as the code it builds.
 
+## The working process, as reusable prompts
+
+The adversarial/annealing discipline above is one piece of a larger working
+process: conjecture/refutation, verify-then-record, the confirmation-bias and
+anti-sycophancy guards, edge-first testing, and the git habits that make results
+durable and auditable.
+[`docs/REFUTATION-WORKING-PROCESS.md`](docs/REFUTATION-WORKING-PROCESS.md) distills
+the whole thing into copy-pasteable prompts — **Layer 1** standing mindset ·
+**Layer 2** the adversary · **Layer 3** the orchestrator's process loops ·
+**Layer 4** git — that drop into any project's agents. It's project-agnostic, the
+prompt-text companion to
+[`docs/FLEET-WORKING-PRINCIPLES.md`](docs/FLEET-WORKING-PRINCIPLES.md).
+
 ## Remote control (phone / web)
 
 Claude Code's own **Remote Control** (`/remote-control`) lets you drive a local
