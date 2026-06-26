@@ -66,5 +66,5 @@ fleet_enqueue "$from" "$to" "$ans" "$hop" answer false
 # 2. one-line summary → asker's thread (when it's next idle)
 fleet_notify "$from" "$to" "answered «$qshort»: $brief  (full reply: fleet inbox $from)" "$hop"
 # 3. brief, no-action FYI → target's thread (when it's next idle)
-fleet_notify "$to" "fleet" "peer '$from' consulted you about «$qshort» — answered from a forked copy of your context; no action needed." "$hop"
+fleet_notify "$to" "fleet" "peer '$from' consulted you about «$qshort» — answered off-thread from your provider-native context; no action needed." "$hop"
 fleet_log answered "$to" "forked reply → $from (hop $hop)"

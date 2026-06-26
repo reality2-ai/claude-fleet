@@ -79,11 +79,20 @@ fleet_codex_add_common_flags() {
   [[ -n "$model" ]] && argv+=(--model "$model")
   [[ -n "$profile" ]] && argv+=(--profile "$profile")
 
-  case "$pm" in
-    bypassPermissions) argv+=(--dangerously-bypass-approvals-and-sandbox) ;;
-    acceptEdits)       sandbox="${sandbox:-workspace-write}"; approval="${approval:-on-request}" ;;
-    plan)              sandbox="${sandbox:-read-only}"; approval="${approval:-untrusted}" ;;
-  esac
+  # Match the Claude managed-worker default: non-supervisor workers run
+  # unattended unless FLEET_SKIP_PERMISSIONS=off. The supervisor remains
+  # prompt-gated, and callers such as `fleet refute` can force plan/read-only by
+  # temporarily setting FLEET_SKIP_PERMISSIONS=off.
+  if [[ "${FLEET_SKIP_PERMISSIONS:-on}" == "on" && "$id" != "supervisor" ]]; then
+    argv+=(--dangerously-bypass-approvals-and-sandbox)
+    sandbox=""; approval=""
+  else
+    case "$pm" in
+      bypassPermissions) argv+=(--dangerously-bypass-approvals-and-sandbox); sandbox=""; approval="" ;;
+      acceptEdits)       sandbox="${sandbox:-workspace-write}"; approval="${approval:-on-request}" ;;
+      plan)              sandbox="${sandbox:-read-only}"; approval="${approval:-untrusted}" ;;
+    esac
+  fi
 
   [[ -n "$sandbox" ]] && argv+=(--sandbox "$sandbox")
   [[ -n "$approval" ]] && argv+=(--ask-for-approval "$approval")
@@ -125,8 +134,8 @@ fleet_agent_build_args() {
       ;;
     codex)
       argv+=("$bin" --cd "$cwd")
-      fleet_codex_add_managed_hooks argv
-      fleet_codex_add_common_flags argv "$id" "$pm"
+      fleet_codex_add_managed_hooks "$arr_name"
+      fleet_codex_add_common_flags "$arr_name" "$id" "$pm"
       if [[ -n "$sid" ]]; then
         argv+=(resume "$sid")
         [[ -n "$prompt" ]] && argv+=("$prompt")

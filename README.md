@@ -26,7 +26,7 @@ state is plain JSON files under your workspace.
 
 ## The model (Erlang/OTP)
 
-Each Claude session is a supervised "child"; you describe the set declaratively
+Each coding-agent session is a supervised "child"; you describe the set declaratively
 and `fleet` keeps it running.
 
 | OTP concept | in fleet |
@@ -35,7 +35,7 @@ and `fleet` keeps it running.
 | child spec | one `[[child]]` block: `id`, `cwd`, restart policy, `seed` |
 | restart policy | `permanent` / `transient` / `temporary` |
 | restart intensity | `max_restarts` within `max_seconds` → breaker trips, child marked `failed` |
-| supervisor | an interactive Claude session you talk to (role in `skill/SUPERVISOR.md`) |
+| supervisor | an interactive agent session you talk to (role in `skill/SUPERVISOR.md`) |
 | process registry | per-member state derived from transcripts + self-reporting hooks |
 | message passing | `fleet ask` / `fleet send` between members, with a hop cap |
 
@@ -49,8 +49,8 @@ and `fleet` keeps it running.
   reboot.
 - **Inter-agent comms** — members consult each other (`ask`) or notify each other
   (`send`); replies route back to the asker; a hop cap stops runaway loops.
-- **Remote control** — enable Claude Code's own Remote Control on any member and
-  drive it from claude.ai/code or the mobile app.
+- **Remote control** — enable Claude Code's own Remote Control on Claude-backed
+  members and drive them from claude.ai/code or the mobile app.
 
 ## Prerequisites
 
@@ -75,9 +75,10 @@ remote-control need `tmux`.
 
 ## Safety & permissions
 
-`fleet` members are **autonomous Claude Code sessions** running in your repos —
-they read, edit files, and run shell commands on their own. Treat them with the
-same care as any agent you let act unattended:
+`fleet` members are **autonomous coding-agent sessions** running in your repos —
+Claude Code by default, Codex when configured. They read, edit files, and run
+shell commands on their own. Treat them with the same care as any agent you let
+act unattended:
 
 - **Mind `permission_mode`.** Each member can set `permission_mode` in `fleet.toml`
   (`default` · `acceptEdits` · `plan` · `bypassPermissions`). `bypassPermissions`
@@ -89,10 +90,12 @@ same care as any agent you let act unattended:
   commit or stash anything you don't want touched, and review their diffs like any
   other contributor's.
 - **Autonomy with a failsafe, not a leash.** The intended model: managed
-  **workers run unattended** (`--dangerously-skip-permissions`, default for
-  managed non-supervisor members; toggle `FLEET_SKIP_PERMISSIONS=off`) so they
-  never stall waiting for a human, while the **supervisor stays prompt-gated and
-  *monitors*** them — that oversight, plus the hook below, is the safety layer.
+  **workers run unattended** by default (Claude:
+  `--dangerously-skip-permissions`; Codex:
+  `--dangerously-bypass-approvals-and-sandbox`; toggle
+  `FLEET_SKIP_PERMISSIONS=off`) so they never stall waiting for a human, while
+  the **supervisor stays prompt-gated and *monitors*** them — that oversight,
+  plus the hook below, is the safety layer.
   The doctrine is to make risky changes *recoverable* (checkpoint to git) rather
   than to block them. See [Operating doctrine](#operating-doctrine).
 - **Routine prompts auto-confirmed; high-stakes ops escalated.** A `PreToolUse`
@@ -134,10 +137,11 @@ fleet install-hooks --user
 ```
 
 `fleet init` scaffolds `<workspace>/.fleet/` (manifest, state, logs) and merges
-the self-reporting hooks into `<workspace>/.claude/settings.json` — it leaves
-`settings.local.json`, where your permissions live, untouched. Use
+the self-reporting hooks into `<workspace>/.claude/settings.json` by default —
+it leaves `settings.local.json`, where your permissions live, untouched. Use
+`fleet init --all <ws>` to install both Claude and Codex hooks, or
 `fleet init --no-hooks <ws>` to scaffold without writing settings, then install
-later with `fleet install-hooks [<ws>|--user]`.
+later with `fleet install-hooks [--all|--claude|--codex] [<ws>|--user]`.
 
 ## Quick start
 
@@ -269,6 +273,64 @@ self-reports, is messaged, and is gated just like a Claude one. Running a **mix*
 is deliberate: a different model is a different *perspective* — see
 [Codex as an adversarial helper](#codex-as-an-adversarial-helper).
 
+Managed Codex workers follow the same low-interaction default as managed Claude
+workers: when `FLEET_SKIP_PERMISSIONS` is left `on`, non-supervisor Codex members
+are launched with `--dangerously-bypass-approvals-and-sandbox`. Set
+`FLEET_SKIP_PERMISSIONS=off` to honor prompt-gated modes such as
+`permission_mode = "plan"`; `fleet refute` does this automatically for read-only
+adversaries.
+
+Two commands make mixed-provider operation first-class:
+
+```sh
+fleet handoff core                 # default: start core-codex from core's state
+fleet handoff --provider claude api api-claude
+fleet pair core                    # start core-codex as a live companion
+fleet pair                         # pair every manifest child with its opposite provider
+fleet refute core                  # default: opposite-provider read-only adversary
+fleet dispatch --provider codex audit "Review the auth diff" core
+```
+
+`handoff` does **not** pretend Claude and Codex can resume each other's private
+transcripts. If the target id is already running, it delivers a takeover packet
+to that live member; otherwise it starts a fresh target-provider session with
+the same packet: the repo-local `RESUME.md`, source provider/session metadata,
+current task, claimed files, git status/diff context, and a transcript excerpt.
+That is the right shape for token exhaustion: the next engine verifies ground
+truth from the repo and carries on from durable state instead of inheriting a
+hidden, provider-owned context. Add the new member to `fleet.toml` if the
+handoff or companion should be durable across `fleet up` later.
+
+`fleet pair` is the standing co-work mode. It starts an opposite-provider
+companion in the same repo as a member (`core` + `core-codex`, for example).
+Companions are normal implementation workers, not read-only reviewers: they
+coordinate through `fleet ask/send`, split hypotheses or files where possible,
+keep the same repo-local `RESUME.md` current, and challenge each other's work
+before either engine treats the repo as done. This also simplifies failover:
+when both engines have tokens, `fleet handoff core --stop-source` finds and
+promotes the already-running opposite-provider companion instead of cold-starting
+context after the source is exhausted.
+
+### Repo-local handoff state — `RESUME.md`
+
+Every implementation worker is expected to maintain `<repo>/RESUME.md` as the
+durable takeover record. The file should be updated after each meaningful turn
+and before the worker goes idle with:
+
+- current objective
+- last verified state, with commands/results
+- next concrete actions
+- changed files / claims
+- blockers, risks, and open decisions
+- branch/commit and any "do not assume" notes
+
+Use `fleet init-resume [id]` to scaffold the file for one member, or
+`fleet init-resume` for every manifest child. `fleet handoff` includes this file
+ahead of transcript excerpts, and `fleet doctor` reports managed non-adversary
+workers whose `RESUME.md` is missing, empty, still full of `TODO` placeholders,
+or stale. Tune with `FLEET_RESUME_FILE`, `FLEET_RESUME_CHECK=off`,
+`FLEET_RESUME_TODO_CHECK=off`, and `FLEET_RESUME_STALE_SECS`.
+
 ## Commands
 
 ```sh
@@ -284,7 +346,11 @@ fleet remote [id]            # remote-control status of member(s)
 fleet up [--no-supervisor] [id]   # start the suite + supervisor (post-reboot recovery)
 fleet down [id]                   # stop the suite / one member
 fleet restart <id>                # restart one member
-fleet dispatch <id> "<task>" [cwd]  # start a fresh worker seeded with a task
+fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]
+fleet init-resume [--force] [id]  # scaffold repo-local RESUME.md handoff file(s)
+fleet pair [--provider claude|codex] [--id companion-id] [id]
+fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]
+fleet refute [--provider claude|codex] [--id id] <target> [claim]
 fleet attach <id>                 # attach your terminal to a member's window
 fleet order                       # arrange windows: supervisor, then manifest order
 fleet reap                        # detect crashed members, apply restart policy
@@ -364,11 +430,11 @@ Each member is primed at launch knowing it's the resident expert on its repo, wh
 its peers are, and how to reach them. The design goal: **a peer's question never
 hijacks your live thread.**
 
-- **`fleet ask <to> "q"`** — consult a peer. A transient responder resumes a
-  **fork of the target's live session** (`claude --fork-session`) — its real
-  working context — answers the question **off-thread**, and closes. The target's
-  own session is never interrupted; it only gets a brief *"peer asked you X —
-  answered from a forked copy, no action needed"* note when it's next idle. The
+- **`fleet ask <to> "q"`** — consult a peer. A transient responder resumes the
+  target's provider-native context off-thread (Claude uses `--fork-session`;
+  Codex uses a headless resumed run), answers the question, and closes. The
+  target's own session is never interrupted; it only gets a brief *"peer asked
+  you X — answered off-thread, no action needed"* note when it's next idle. The
   answer routes back to **the asker**: a one-line summary in its thread, the full
   reply saved in its inbox (`fleet inbox`).
 - **`fleet send <to> "msg"`** — a brief FYI delivered into the target's thread
@@ -380,10 +446,11 @@ a real answer informed by the peer's current context. Members are told they do
 `<workspace>/.fleet/inbox/<id>.jsonl` (full answers + an audit trail of who asked
 whom).
 
-> Why the fork? An earlier version delivered the question straight into the
-> target's live thread — visible, but disruptive. A still-earlier one answered in a
-> *fresh* headless session that didn't know what the target was working on. Forking
-> the live session gets both: off-thread **and** context-aware.
+> Why the off-thread responder? An earlier version delivered the question straight
+> into the target's live thread — visible, but disruptive. A still-earlier one
+> answered in a *fresh* headless session that didn't know what the target was
+> working on. Provider-native resume/fork gets both: off-thread **and**
+> context-aware.
 
 **Hop cap.** To stop chains running away, every message carries a hop depth (a
 reply inherits hop+1; a fresh thread resets to 1). Messages past `[supervisor]
@@ -399,7 +466,7 @@ after editing it; the primer is applied at launch.)
 
 ## The supervisor
 
-`fleet up` starts a dedicated **supervisor** window — a Claude session primed with
+`fleet up` starts a dedicated **supervisor** window — an agent session primed with
 the role in `skill/SUPERVISOR.md` — alongside the members. Start or jump to it
 directly with:
 
@@ -417,9 +484,16 @@ worker. Just talk to it: *"status?"*, *"anything conflicting?"*, *"restart api"*
 
 ## Codex as an adversarial helper
 
-Beyond running members, the fleet ships two tools that use **Codex as an
-independent, _different-model_ adversary** — read-only, so it critiques but never
-edits, flashes, or commits. The premise (from
+Beyond running members, the fleet can launch a read-only **opposite-provider**
+reviewer with `fleet refute <target> [claim]`. This is the operational form of
+cross-model adversarial work: a Claude-backed target gets a Codex reviewer by
+default; a Codex-backed target gets a Claude reviewer by default. The reviewer is
+seeded with the target's current task, claimed files, git context, and transcript
+excerpt, then told to refute from live ground truth.
+
+The fleet also ships two standalone tools that use **Codex as an independent,
+_different-model_ adversary** — read-only, so it critiques but never edits,
+flashes, or commits. The premise (from
 [`docs/THURISAZ-WORKING-MODE.md`](docs/THURISAZ-WORKING-MODE.md), §TH-DISCOURSE):
 a significant design or fix isn't trustworthy until a *different* mind has
 genuinely tried to break it — and a different model/architecture catches what
@@ -463,17 +537,18 @@ prompt-text companion to
 
 ## Remote control (phone / web)
 
-Claude Code's own **Remote Control** (`/remote-control`) lets you drive a local
-session from claude.ai/code or the Claude mobile app — an outbound HTTPS
-connection, no ports opened. `fleet` toggles it on live members by injecting the
-slash command (no relaunch). It's a per-member toggle, meant to be enabled
-piecemeal, checked, and turned off again:
+Claude Code's own **Remote Control** (`/remote-control`) is still useful for
+Claude-backed windows: it lets you drive a local session from claude.ai/code or
+the Claude mobile app — an outbound HTTPS connection, no ports opened. `fleet`
+toggles it on live Claude members by injecting the slash command (no relaunch).
+It's a per-member toggle, meant to be enabled piecemeal, checked, and turned off
+again:
 
 ```sh
-fleet remote-control on api    # enable one member  (default action is "on")
+fleet remote-control on api    # enable one Claude member  (default action is "on")
 fleet remote-control off api   # disable it again   (/remote-control is a toggle)
-fleet remote-control on        # enable every live member at once
-fleet remote                   # show each member's status (active | -)
+fleet remote-control on        # enable every live Claude member at once
+fleet remote                   # show provider + remote-control status (active | - | n/a)
 ```
 
 `fleet` reads each member's current state first, so `on`/`off` only act when they
@@ -481,6 +556,21 @@ actually change something. Enabled members appear **by name** in claude.ai/code
 and the mobile app (signed in as you). Requires a Pro/Max/Team/Enterprise login
 (`/login`); each enabled member is a separately controllable session on your
 account.
+
+For mixed Claude/Codex pairs, do not use provider UIs as the control plane.
+Codex will not appear in Claude's mobile app, and manually steering two provider
+consoles loses the shared audit trail. Treat `fleet` as the provider-neutral
+remote layer instead: `fleet brief/status`, `fleet ask/send`, `fleet pair`,
+`fleet handoff`, `fleet inbox`, and repo-local `RESUME.md` are the durable
+interface. At a computer, the normal operator view remains tmux: attach to the
+supervisor or workers directly, keep the full panes visible, and use `fleet`
+commands from there. The mobile-friendly companion should be a Reality2
+trust-group webapp / WASM hive: read-only status by default, explicit actions for
+`ask`, `send`, `pair`, `handoff`, and `down`, with trust-group identity and audit
+on every operator command. See
+[`docs/R2-FLEET-CONTROL-HIVE.md`](docs/R2-FLEET-CONTROL-HIVE.md). Until that
+exists, a mobile shell such as Termius still works, but it is a fallback, not the
+intended mixed-provider UI.
 
 ## Self-reporting hooks
 
@@ -513,16 +603,17 @@ the normal prompt appears. The **one deliberate exception** is the high-stakes
 gate described below, which actively *denies* and escalates.
 
 **Auto-approved:** read-only tools (`Read`, `Glob`, `Grep`, `LS`, `NotebookRead`,
-`WebSearch`); file edits **inside the workspace**; and read-only shell — a safe
-leading command (`ls`, `cat`, `grep`, `rg`, `find` without `-exec`/`-delete`,
-read-only `git` like `status`/`diff`/`log` …) with **no** pipes, redirection, or
-command substitution.
+`WebSearch`); file edits **inside the workspace**; safe shell reads; named
+`git add`, `git commit`, non-force `git push`; and scoped build/test runners
+(`cargo check|build|test`, `npm run test|build|lint|typecheck`, etc.). Safe
+pipelines and `&&` chains are allowed only when every segment is itself allowed.
 
 **Still prompts (everything else):** writes outside the repo, `rm`/`mv`/`dd`,
-installs, network (`curl`/`ssh` …), `sudo`, `git push`/`reset`/`commit`, runners
-(`make`/`npm`/`node` …), any compound/piped command, and unknown tools. Genuine
-decision questions an agent raises ("which approach?") aren't permission prompts,
-so they always wait for you.
+installs, arbitrary network (`curl`/`ssh` …), `sudo`, force-push, destructive git
+ops (`reset`, `rebase`, `pull`, broad checkout/restore/clean), publish/install
+runners, redirection/substitution, and unknown tools. Genuine decision questions
+an agent raises ("which approach?") aren't permission prompts, so they always
+wait for you.
 
 **The firmware / key escalation gate (hard-deny).** Under
 `--dangerously-skip-permissions` a silent fall-through would *run* a dangerous

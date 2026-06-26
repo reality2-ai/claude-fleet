@@ -8,10 +8,10 @@
 # it either allows or stays silent on and you decide.
 #
 # Auto-allowed: read-only tools (Read/Glob/Grep/LS/NotebookRead/TodoWrite/
-# WebSearch), edits to files inside the workspace, and read-only shell commands
-# (no pipes/redirection/substitution; safe leading command; read-only git).
-# Everything else — writes outside the repo, rm/mv/dd, installs, network, sudo,
-# git push/reset/commit, runners (make/npm/node…), unknown tools — prompts.
+# WebSearch), edits to files inside the workspace, safe shell commands, named
+# git staging/commit/non-force push, and scoped build/test runners.
+# Everything else — writes outside the repo, rm/mv/dd, installs, arbitrary
+# network, sudo, force-push/reset/rebase/pull, unknown runners/tools — prompts.
 #
 # Scope: only acts inside a `.fleet` workspace. Toggles:
 #   FLEET_AUTOCONFIRM=off        disable entirely (prompt as normal)
@@ -82,9 +82,8 @@ cmd_safe() {
         # read-only
         status|diff|log|show|ls-files|ls-tree|ls-remote|rev-parse|describe|blame|\
         shortlog|cat-file|for-each-ref|reflog|grep|whatchanged|fetch) return 0 ;;
-        # recoverable / checkpoint-creating (the GitHub-failsafe mechanism) — but NOT
-        # push: pushing is outward and can irreversibly leak to a public repo, so it
-        # stays a prompt (the one human glance that guards "share code, not secret").
+        # recoverable / checkpoint-creating (the GitHub-failsafe mechanism);
+        # non-force push is guarded by the fleet pre-push secret scan.
         commit) return 0 ;;
         add)    # named staging only — reject bulk/force (secret-staging footgun)
           case " $c " in *' -A'* | *' --all'* | *' -f'* | *' --force'*) return 1 ;; esac
@@ -240,7 +239,7 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
   # RUNTIME; the commit message / diff may merely MENTION mint/sign/cert/firmware as
   # prose. Exempt git ops (strip a leading `cd <dir> &&`, the common
   # `cd repo && git commit -m "...mint cert..."` shape). The git-case downstream still
-  # applies its own source-control gating (commit/push prompts).
+  # applies its own source-control gating (force push / destructive ops prompt).
   local _g="$c"
   case "$_g" in cd\ *) _g="${_g#*&&}"; _g="${_g#"${_g%%[![:space:]]*}"}" ;; esac
   case "${_g%%[[:space:]]*}" in git|*/git) return 1 ;; esac

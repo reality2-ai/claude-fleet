@@ -31,7 +31,7 @@ fleet_enqueue() {
 }
 
 # Deliver a brief note into <to>'s thread now if it's idle, else queue it for the
-# next idle drain. Used by the forked responder and by `fleet send`.
+# next idle drain. Used by the off-thread responder and by `fleet send`.
 fleet_notify() {
   local to="$1" from="$2" text="$3" hop="${4:-1}"
   fleet_enqueue "$to" "$from" "$text" "$hop" fyi true
@@ -231,9 +231,17 @@ fleet_peer_primer() {
   done
   [[ -z "$peers" ]] && peers="  (no peers configured)"$'\n'
   cat <<EOF
-You are "$id", one member of a fleet of Claude Code sessions. Each member is the
+You are "$id", one member of a fleet of coding-agent sessions. Each member is the
 resident expert on its own repo and holds deep context on it. You are the expert
 on: ${me_cwd}.
+
+Durable handoff requirement:
+$(_fleet_resume_contract 2>/dev/null || cat <<'FALLBACK'
+Maintain a repo-local RESUME.md as the durable handoff record for this worker.
+Update it after each meaningful turn and before going idle with enough detail
+that another agent can take over without your private transcript.
+FALLBACK
+)
 
 Your peers — consult them when a question is genuinely about THEIR area:
 ${peers}
@@ -242,16 +250,17 @@ To reach a peer (run in Bash):
   - Send a heads-up:  fleet send <peer-id> "info"
 
 How \`ask\` works: it does NOT interrupt the peer's live session. The fleet spins
-up a forked copy of that peer's current context and answers your question
-off-thread. The answer comes back to YOU — a one-line summary appears in your
-thread, and the full reply is saved in your inbox. Read it with:  fleet inbox
+up a provider-native off-thread copy/resume of that peer's current context and
+answers your question. The answer comes back to YOU — a one-line summary appears
+in your thread, and the full reply is saved in your inbox. Read it with:
+fleet inbox
 
 How incoming messages work: you do NOT answer peers' questions yourself. When a
-peer asks YOU something, the fleet answers it from a forked copy of your context;
-you'll just see a brief "no action needed" note. A "fleet send" from a peer is a
-short FYI — act on it only if it actually affects your current work. Nothing ever
-hijacks your thread with someone else's question. Read anything queued any time
-with:  fleet inbox
+peer asks YOU something, the fleet answers it from a provider-native off-thread
+copy/resume of your context; you'll just see a brief "no action needed" note. A
+"fleet send" from a peer is a short FYI — act on it only if it actually affects
+your current work. Nothing ever hijacks your thread with someone else's question.
+Read anything queued any time with:  fleet inbox
 
 There is also a "supervisor" coordinating the fleet. Escalate to it (blockers,
 cross-cutting decisions, "who owns X?") with:  fleet send supervisor "..."

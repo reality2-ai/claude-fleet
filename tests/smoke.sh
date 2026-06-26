@@ -41,6 +41,16 @@ STUBEOF
 chmod +x "$STUB"
 export FLEET_CLAUDE_BIN="$STUB"
 
+# stub codex: record argv (one per line) to $FLEET_CODEX_STUB_LOG, then idle
+CSTUB="$TMP/codex"
+cat > "$CSTUB" <<'STUBEOF'
+#!/usr/bin/env bash
+[ -n "${FLEET_CODEX_STUB_LOG:-}" ] && printf '%s\n' "$@" >> "$FLEET_CODEX_STUB_LOG"
+exec sleep 600
+STUBEOF
+chmod +x "$CSTUB"
+export FLEET_CODEX_BIN="$CSTUB"
+
 # --- 1. static checks -------------------------------------------------------
 section "1. syntax + basic commands"
 syntax_ok=1
@@ -129,8 +139,64 @@ holder=$!; sleep 0.3
 has "second concurrent 'fleet up' is skipped" "$TMP/lock.out" "another 'fleet up' is in progress"
 wait "$holder" 2>/dev/null || true
 
-# --- 8. forked responder (fleet ask plumbing) -------------------------------
-section "8. forked responder"
+# --- 8. mixed-provider launch, pair, handoff, and refute --------------------
+section "8. mixed-provider launch / pair / handoff / refute"
+export FLEET_CODEX_STUB_LOG="$TMP/codex.mixed.log"; : > "$FLEET_CODEX_STUB_LOG"
+"$FLEET" dispatch --provider codex gamma "codex dispatch task" repoA > "$TMP/dispatch_codex.out" 2>&1
+sleep 0.6
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_mixed.out" 2>/dev/null
+hasline "dispatch --provider codex creates gamma window" "$TMP/wins_mixed.out" "gamma"
+hasline "codex dispatch uses --cd" "$FLEET_CODEX_STUB_LOG" "--cd"
+hasline "codex managed worker bypasses interaction by default" "$FLEET_CODEX_STUB_LOG" "--dangerously-bypass-approvals-and-sandbox"
+has "codex dispatch receives task prompt" "$FLEET_CODEX_STUB_LOG" "codex dispatch task"
+"$FLEET" remote gamma > "$TMP/remote_codex.out" 2>&1
+has "remote status labels Codex provider" "$TMP/remote_codex.out" "codex"
+has "remote status marks Codex remote-control n/a" "$TMP/remote_codex.out" "n/a"
+"$FLEET" remote-control on gamma > "$TMP/remote_control_codex.out" 2>&1
+has "remote-control skips Codex windows" "$TMP/remote_control_codex.out" "unavailable for provider 'codex'"
+
+FLEET_RESUME_CHECK=on "$FLEET" doctor --quiet > "$TMP/doctor_resume_missing.out" 2>/dev/null || true
+has "doctor flags missing repo-local RESUME.md" "$TMP/doctor_resume_missing.out" "missing RESUME.md"
+"$FLEET" init-resume --force alpha > "$TMP/init_resume.out" 2>&1
+assert "init-resume scaffolds repo RESUME.md" test -f "$WS2/repoA/RESUME.md"
+has "RESUME.md template has takeover fields" "$WS2/repoA/RESUME.md" "## Next Actions"
+FLEET_RESUME_CHECK=on "$FLEET" doctor --quiet > "$TMP/doctor_resume_todo.out" 2>/dev/null || true
+has "doctor flags unfilled RESUME.md placeholders" "$TMP/doctor_resume_todo.out" "TODO placeholders"
+printf '\nHANDOFF-SENTINEL: repo-local state wins over private transcript.\n' >> "$WS2/repoA/RESUME.md"
+
+"$FLEET" pair --provider codex --id alpha-duet alpha > "$TMP/pair.out" 2>&1
+sleep 0.6
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_pair.out" 2>/dev/null
+hasline "pair creates per-repo companion window" "$TMP/wins_pair.out" "alpha-duet"
+has "pair prompt identifies companion agent" "$FLEET_CODEX_STUB_LOG" "COMPANION AGENT"
+has "pair state records base member" "$WS2/.fleet/state/alpha-duet.json" "\"companion_for\": \"alpha\""
+
+"$FLEET" handoff alpha > "$TMP/handoff_live.out" 2>&1
+sleep 0.2
+has "handoff can promote live companion" "$TMP/handoff_live.out" "live 'alpha-duet'"
+has "live handoff packet includes repo-local RESUME.md" "$WS2/.fleet/inbox/alpha-duet.jsonl" "HANDOFF-SENTINEL"
+has "live handoff promotes companion role" "$WS2/.fleet/state/alpha-duet.json" "\"role\": \"takeover\""
+has "live handoff state records source" "$WS2/.fleet/state/alpha-duet.json" "\"handoff_from\": \"alpha\""
+
+"$FLEET" handoff --provider codex alpha alpha-codex > "$TMP/handoff.out" 2>&1
+sleep 0.6
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_handoff.out" 2>/dev/null
+hasline "handoff creates target provider window" "$TMP/wins_handoff.out" "alpha-codex"
+has "handoff prompt names cross-provider handoff" "$FLEET_CODEX_STUB_LOG" "CROSS-PROVIDER HANDOFF"
+has "handoff prompt includes repo-local RESUME.md" "$FLEET_CODEX_STUB_LOG" "HANDOFF-SENTINEL"
+has "handoff state records source" "$WS2/.fleet/state/alpha-codex.json" "\"handoff_from\": \"alpha\""
+
+"$FLEET" refute --provider codex --id alpha-review alpha "attack the current alpha work" > "$TMP/refute.out" 2>&1
+sleep 0.6
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_refute.out" 2>/dev/null
+hasline "refute creates reviewer window" "$TMP/wins_refute.out" "alpha-review"
+has "refute forces codex read-only sandbox" "$FLEET_CODEX_STUB_LOG" "--sandbox"
+hasline "refute uses read-only sandbox" "$FLEET_CODEX_STUB_LOG" "read-only"
+has "refute prompt is adversarial" "$FLEET_CODEX_STUB_LOG" "REFUTATION"
+has "refute state records target" "$WS2/.fleet/state/alpha-review.json" "\"refutes\": \"alpha\""
+
+# --- 9. forked responder (fleet ask plumbing) -------------------------------
+section "9. forked responder"
 # a stub claude that prints a fixed answer and logs its argv
 RSTUB="$TMP/claude-responder"
 cat > "$RSTUB" <<EOF
@@ -151,8 +217,8 @@ has "brief no-action FYI queued for target"   "$WS2/.fleet/inbox/beta.jsonl"  "n
 has   "target gets a fyi-kind note"                 "$WS2/.fleet/inbox/beta.jsonl" "\"kind\":\"fyi\""
 lacks "target is NOT handed an 'ask' to answer"     "$WS2/.fleet/inbox/beta.jsonl" "\"kind\":\"ask\""
 
-# --- 9. auto-approve PreToolUse hook ----------------------------------------
-section "9. auto-approve hook"
+# --- 10. auto-approve PreToolUse hook ---------------------------------------
+section "10. auto-approve hook"
 APHOOK="$ROOT/hooks/auto-approve.sh"
 # run the hook with a payload (+ optional env=val args); pass/fail on whether it
 # emitted an "allow" decision.
@@ -168,7 +234,8 @@ ap_allow  "Bash 'git status' is auto-allowed"    "$(mkp Bash 'git status' '')"
 ap_allow  "Bash 'ls -la src' is auto-allowed"    "$(mkp Bash 'ls -la src' '')"
 ap_allow  "in-workspace Edit is auto-allowed"    "$(mkp Edit '' "$WS2/repoA/file.txt")"
 ap_prompt "Bash 'rm -rf build' prompts"          "$(mkp Bash 'rm -rf build' '')"
-ap_prompt "Bash 'git push' prompts"              "$(mkp Bash 'git push origin main' '')"
+ap_allow  "Bash 'git push' is auto-allowed"      "$(mkp Bash 'git push origin main' '')"
+ap_prompt "Bash 'git push --force' prompts"      "$(mkp Bash 'git push --force origin main' '')"
 ap_prompt "Bash with a pipe prompts"             "$(mkp Bash 'cat x | tee y' '')"
 ap_prompt "Bash redirection prompts"             "$(mkp Bash 'echo hi > f' '')"
 ap_prompt "edit outside the workspace prompts"   "$(mkp Edit '' '/etc/hosts')"

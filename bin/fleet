@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fleet — an OTP-style supervisor for parallel Claude Code sessions.
+# fleet — an OTP-style supervisor for parallel coding-agent sessions.
 # See README.md. Subcommands: init status conflicts logs up down restart
 # dispatch attach reap help version.
 # resolve `# shellcheck source=` paths relative to this file's dir, not the CWD
@@ -43,7 +43,7 @@ FLEET_VERSION="0.1.0"
 
 usage() {
   cat <<'EOF'
-fleet — supervise parallel Claude Code sessions (OTP-style)
+fleet — supervise parallel coding-agent sessions (OTP-style)
 
   fleet wizard [workspace] [owner]      interactive setup: pick gh repos to clone + run agents on
   fleet init [--no-hooks] [workspace]   scaffold .fleet/ and install self-reporting hooks
@@ -65,7 +65,16 @@ fleet — supervise parallel Claude Code sessions (OTP-style)
   fleet order                   arrange tmux windows: supervisor, then manifest order
   fleet down [id]               stop the suite (or one child), marked intentional
   fleet restart <id>            force-restart one child (honours intensity breaker)
-  fleet dispatch <id> "<task>" [cwd]   start a fresh worker seeded with a task
+  fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]
+                                  start a fresh worker seeded with a task
+  fleet init-resume [--force] [id] scaffold repo-local RESUME.md handoff file(s)
+  fleet pair [--provider claude|codex] [--id companion-id] [id]
+                                  start per-repo opposite-provider companion(s)
+  fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]
+                                  start an opposite-provider takeover from a
+                                  source member's state, git context, and transcript tail
+  fleet refute [--provider claude|codex] [--id id] <target> [claim]
+                                  start a read-only cross-model adversarial reviewer
   fleet attach <id>             attach your terminal to a child's tmux window
   fleet reap                    detect crashed children and apply restart policy
   fleet doctor [--quiet]        self-check the oversight wire from ground truth
@@ -361,7 +370,7 @@ cmd_status() {
   while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen["$id"]=1; ids+=("$id"); }; done < <(fleet_state_ids)
 
   if [[ ${#ids[@]} -eq 0 ]]; then
-    info "no sessions known yet. Start a Claude session in this workspace, or 'fleet up'."
+    info "no sessions known yet. Start an agent session in this workspace, or 'fleet up'."
     return
   fi
 
@@ -565,7 +574,7 @@ cmd_order() {
   info "windows ordered: $(fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#{window_index}:#W' 2>/dev/null | tr '\n' ' ')"
 }
 
-# Launch the supervisor: an interactive Claude session, primed with the
+# Launch the supervisor: an interactive agent session, primed with the
 # supervisor role, that oversees the fleet and can message workers. It is a
 # first-class fleet member (window "supervisor", id "supervisor").
 fleet_start_supervisor() {
@@ -689,17 +698,377 @@ cmd_restart() {
   info "restart: '$id'"
 }
 
+_fleet_validate_provider() {
+  case "$1" in
+    claude|codex) return 0 ;;
+    *) die "unknown provider '$1' (expected claude or codex)" ;;
+  esac
+}
+
+_fleet_opposite_provider() {
+  case "$1" in
+    claude) printf 'codex\n' ;;
+    codex)  printf 'claude\n' ;;
+    *)      printf '%s\n' "$(fleet_default_provider)" ;;
+  esac
+}
+
+_fleet_id_provider() {
+  local id="$1" p
+  p="$(fleet_state_get "$id" '.provider' "")"
+  if [[ -z "$p" || "$p" == "null" ]]; then
+    if [[ "$id" == "supervisor" ]]; then p="$(fleet_default_provider)"
+    else p="$(fleet_provider_for_child "$id")"; fi
+  fi
+  case "$p" in claude|codex) printf '%s\n' "$p" ;; *) fleet_default_provider ;; esac
+}
+
+_fleet_id_cwd() {
+  local id="$1" cwd rel
+  [[ "$id" == "supervisor" ]] && { printf '%s\n' "$WORKSPACE"; return; }
+  cwd="$(fleet_state_get "$id" '.cwd' "")"
+  if [[ -n "$cwd" && "$cwd" != "null" ]]; then printf '%s\n' "$cwd"; return; fi
+  rel="$(fleet_child_get "$id" cwd "")"
+  [[ -n "$rel" ]] || die "unknown member '$id' (no state doc and not in the manifest)"
+  cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
+  printf '%s\n' "$cwd"
+}
+
+_fleet_live_companion_id() {
+  local base="$1" provider="$2" expected id p c
+  expected="$base-$provider"
+  if fleet_tmux_has_window "$expected" 2>/dev/null; then
+    printf '%s\n' "$expected"
+    return 0
+  fi
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    fleet_tmux_has_window "$id" 2>/dev/null || continue
+    p="$(_fleet_id_provider "$id")"
+    [[ "$p" == "$provider" ]] || continue
+    c="$(fleet_state_get "$id" '.companion_for' "")"
+    [[ "$c" == "$base" ]] || continue
+    printf '%s\n' "$id"
+    return 0
+  done < <(fleet_state_ids)
+  return 1
+}
+
+_fleet_limited_lines() {
+  local max="$1"
+  sed -n "1,${max}p"
+}
+
+_fleet_member_claims() {
+  local id="$1"
+  fleet_state_get "$id" '.claims[]?' "" 2>/dev/null | _fleet_limited_lines "${FLEET_HANDOFF_MAX_CLAIMS:-80}" || true
+}
+
+fleet_resume_filename() { printf '%s\n' "${FLEET_RESUME_FILE:-RESUME.md}"; }
+
+_fleet_resume_path() {
+  local cwd="$1"
+  printf '%s/%s\n' "$cwd" "$(fleet_resume_filename)"
+}
+
+_fleet_resume_excerpt() {
+  local cwd="$1" f
+  f="$(_fleet_resume_path "$cwd")"
+  [[ -f "$f" ]] || return 0
+  sed -n "1,${FLEET_RESUME_LINES:-220}p" "$f" 2>/dev/null || true
+}
+
+_fleet_resume_template() {
+  local id="$1" cwd="$2" task="$3"
+  cat <<EOF
+# Resume: $id
+
+Last updated: TODO (UTC)
+
+## Current Objective
+${task:-TODO}
+
+## Last Verified State
+- TODO: what was checked against ground truth, with command/output summary.
+
+## Next Actions
+- TODO: the next concrete step another agent should take.
+
+## Changed Files / Claims
+- TODO: files touched or intentionally left dirty.
+
+## Verification
+- TODO: tests/builds/checks run, exact commands, and result.
+
+## Blockers / Risks
+- TODO: decisions needed, known risks, flaky checks, unresolved questions.
+
+## Handoff Notes
+- Repo: $cwd
+- Branch/commit: TODO
+- Anything the next agent must not assume: TODO
+EOF
+}
+
+_fleet_resume_contract() {
+  local fn; fn="$(fleet_resume_filename)"
+  cat <<EOF
+Maintain a repo-local $fn as the durable handoff record for this worker. Update it
+after each meaningful turn and before going idle with enough detail that another
+agent can take over without your private transcript: current objective, last
+verified state, next actions, changed files, verification commands/results,
+blockers/risks, branch/commit, and any "do not assume" notes.
+EOF
+}
+
+_fleet_resume_status_problem() {
+  local id="$1" cwd="$2" role f mt act delta stale
+  [[ "${FLEET_RESUME_CHECK:-on}" == "off" ]] && return 0
+  [[ "$id" == "supervisor" ]] && return 0
+  role="$(fleet_state_get "$id" '.role' "")"
+  [[ "$role" == "adversary" ]] && return 0
+  [[ -d "$cwd" ]] || return 0
+  f="$(_fleet_resume_path "$cwd")"
+  if [[ ! -f "$f" ]]; then
+    printf '%s: missing %s repo-local handoff file\n' "$id" "$(fleet_resume_filename)"
+    return 0
+  fi
+  if [[ ! -s "$f" ]]; then
+    printf '%s: %s is empty\n' "$id" "$(fleet_resume_filename)"
+    return 0
+  fi
+  if [[ "${FLEET_RESUME_TODO_CHECK:-on}" != "off" ]] && grep -qE '(^|[^[:alnum:]_])TODO([^[:alnum:]_]|$)' "$f" 2>/dev/null; then
+    printf '%s: %s still contains TODO placeholders\n' "$id" "$(fleet_resume_filename)"
+    return 0
+  fi
+  stale="${FLEET_RESUME_STALE_SECS:-3600}"
+  [[ "$stale" =~ ^[0-9]+$ ]] || stale=3600
+  (( stale <= 0 )) && stale=0
+  mt="$(fleet_mtime "$f")"
+  act="$(fleet_last_activity "$id")"
+  if (( act > 0 && mt > 0 )); then
+    delta=$(( act - mt ))
+    if (( delta > stale )); then
+      printf '%s: %s stale by %ss relative to last activity\n' "$id" "$(fleet_resume_filename)" "$delta"
+    fi
+  fi
+}
+
+_fleet_transcript_excerpt() {
+  local id="$1" max="${2:-24}" cwd sid provider tf out
+  cwd="$(fleet_state_get "$id" '.cwd' "")"
+  sid="$(fleet_state_get "$id" '.session_id' "")"
+  provider="$(_fleet_id_provider "$id")"
+  [[ -n "$cwd" && -n "$sid" && "$sid" != "null" ]] || return 0
+  tf="$(fleet_transcript_path "$cwd" "$sid" "$provider")"
+  [[ -f "$tf" ]] || return 0
+  out="$(tail -n "${FLEET_HANDOFF_TRANSCRIPT_LINES:-800}" "$tf" 2>/dev/null \
+    | jq -r '
+        def flatten:
+          if type=="string" then .
+          elif type=="array" then map(if type=="object" then (.text // .content // "") elif type=="string" then . else "" end) | join(" ")
+          elif type=="object" then (.text // .content // .message // .prompt // .input // "")
+          else "" end;
+        (.role // .type // "") as $r
+        | (.message.content // .content // .text // .prompt // .input // empty) as $c
+        | ($c|flatten) as $t
+        | select($t != "")
+        | (($r|ascii_upcase) + ": " + $t)' 2>/dev/null \
+    | sed 's/[[:space:]][[:space:]]*/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//' \
+    | awk 'NF' \
+    | tail -n "$max" || true)"
+  printf '%s\n' "$out"
+}
+
+_fleet_git_context() {
+  local cwd="$1" ref="${2:-}" branch status stat names
+  if ! git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf '(not a git working tree)\n'
+    return 0
+  fi
+  branch="$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  status="$(git -C "$cwd" status --short 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
+  if [[ -n "$ref" ]]; then
+    stat="$(git -C "$cwd" diff --stat "$ref" -- 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
+    names="$(git -C "$cwd" diff --name-only "$ref" -- 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
+  else
+    stat="$(git -C "$cwd" diff --stat 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
+    names="$(git -C "$cwd" diff --name-only 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
+  fi
+  printf 'branch: %s\n' "${branch:-unknown}"
+  printf 'status --short:\n%s\n' "${status:-  (clean or unavailable)}"
+  printf 'diff --stat%s:\n%s\n' "${ref:+ $ref}" "${stat:-  (no diff stat)}"
+  printf 'diff --name-only%s:\n%s\n' "${ref:+ $ref}" "${names:-  (no changed files)}"
+}
+
+_fleet_handoff_prompt() {
+  local from="$1" to="$2" source_provider="$3" target_provider="$4" task_override="$5"
+  local cwd task claims excerpt gitctx resume resume_path
+  cwd="$(_fleet_id_cwd "$from")"
+  task="$(fleet_state_get "$from" '.current_task' "")"
+  [[ -n "$task_override" ]] && task="$task_override"
+  claims="$(_fleet_member_claims "$from")"
+  resume="$(_fleet_resume_excerpt "$cwd")"
+  resume_path="$(_fleet_resume_path "$cwd")"
+  excerpt="$(_fleet_transcript_excerpt "$from" "${FLEET_HANDOFF_EXCERPT_LINES:-28}")"
+  gitctx="$(_fleet_git_context "$cwd")"
+  cat <<EOF
+You are "$to", a $target_provider fleet member taking over work from "$from" ($source_provider).
+
+This is a CROSS-PROVIDER HANDOFF. You cannot resume the source provider's private
+conversation state directly. Treat this packet as orientation, then verify
+against ground truth in the working tree before acting.
+
+Takeover rules:
+- First inspect the repo state yourself: run git status and read the relevant files.
+- Continue the source member's current task if it is still valid.
+- Preserve any useful progress; do not assume the transcript excerpt is complete.
+- If the handoff is ambiguous, report the smallest concrete question to the supervisor.
+- Keep normal fleet etiquette: ask the owning peer for repo-specific context when needed.
+
+Source member: $from
+Source provider: $source_provider
+Target provider: $target_provider
+Working directory: $cwd
+Current task:
+${task:-  (none recorded)}
+
+Repo-local takeover state ($resume_path):
+${resume:-  (missing or empty; treat this as a handoff-quality problem and reconstruct from git/fleet state)}
+
+Files the source member claimed recently:
+${claims:-  (none recorded)}
+
+Git context at handoff:
+$gitctx
+
+Recent transcript excerpt:
+${excerpt:-  (no transcript excerpt available)}
+EOF
+}
+
+_fleet_refute_prompt() {
+  local target="$1" reviewer="$2" target_provider="$3" reviewer_provider="$4" lens="$5" claim="$6" diff_ref="$7"
+  local cwd task claims excerpt gitctx claim_text
+  cwd="$(_fleet_id_cwd "$target")"
+  task="$(fleet_state_get "$target" '.current_task' "")"
+  if [[ -n "$claim" ]]; then claim_text="$claim"
+  elif [[ -n "$task" ]]; then claim_text="$task"
+  else claim_text="  (no claim supplied; review the target member's current work and claimed files)"
+  fi
+  claims="$(_fleet_member_claims "$target")"
+  excerpt="$(_fleet_transcript_excerpt "$target" "${FLEET_REFUTE_EXCERPT_LINES:-20}")"
+  gitctx="$(_fleet_git_context "$cwd" "$diff_ref")"
+  cat <<EOF
+You are "$reviewer", an INDEPENDENT cross-model adversarial reviewer.
+
+Target member: $target
+Target provider: $target_provider
+Your provider: $reviewer_provider
+Working directory: $cwd
+Lens: ${lens:-correctness, security, edge cases, regressions, and missing tests}
+
+Your job is REFUTATION, not approval. Do not edit files, commit, flash hardware,
+or take over implementation. Read the live code and git state, then try to find
+concrete ways the target's work is wrong, incomplete, insecure, or insufficiently
+tested. Prefer a short list of real, reproducible findings over speculation.
+
+For each finding, report: severity, evidence with file paths, reproduction or
+failure scenario, and a one-line mitigation. If a class is genuinely sound, say
+so plainly and name what evidence supports that.
+
+Claim or task to attack:
+$claim_text
+
+Files the target member claimed recently:
+${claims:-  (none recorded)}
+
+Git context:
+$gitctx
+
+Recent target transcript excerpt:
+${excerpt:-  (no transcript excerpt available)}
+EOF
+}
+
+_fleet_companion_prompt() {
+  local base="$1" companion="$2" base_provider="$3" companion_provider="$4"
+  local cwd task claims resume resume_path gitctx
+  cwd="$(_fleet_id_cwd "$base")"
+  task="$(fleet_state_get "$base" '.current_task' "")"
+  claims="$(_fleet_member_claims "$base")"
+  resume="$(_fleet_resume_excerpt "$cwd")"
+  resume_path="$(_fleet_resume_path "$cwd")"
+  gitctx="$(_fleet_git_context "$cwd")"
+  cat <<EOF
+You are "$companion", a $companion_provider COMPANION AGENT for "$base" ($base_provider).
+
+You work in the SAME repo as "$base": $cwd.
+
+Mission:
+- Work in concert with "$base", not as a passive global reviewer.
+- Maintain independent judgment: check "$base"'s assumptions, tests, and edits.
+- Coordinate before touching the same file or changing the same behavior.
+- Keep the repo-local handoff file current so either engine can take over.
+- Before declaring work done, make sure the other engine has had a chance to
+  challenge the result, or record why that did not happen.
+
+Operating protocol:
+- Start with: git status, read $resume_path, inspect relevant changed files.
+- Use fleet ask/send for coordination:
+    fleet ask $base "specific question"
+    fleet send $base "brief status / finding"
+- If you find a problem, report concrete evidence: file path, failure mode,
+  severity, and the smallest fix.
+- If you make edits, update $resume_path with current objective, verified state,
+  next actions, changed files, tests/results, blockers/risks, branch/commit, and
+  any "do not assume" notes.
+- Avoid duplicate work. Split work by files, tests, or hypotheses whenever possible.
+
+Base member: $base
+Base provider: $base_provider
+Companion provider: $companion_provider
+Current recorded task:
+${task:-  (none recorded)}
+
+Repo-local takeover state ($resume_path):
+${resume:-  (missing or empty; create/update it before considering this repo handoff-ready)}
+
+Files the base member claimed recently:
+${claims:-  (none recorded)}
+
+Git context:
+$gitctx
+EOF
+}
+
+_fleet_restore_skip_permissions() {
+  local had="$1" old="$2"
+  if [[ "$had" == "1" ]]; then FLEET_SKIP_PERMISSIONS="$old"; export FLEET_SKIP_PERMISSIONS
+  else unset FLEET_SKIP_PERMISSIONS; fi
+}
+
 cmd_dispatch() {
-  local id="${1:?usage: fleet dispatch <id> \"<task>\" [cwd]}"
-  local task="${2:?provide a task prompt}"; local cwd="${3:-$WORKSPACE}"
+  local provider_opt=""
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --provider) provider_opt="${2:?usage: fleet dispatch [--provider claude|codex] <id> \"<task>\" [cwd]}"; shift 2 ;;
+      --claude) provider_opt="claude"; shift ;;
+      --codex) provider_opt="codex"; shift ;;
+      *) break ;;
+    esac
+  done
+  [[ -n "$provider_opt" ]] && _fleet_validate_provider "$provider_opt"
+  local id="${1:?usage: fleet dispatch [--provider claude|codex] <id> \"<task>\" [cwd]}"
+  local task="${2:?provide a task prompt}" cwd_arg="${3:-}" cwd
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_has_tmux || die "tmux required for dispatch. Run: sudo apt install tmux"
-  cwd="${cwd:-$WORKSPACE}"; [[ "$cwd" != /* ]] && cwd="$WORKSPACE/$cwd"
+  cwd="${cwd_arg:-$WORKSPACE}"; [[ "$cwd" != /* ]] && cwd="$WORKSPACE/$cwd"
   fleet_ensure_managed_settings
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && die "child '$id' already running — pick another id"
   local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
-  local provider; provider="${FLEET_DISPATCH_PROVIDER:-$(fleet_default_provider)}"
+  local provider; provider="${provider_opt:-${FLEET_DISPATCH_PROVIDER:-$(fleet_default_provider)}}"
   local primer; primer="$(fleet_peer_primer "$id")"
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$id" "$id" "$cwd" "$primer" "$task" "" ""
@@ -710,6 +1079,247 @@ cmd_dispatch() {
   fleet_state_jq "$id" --arg t "$task" --arg p "$provider" '.state="running" | .current_task=$t | .provider=$p' >/dev/null
   fleet_log dispatch "$id" "$task"
   info "dispatched '$id' in $cwd — attach with: fleet attach $id"
+}
+
+cmd_init_resume() {
+  local force=0 only=""
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --force) force=1; shift ;;
+      -h|--help) die "usage: fleet init-resume [--force] [id]" ;;
+      *) only="$1"; shift ;;
+    esac
+  done
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  local -a ids=()
+  local id
+  if [[ -n "$only" ]]; then
+    ids=("$only")
+  else
+    ids=("${CHILD_IDS[@]:-}")
+  fi
+  [[ ${#ids[@]} -gt 0 ]] || die "no manifest children found; pass an id"
+  for id in "${ids[@]}"; do
+    [[ -n "$id" ]] || continue
+    local cwd task f
+    cwd="$(_fleet_id_cwd "$id")"
+    [[ -d "$cwd" ]] || { warn "$id: cwd does not exist: $cwd"; continue; }
+    f="$(_fleet_resume_path "$cwd")"
+    if [[ -f "$f" && "$force" != "1" ]]; then
+      info "kept   $f"
+      continue
+    fi
+    task="$(fleet_state_get "$id" '.current_task' "")"
+    _fleet_resume_template "$id" "$cwd" "$task" >"$f"
+    info "wrote   $f"
+  done
+}
+
+cmd_pair() {
+  local provider="" companion_id="" only=""
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --provider) provider="${2:?usage: fleet pair [--provider claude|codex] [--id companion-id] [id]}"; shift 2 ;;
+      --claude) provider="claude"; shift ;;
+      --codex) provider="codex"; shift ;;
+      --id) companion_id="${2:?missing --id value}"; shift 2 ;;
+      -h|--help) die "usage: fleet pair [--provider claude|codex] [--id companion-id] [id]" ;;
+      *) only="$1"; shift ;;
+    esac
+  done
+  [[ -n "$provider" ]] && _fleet_validate_provider "$provider"
+  [[ -n "$companion_id" && -z "$only" ]] && die "--id requires a single base member id"
+
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required for pair. Run: sudo apt install tmux"
+  fleet_ensure_managed_settings
+  fleet_tmux_ensure_session
+
+  local -a bases=()
+  local base
+  if [[ -n "$only" ]]; then
+    bases=("$only")
+  else
+    bases=("${CHILD_IDS[@]:-}")
+  fi
+  [[ ${#bases[@]} -gt 0 ]] || die "no manifest children found; pass an id"
+
+  for base in "${bases[@]}"; do
+    [[ -n "$base" ]] || continue
+    local base_provider target_provider cid cwd pm primer prompt exitfile summary
+    base_provider="$(_fleet_id_provider "$base")"
+    target_provider="${provider:-$(_fleet_opposite_provider "$base_provider")}"
+    _fleet_validate_provider "$target_provider"
+    if [[ "$target_provider" == "$base_provider" && "${FLEET_PAIR_ALLOW_SAME_PROVIDER:-off}" != "on" ]]; then
+      warn "$base: provider already '$base_provider'; skipping same-provider companion"
+      continue
+    fi
+    cid="${companion_id:-$base-$target_provider}"
+    [[ "$cid" != "$base" ]] || { warn "$base: companion id equals base id; skipping"; continue; }
+    if fleet_tmux_has_window "$cid"; then
+      info "pair: '$cid' already running for '$base'"
+      continue
+    fi
+    cwd="$(_fleet_id_cwd "$base")"
+    [[ -d "$cwd" ]] || { warn "$base: cwd does not exist: $cwd"; continue; }
+    pm="$(fleet_child_get "$base" permission_mode "")"
+    primer="$(fleet_peer_primer "$cid")"
+    prompt="$(_fleet_companion_prompt "$base" "$cid" "$base_provider" "$target_provider")"
+    exitfile="$RUN_DIR/$cid.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+    local -a cargs=()
+    fleet_agent_build_args cargs "$target_provider" "$cid" "$cid" "$cwd" "$primer" "$prompt" "" "$pm"
+    fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$cid" -c "$cwd" \
+      -e "FLEET_CHILD_ID=$cid" -e "FLEET_AGENT_PROVIDER=$target_provider" \
+      "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+    fleet_state_ensure "$cid" "$cwd" true
+    summary="Companion for $base"
+    fleet_state_jq "$cid" --arg p "$target_provider" --arg base "$base" --arg t "$summary" \
+      '.state="running" | .reason=null | .provider=$p | .role="companion" | .companion_for=$base | .current_task=$t' >/dev/null
+    fleet_log pair "$cid" "base=$base base_provider=$base_provider companion_provider=$target_provider"
+    info "pair: '$base' ($base_provider) + '$cid' ($target_provider)"
+  done
+}
+
+cmd_handoff() {
+  local provider="" provider_forced=0 stop_source=0 task="" from="" to=""
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --provider) provider="${2:?usage: fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]}"; provider_forced=1; shift 2 ;;
+      --claude) provider="claude"; provider_forced=1; shift ;;
+      --codex) provider="codex"; provider_forced=1; shift ;;
+      --stop-source|--down-source) stop_source=1; shift ;;
+      --task) task="${2:?missing --task text}"; shift 2 ;;
+      --id) to="${2:?missing --id value}"; shift 2 ;;
+      -h|--help) die "usage: fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]" ;;
+      *)
+        if [[ -z "$from" ]]; then from="$1"
+        elif [[ -z "$to" ]]; then to="$1"
+        else die "usage: fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]"
+        fi
+        shift ;;
+    esac
+  done
+  [[ -n "$from" ]] || die "usage: fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required for handoff. Run: sudo apt install tmux"
+
+  local source_provider; source_provider="$(_fleet_id_provider "$from")"
+  provider="${provider:-$(_fleet_opposite_provider "$source_provider")}"
+  _fleet_validate_provider "$provider"
+  if [[ -z "$to" ]]; then
+    to="$(_fleet_live_companion_id "$from" "$provider" || true)"
+    to="${to:-$from-$provider}"
+  fi
+  [[ "$to" != "$from" ]] || die "handoff target id must differ from source id; use a new id like '$from-$provider'"
+
+  local cwd; cwd="$(_fleet_id_cwd "$from")"
+  [[ -d "$cwd" ]] || die "source '$from' cwd does not exist: $cwd"
+  fleet_tmux_ensure_session
+
+  fleet_ensure_managed_settings
+  local primer prompt pm exitfile summary
+  if fleet_tmux_has_window "$to"; then
+    local live_provider
+    live_provider="$(_fleet_id_provider "$to")"
+    if [[ "$provider_forced" == "1" && "$live_provider" != "$provider" ]]; then
+      die "target '$to' is live as provider '$live_provider', not requested provider '$provider'"
+    fi
+    provider="$live_provider"
+    prompt="$(_fleet_handoff_prompt "$from" "$to" "$source_provider" "$provider" "$task")"
+    fleet_enqueue "$to" "$from" "$prompt" 1 handoff true
+    local delivered="queued"
+    transport_deliver "$to" >/dev/null 2>&1 && delivered="delivered"
+    summary="takeover from $from"
+    [[ -n "$task" ]] && summary="$summary: ${task:0:120}"
+    fleet_state_jq "$to" --arg p "$provider" --arg from "$from" --arg t "$summary" \
+      '.state="running" | .reason=null | .provider=$p | .role="takeover" | .handoff_from=$from | .current_task=$t' >/dev/null
+    fleet_log handoff "$to" "from=$from source_provider=$source_provider target_provider=$provider existing=true delivered=$delivered"
+    if [[ "$stop_source" == "1" ]]; then
+      fleet_tmux_stop_child "$from"
+      fleet_state_jq "$from" --arg r "fleet handoff to $to" '.state="stopped" | .reason=$r' >/dev/null || true
+      fleet_log down "$from" "handoff to $to"
+    fi
+    info "handoff: '$from' ($source_provider) -> live '$to' ($provider) [$delivered]"
+    return 0
+  fi
+
+  primer="$(fleet_peer_primer "$to")"
+  prompt="$(_fleet_handoff_prompt "$from" "$to" "$source_provider" "$provider" "$task")"
+  pm="$(fleet_child_get "$from" permission_mode "")"
+  exitfile="$RUN_DIR/$to.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  local -a cargs=()
+  fleet_agent_build_args cargs "$provider" "$to" "$to" "$cwd" "$primer" "$prompt" "" "$pm"
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$to" -c "$cwd" \
+    -e "FLEET_CHILD_ID=$to" -e "FLEET_AGENT_PROVIDER=$provider" \
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_state_ensure "$to" "$cwd" true
+  summary="handoff from $from"
+  [[ -n "$task" ]] && summary="$summary: ${task:0:120}"
+  fleet_state_jq "$to" --arg p "$provider" --arg from "$from" --arg t "$summary" \
+    '.state="running" | .reason=null | .provider=$p | .role="handoff" | .handoff_from=$from | .current_task=$t' >/dev/null
+  fleet_log handoff "$to" "from=$from source_provider=$source_provider target_provider=$provider"
+  if [[ "$stop_source" == "1" ]]; then
+    fleet_tmux_stop_child "$from"
+    fleet_state_jq "$from" --arg r "fleet handoff to $to" '.state="stopped" | .reason=$r' >/dev/null || true
+    fleet_log down "$from" "handoff to $to"
+  fi
+  info "handoff: '$from' ($source_provider) -> '$to' ($provider)"
+  info "attach with: fleet attach $to"
+}
+
+cmd_refute() {
+  local provider="" reviewer="" lens="" claim="" target="" diff_ref=""
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --provider) provider="${2:?usage: fleet refute [--provider claude|codex] [--id id] <target> [claim]}"; shift 2 ;;
+      --claude) provider="claude"; shift ;;
+      --codex) provider="codex"; shift ;;
+      --id) reviewer="${2:?missing --id value}"; shift 2 ;;
+      --lens) lens="${2:?missing --lens text}"; shift 2 ;;
+      --claim|--task) claim="${2:?missing claim text}"; shift 2 ;;
+      --diff) diff_ref="${2:?missing diff ref}"; shift 2 ;;
+      -h|--help) die "usage: fleet refute [--provider claude|codex] [--id id] <target> [claim]" ;;
+      *)
+        if [[ -z "$target" ]]; then target="$1"
+        else claim="${claim:+$claim }$1"
+        fi
+        shift ;;
+    esac
+  done
+  [[ -n "$target" ]] || die "usage: fleet refute [--provider claude|codex] [--id id] <target> [claim]"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required for refute. Run: sudo apt install tmux"
+
+  local target_provider; target_provider="$(_fleet_id_provider "$target")"
+  provider="${provider:-$(_fleet_opposite_provider "$target_provider")}"
+  _fleet_validate_provider "$provider"
+  reviewer="${reviewer:-$target-$provider-refute}"
+  [[ "$reviewer" != "$target" ]] || die "reviewer id must differ from target id"
+
+  local cwd; cwd="$(_fleet_id_cwd "$target")"
+  [[ -d "$cwd" ]] || die "target '$target' cwd does not exist: $cwd"
+  fleet_tmux_ensure_session
+  fleet_tmux_has_window "$reviewer" && die "reviewer '$reviewer' already has a live window"
+
+  fleet_ensure_managed_settings
+  local primer prompt exitfile had_skip=0 old_skip=""
+  primer="$(fleet_peer_primer "$reviewer")"
+  prompt="$(_fleet_refute_prompt "$target" "$reviewer" "$target_provider" "$provider" "$lens" "$claim" "$diff_ref")"
+  exitfile="$RUN_DIR/$reviewer.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  [[ -n "${FLEET_SKIP_PERMISSIONS+x}" ]] && { had_skip=1; old_skip="$FLEET_SKIP_PERMISSIONS"; }
+  FLEET_SKIP_PERMISSIONS=off; export FLEET_SKIP_PERMISSIONS
+  local -a cargs=()
+  fleet_agent_build_args cargs "$provider" "$reviewer" "$reviewer" "$cwd" "$primer" "$prompt" "" "plan"
+  _fleet_restore_skip_permissions "$had_skip" "$old_skip"
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$reviewer" -c "$cwd" \
+    -e "FLEET_CHILD_ID=$reviewer" -e "FLEET_AGENT_PROVIDER=$provider" \
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_state_ensure "$reviewer" "$cwd" true
+  fleet_state_jq "$reviewer" --arg p "$provider" --arg target "$target" \
+    '.state="running" | .reason=null | .provider=$p | .role="adversary" | .refutes=$target | .current_task=("Adversarial review of " + $target)' >/dev/null
+  fleet_log refute "$reviewer" "target=$target target_provider=$target_provider reviewer_provider=$provider"
+  info "refute: '$reviewer' ($provider) is reviewing '$target' ($target_provider) read-only"
+  info "attach with: fleet attach $reviewer"
 }
 
 cmd_attach() {
@@ -771,6 +1381,8 @@ cmd_doctor() {
   local -A seen=(); local -a ids=(); local id
   for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] || continue; seen["$id"]=1; ids+=("$id"); done
   while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen["$id"]=1; ids+=("$id"); }; done < <(fleet_state_ids)
+  local -A MAN=(); for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && MAN["$id"]=1; done
+  local -A RESUME_CHECKED=()
 
   local total_inject_failures=0
   local -a throttled=()
@@ -809,6 +1421,31 @@ cmd_doctor() {
         fi
       fi
     fi
+
+    # Repo-local handoff state: every managed implementation worker needs a
+    # durable RESUME.md so another provider can take over without private
+    # transcript access. Adversarial reviewers are intentionally read-only and
+    # excluded.
+    local managed cwd rel role resume_problem resume_key
+    managed="$(fleet_state_get "$id" '.managed' false)"
+    if [[ -n "${MAN[$id]:-}" || "$managed" == "true" ]]; then
+      cwd="$(fleet_state_get "$id" '.cwd' "")"
+      if [[ -z "$cwd" || "$cwd" == "null" ]]; then
+        rel="$(fleet_child_get "$id" cwd "")"
+        [[ -n "$rel" ]] && { cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"; }
+      fi
+      if [[ -n "$cwd" && "$cwd" != "null" ]]; then
+        role="$(fleet_state_get "$id" '.role' "")"
+        if [[ "$id" != "supervisor" && "$role" != "adversary" ]]; then
+          resume_key="$cwd"
+          if [[ -z "${RESUME_CHECKED[$resume_key]:-}" ]]; then
+            RESUME_CHECKED["$resume_key"]=1
+            resume_problem="$(_fleet_resume_status_problem "$id" "$cwd")"
+            [[ -n "$resume_problem" ]] && problems+=("$resume_problem")
+          fi
+        fi
+      fi
+    fi
   done
 
   if [[ "$quiet" == 1 ]]; then
@@ -832,7 +1469,7 @@ cmd_doctor() {
 }
 
 # --- inter-agent comms ------------------------------------------------------
-# `ask` (cmd_ask) answers off-thread via a forked responder. `send` delivers a
+# `ask` (cmd_ask) answers off-thread via a provider-native responder. `send` delivers a
 # brief FYI into the target's live thread via _fleet_deliver below.
 # _fleet_parse_msg sets _F_FROM/_F_TO/_F_TEXT from [--from] <to> <text>.
 _fleet_parse_msg() {
@@ -891,8 +1528,8 @@ cmd_ask() {
   fi
   [[ -d "$cwd" ]] || die "target '$to' cwd does not exist: $cwd"
   fleet_tmux_ensure_session
-  # A transient window in the target's repo runs the forked responder: it answers
-  # off-thread from a fork of the target's context, then routes the reply back
+  # A transient window in the target's repo runs the responder: it answers
+  # off-thread from provider-native context, then routes the reply back
   # (full → asker's inbox, one-line summary → asker's thread, brief FYI → target's
   # thread). The window closes itself when done.
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "ask:$to" -c "$cwd" \
@@ -900,8 +1537,8 @@ cmd_ask() {
     -e "FLEET_TMUX_SOCKET=$FLEET_TMUX_SOCKET" \
     -e "FLEET_CLAUDE_BIN=${FLEET_CLAUDE_BIN:-claude}" -e "FLEET_CODEX_BIN=${FLEET_CODEX_BIN:-codex}" \
     "$TOOL_ROOT/lib/responder.sh" "$to" "$from" "$q" "$hop"
-  fleet_log ask "$to" "from=$from hop=$hop (forked responder)"
-  info "asked '$to' — a forked copy of its context is answering (its live thread is untouched)."
+  fleet_log ask "$to" "from=$from hop=$hop (off-thread responder)"
+  info "asked '$to' — an off-thread provider-native context is answering (its live thread is untouched)."
   info "  reply lands in '$from's inbox (fleet inbox $from) + a one-line note in its thread."
 }
 
@@ -949,10 +1586,12 @@ cmd_remote_control() {
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_has_tmux || die "tmux required for remote-control. Run: sudo apt install tmux"
   local mode="on"; case "${1:-}" in on|off) mode="$1"; shift ;; esac
-  local only="${1:-}" id st acted=0
+  local only="${1:-}" id st provider acted=0
   while read -r id; do
     [[ -n "$id" ]] || continue
     fleet_tmux_has_window "$id" 2>/dev/null || { warn "$id: no live window"; continue; }
+    provider="$(_fleet_id_provider "$id")"
+    [[ "$provider" == "claude" ]] || { info "  $id: remote-control unavailable for provider '$provider'"; continue; }
     st="$(_rc_status "$id")"
     if [[ "$mode" == "on" ]]; then
       [[ "$st" == "active" || "$st" == "connecting" ]] && { info "  $id: already $st"; continue; }
@@ -976,13 +1615,15 @@ cmd_remote_control() {
 }
 
 cmd_remote() {
-  fleet_load_paths
-  local only="${1:-}" id st
-  printf '%s%-14s %s%s\n' "$c_bold" "MEMBER" "REMOTE CONTROL" "$c_reset"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  local only="${1:-}" id st provider
+  printf '%s%-14s %-8s %s%s\n' "$c_bold" "MEMBER" "PROVIDER" "REMOTE CONTROL" "$c_reset"
   while read -r id; do
     [[ -n "$id" ]] || continue
-    st="$(_rc_status "$id")"
-    printf '  %-12s %s\n' "$id" "$st"
+    provider="$(_fleet_id_provider "$id")"
+    if [[ "$provider" == "claude" ]]; then st="$(_rc_status "$id")"
+    else st="n/a"; fi
+    printf '  %-12s %-8s %s\n' "$id" "$provider" "$st"
   done < <(_rc_members "$only")
 }
 
@@ -1021,6 +1662,10 @@ main() {
     down)      cmd_down "$@" ;;
     restart)   cmd_restart "$@" ;;
     dispatch)  cmd_dispatch "$@" ;;
+    init-resume|resume-init) cmd_init_resume "$@" ;;
+    pair)      cmd_pair "$@" ;;
+    handoff)   cmd_handoff "$@" ;;
+    refute|adversary|adversarial) cmd_refute "$@" ;;
     attach)    cmd_attach "$@" ;;
     reap)      cmd_reap "$@" ;;
     doctor)    cmd_doctor "$@" ;;

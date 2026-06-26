@@ -19,6 +19,9 @@ max_hops     = 6
 # Each [[child]] is one worker session — typically one per repo in your
 # workspace. List them in dependency order (foundational repos first); the tmux
 # windows follow this order, with the supervisor first.
+# When both Claude and Codex have available tokens, use `fleet pair [id]` to add
+# an opposite-provider companion in the same repo; add that companion here only
+# if you want it to be relaunched automatically by `fleet up`.
 #
 #   id              stable name (also the tmux window name)
 #   cwd             working dir, relative to the workspace root (or absolute)
@@ -28,6 +31,7 @@ max_hops     = 6
 #                     temporary = never auto-restart
 #   name            shown in the worker's prompt box (claude --name)
 #   permission_mode default | acceptEdits | plan | bypassPermissions (optional)
+#   provider        claude | codex (optional; default is claude or FLEET_AGENT_PROVIDER)
 #   seed            initial prompt used ONLY on a fresh start; once a session
 #                   exists, `fleet up` resumes it instead of re-seeding.
 
@@ -53,6 +57,15 @@ cwd     = "web"
 restart = "transient"
 name    = "web-worker"
 seed    = "Resume work on the web frontend. Run 'git status' first and summarise where things stand."
+
+# Optional: keep a standing different-model reviewer available.
+# [[child]]
+# id       = "core-reviewer"
+# cwd      = "core"
+# provider = "codex"
+# restart  = "temporary"
+# permission_mode = "plan"
+# seed     = "Read-only adversarial review of current core changes. Find concrete failure modes."
 
 # Replace the examples above with your repos.
 #
