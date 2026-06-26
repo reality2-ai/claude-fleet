@@ -175,7 +175,10 @@ fleet attach api                            # drop into a member's tmux window
 ```
 
 After a reboot, `fleet up` brings the whole suite back, resuming each member's
-conversation.
+conversation. By default it also starts an opposite-provider companion for each
+manifest worker when that provider CLI is available, so each repo gets a
+Claude/Codex pair. Use `fleet up --no-pairs` or `FLEET_PAIR_ON_UP=off` for the
+old single-agent startup mode.
 
 In `fleet status`, `STATE` is derived honestly from the transcript
 (live / idle / dead / failed), `WIN` shows a live tmux window, `CLAIMS` counts
@@ -311,6 +314,20 @@ when both engines have tokens, `fleet handoff core --stop-source` finds and
 promotes the already-running opposite-provider companion instead of cold-starting
 context after the source is exhausted.
 
+Because pair programming is now the default operating mode, `fleet up` starts
+these companions automatically. Tune with `FLEET_PAIR_ON_UP=off`,
+`FLEET_PAIR_RESUME_LINES`, `FLEET_PAIR_GIT_LINES`, and
+`FLEET_PAIR_MAX_CLAIMS`. The companion launch prompt is deliberately compact so
+large `RESUME.md` files do not hit tmux/CLI argument limits.
+
+Longer-lived shared memory should not be shoved into launch prompts. The right
+next layer is the Anthill-style directed weighted cyclic graph with provenance:
+facts, claims, findings, assumptions, tests, and handoff notes become weighted
+nodes/edges with source, timestamp, agent, provider, and verification status.
+Companion prompts should receive only a compact frontier plus retrieval commands;
+the graph supplies the rest on demand and gives both engines a shared, auditable
+memory that is smaller than a transcript and richer than a flat `RESUME.md`.
+
 ### Repo-local handoff state — `RESUME.md`
 
 Every implementation worker is expected to maintain `<repo>/RESUME.md` as the
@@ -343,7 +360,8 @@ fleet inbox [id]             # a member's message mailbox (audit trail)
 fleet remote [id]            # remote-control status of member(s)
 
 # lifecycle (tmux)
-fleet up [--no-supervisor] [id]   # start the suite + supervisor (post-reboot recovery)
+fleet up [--no-supervisor] [--no-pairs] [id]
+                                  # start suite + supervisor + provider pairs
 fleet down [id]                   # stop the suite / one member
 fleet restart <id>                # restart one member
 fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]

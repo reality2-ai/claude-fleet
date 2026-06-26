@@ -20,7 +20,7 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - `fleet status` — the fuller table: who is live/idle/dead, current task, file claims, conflicts.
 - `fleet conflicts` — files being edited by more than one live session right now.
 - `fleet logs [id]` — recent fleet events, or a one-child summary.
-- `fleet up [id]` — start the suite (or one child) — this is the **post-reboot recovery** command.
+- `fleet up [--no-pairs] [id]` — start the suite (or one child) — this is the **post-reboot recovery** command. By default it also starts the opposite-provider companion for each worker when the opposite CLI is available; use `--no-pairs` for single-agent recovery.
 - `fleet down [id]` — stop the suite (or one child).
 - `fleet restart <id>` — restart one child.
 - `fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]` — start a fresh worker on a task.
@@ -71,9 +71,13 @@ Run these via Bash (the `fleet` binary is on PATH, or at
   gets repo-local `RESUME.md`, state, git context, claimed files, and a transcript
   excerpt, then must verify ground truth from the repo.
 - `fleet pair` starts a second implementation worker in the same repo, not a
-  read-only reviewer. It simplifies failover because `fleet handoff from to-live-companion`
-  can promote the already-running companion, but both agents still share one
-  working tree and must coordinate file ownership.
+  read-only reviewer. `fleet up` starts these pairs by default. This simplifies
+  failover because `fleet handoff from to-live-companion` can promote the
+  already-running companion, but both agents still share one working tree and
+  must coordinate file ownership.
+- Large prompt state should move toward an Anthill-style directed weighted cyclic
+  graph with provenance. Until that exists, treat `RESUME.md` as the durable
+  human-readable floor and keep launch/handoff prompts compact.
 - Claude Code remote-control is Claude-only. In mixed-provider fleets, use
   `fleet` commands and `RESUME.md` as the provider-neutral control plane; treat
   Claude remote-control as one convenient front door, not the source of truth.

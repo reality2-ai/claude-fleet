@@ -60,7 +60,10 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet conflicts               files being edited by more than one live session
   fleet logs [id]               tail the aggregate event log, or summarise one child
 
-  fleet up [--no-supervisor] [id]   start the suite + supervisor in tmux  [needs tmux]
+  fleet up [--no-supervisor] [--no-pairs] [id]
+                                  start the suite + supervisor in tmux; by
+                                  default also starts opposite-provider companions
+                                  when the opposite CLI exists  [needs tmux]
   fleet supervise               start (or point you to) the supervisor session
   fleet order                   arrange tmux windows: supervisor, then manifest order
   fleet down [id]               stop the suite (or one child), marked intentional
@@ -620,8 +623,15 @@ cmd_supervise() {
 }
 
 cmd_up() {
-  local no_sup=0
-  case "${1:-}" in --no-supervisor) no_sup=1; shift ;; esac
+  local no_sup=0 no_pairs=0
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --no-supervisor) no_sup=1; shift ;;
+      --no-pairs|--single|--single-agent) no_pairs=1; shift ;;
+      -h|--help) die "usage: fleet up [--no-supervisor] [--no-pairs] [id]" ;;
+      *) break ;;
+    esac
+  done
   fleet_load_paths; fleet_manifest_load "$MANIFEST"
   # Serialize 'fleet up' per workspace so two starts (e.g. the boot service and
   # a manual run) can't race into duplicate windows/agents. The per-window
@@ -635,8 +645,15 @@ cmd_up() {
   for id in "${CHILD_IDS[@]:-}"; do
     [[ -n "$id" ]] || continue
     [[ -n "$only" && "$id" != "$only" ]] && continue
+    if _fleet_manifest_marks_companion "$id"; then
+      warn "up: '$id' is a manifest companion; start its base or use fleet pair"
+      continue
+    fi
     fleet_tmux_start_child "$id"; started=$(( started + 1 ))
     info "up: started '$id'"
+    if [[ "${FLEET_PAIR_ON_UP:-on}" != "off" && "$no_pairs" == 0 ]]; then
+      _fleet_start_companion "$id" "" "" up
+    fi
   done
   (( started == 0 )) && warn "nothing started (check id / manifest)"
   if [[ -z "$only" && "$no_sup" == 0 ]]; then
@@ -777,10 +794,12 @@ _fleet_resume_path() {
 }
 
 _fleet_resume_excerpt() {
-  local cwd="$1" f
+  local cwd="$1" max="${2:-${FLEET_RESUME_LINES:-220}}" f
   f="$(_fleet_resume_path "$cwd")"
   [[ -f "$f" ]] || return 0
-  sed -n "1,${FLEET_RESUME_LINES:-220}p" "$f" 2>/dev/null || true
+  [[ "$max" =~ ^[0-9]+$ ]] || max=220
+  (( max <= 0 )) && return 0
+  sed -n "1,${max}p" "$f" 2>/dev/null || true
 }
 
 _fleet_resume_template() {
@@ -1001,10 +1020,10 @@ _fleet_companion_prompt() {
   local cwd task claims resume resume_path gitctx
   cwd="$(_fleet_id_cwd "$base")"
   task="$(fleet_state_get "$base" '.current_task' "")"
-  claims="$(_fleet_member_claims "$base")"
-  resume="$(_fleet_resume_excerpt "$cwd")"
+  claims="$(FLEET_HANDOFF_MAX_CLAIMS="${FLEET_PAIR_MAX_CLAIMS:-5}" _fleet_member_claims "$base")"
+  resume="$(_fleet_resume_excerpt "$cwd" "${FLEET_PAIR_RESUME_LINES:-8}")"
   resume_path="$(_fleet_resume_path "$cwd")"
-  gitctx="$(_fleet_git_context "$cwd")"
+  gitctx="$(FLEET_HANDOFF_GIT_LINES="${FLEET_PAIR_GIT_LINES:-8}" _fleet_git_context "$cwd")"
   cat <<EOF
 You are "$companion", a $companion_provider COMPANION AGENT for "$base" ($base_provider).
 
@@ -1045,6 +1064,66 @@ ${claims:-  (none recorded)}
 Git context:
 $gitctx
 EOF
+}
+
+_fleet_provider_available() {
+  local provider="$1" bin
+  bin="$(fleet_provider_bin "$provider")"
+  if [[ "$bin" == */* ]]; then [[ -x "$bin" ]]
+  else command -v -- "$bin" >/dev/null 2>&1; fi
+}
+
+_fleet_manifest_marks_companion() {
+  local id="$1" role companion_for
+  role="$(fleet_child_get "$id" role "")"
+  companion_for="$(fleet_child_get "$id" companion_for "")"
+  [[ "$role" == "companion" || -n "$companion_for" ]]
+}
+
+_fleet_start_companion() {
+  local base="$1" provider="${2:-}" companion_id="${3:-}" source="${4:-pair}"
+  [[ -n "$base" ]] || return 0
+  if _fleet_manifest_marks_companion "$base"; then
+    [[ "$source" == "up" ]] || warn "$base: manifest marks this as a companion; skipping"
+    return 0
+  fi
+
+  local base_provider target_provider cid cwd pm primer prompt exitfile summary
+  base_provider="$(_fleet_id_provider "$base")"
+  target_provider="${provider:-$(_fleet_opposite_provider "$base_provider")}"
+  _fleet_validate_provider "$target_provider"
+  if [[ "$target_provider" == "$base_provider" && "${FLEET_PAIR_ALLOW_SAME_PROVIDER:-off}" != "on" ]]; then
+    [[ "$source" == "up" ]] || warn "$base: provider already '$base_provider'; skipping same-provider companion"
+    return 0
+  fi
+  if ! _fleet_provider_available "$target_provider"; then
+    warn "$base: provider '$target_provider' CLI not found; skipping companion"
+    return 0
+  fi
+
+  cid="${companion_id:-$base-$target_provider}"
+  [[ "$cid" != "$base" ]] || { warn "$base: companion id equals base id; skipping"; return 0; }
+  if fleet_tmux_has_window "$cid"; then
+    info "pair: '$cid' already running for '$base'"
+    return 0
+  fi
+  cwd="$(_fleet_id_cwd "$base")"
+  [[ -d "$cwd" ]] || { warn "$base: cwd does not exist: $cwd"; return 0; }
+  pm="$(fleet_child_get "$base" permission_mode "")"
+  primer="$(fleet_peer_primer "$cid")"
+  prompt="$(_fleet_companion_prompt "$base" "$cid" "$base_provider" "$target_provider")"
+  exitfile="$RUN_DIR/$cid.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  local -a cargs=()
+  fleet_agent_build_args cargs "$target_provider" "$cid" "$cid" "$cwd" "$primer" "$prompt" "" "$pm"
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$cid" -c "$cwd" \
+    -e "FLEET_CHILD_ID=$cid" -e "FLEET_AGENT_PROVIDER=$target_provider" \
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_state_ensure "$cid" "$cwd" true
+  summary="Companion for $base"
+  fleet_state_jq "$cid" --arg p "$target_provider" --arg base "$base" --arg t "$summary" \
+    '.state="running" | .reason=null | .provider=$p | .role="companion" | .companion_for=$base | .current_task=$t' >/dev/null
+  fleet_log pair "$cid" "base=$base base_provider=$base_provider companion_provider=$target_provider source=$source"
+  info "pair: '$base' ($base_provider) + '$cid' ($target_provider)"
 }
 
 _fleet_restore_skip_permissions() {
@@ -1150,38 +1229,7 @@ cmd_pair() {
   [[ ${#bases[@]} -gt 0 ]] || die "no manifest children found; pass an id"
 
   for base in "${bases[@]}"; do
-    [[ -n "$base" ]] || continue
-    local base_provider target_provider cid cwd pm primer prompt exitfile summary
-    base_provider="$(_fleet_id_provider "$base")"
-    target_provider="${provider:-$(_fleet_opposite_provider "$base_provider")}"
-    _fleet_validate_provider "$target_provider"
-    if [[ "$target_provider" == "$base_provider" && "${FLEET_PAIR_ALLOW_SAME_PROVIDER:-off}" != "on" ]]; then
-      warn "$base: provider already '$base_provider'; skipping same-provider companion"
-      continue
-    fi
-    cid="${companion_id:-$base-$target_provider}"
-    [[ "$cid" != "$base" ]] || { warn "$base: companion id equals base id; skipping"; continue; }
-    if fleet_tmux_has_window "$cid"; then
-      info "pair: '$cid' already running for '$base'"
-      continue
-    fi
-    cwd="$(_fleet_id_cwd "$base")"
-    [[ -d "$cwd" ]] || { warn "$base: cwd does not exist: $cwd"; continue; }
-    pm="$(fleet_child_get "$base" permission_mode "")"
-    primer="$(fleet_peer_primer "$cid")"
-    prompt="$(_fleet_companion_prompt "$base" "$cid" "$base_provider" "$target_provider")"
-    exitfile="$RUN_DIR/$cid.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
-    local -a cargs=()
-    fleet_agent_build_args cargs "$target_provider" "$cid" "$cid" "$cwd" "$primer" "$prompt" "" "$pm"
-    fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$cid" -c "$cwd" \
-      -e "FLEET_CHILD_ID=$cid" -e "FLEET_AGENT_PROVIDER=$target_provider" \
-      "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
-    fleet_state_ensure "$cid" "$cwd" true
-    summary="Companion for $base"
-    fleet_state_jq "$cid" --arg p "$target_provider" --arg base "$base" --arg t "$summary" \
-      '.state="running" | .reason=null | .provider=$p | .role="companion" | .companion_for=$base | .current_task=$t' >/dev/null
-    fleet_log pair "$cid" "base=$base base_provider=$base_provider companion_provider=$target_provider"
-    info "pair: '$base' ($base_provider) + '$cid' ($target_provider)"
+    _fleet_start_companion "$base" "$provider" "$companion_id" pair
   done
 }
 

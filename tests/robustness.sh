@@ -114,7 +114,7 @@ run_lib() { # run_lib <bash-body>
 # Bring up ALL children as real tmux windows (the ground-truth surface). `fleet
 # up` with no id starts every manifest child; --no-supervisor keeps it to the
 # three workers.
-"$FLEET" up --no-supervisor >/dev/null 2>&1
+"$FLEET" up --no-supervisor --no-pairs >/dev/null 2>&1
 sleep 1.2
 # Simulate what the SessionStart hook records: run/<id>.session for each.
 echo "sid-ALPHA-0001" > "$WS/.fleet/run/alpha.session"

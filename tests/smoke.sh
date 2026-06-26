@@ -105,7 +105,7 @@ section "4. resume + carry-on nudge"
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 echo "sid-ABCDEF12" > "$WS2/.fleet/run/alpha.session"   # pretend a prior session
 export FLEET_STUB_LOG="$TMP/alpha.resume.log"; : > "$FLEET_STUB_LOG"
-"$FLEET" up --no-supervisor alpha > "$TMP/up2.out" 2>&1
+"$FLEET" up --no-supervisor --no-pairs alpha > "$TMP/up2.out" 2>&1
 sleep 0.6
 hasline "resume passes --resume"        "$FLEET_STUB_LOG" "--resume"
 hasline "resume passes the session id"  "$FLEET_STUB_LOG" "sid-ABCDEF12"
@@ -114,7 +114,7 @@ hasline "resume appends 'carry on' nudge" "$FLEET_STUB_LOG" "carry on"
 # disable nudge via env
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 export FLEET_STUB_LOG="$TMP/alpha.nonudge.log"; : > "$FLEET_STUB_LOG"
-FLEET_RESUME_NUDGE="" "$FLEET" up --no-supervisor alpha > /dev/null 2>&1
+FLEET_RESUME_NUDGE="" "$FLEET" up --no-supervisor --no-pairs alpha > /dev/null 2>&1
 sleep 0.6
 lacks "FLEET_RESUME_NUDGE='' suppresses the nudge" "$FLEET_STUB_LOG" "carry on"
 
@@ -135,9 +135,21 @@ has   "status still lists real members"                    "$TMP/status3.out" "a
 section "7. concurrency lock"
 flock -x "$WS2/.fleet/run/up.lock" -c 'sleep 3' &
 holder=$!; sleep 0.3
-"$FLEET" up --no-supervisor alpha > "$TMP/lock.out" 2>&1
+"$FLEET" up --no-supervisor --no-pairs alpha > "$TMP/lock.out" 2>&1
 has "second concurrent 'fleet up' is skipped" "$TMP/lock.out" "another 'fleet up' is in progress"
 wait "$holder" 2>/dev/null || true
+
+"$FLEET" down >/dev/null 2>&1; sleep 0.3
+export FLEET_STUB_LOG="$TMP/alpha.autopair.claude.log"; : > "$FLEET_STUB_LOG"
+export FLEET_CODEX_STUB_LOG="$TMP/alpha.autopair.codex.log"; : > "$FLEET_CODEX_STUB_LOG"
+"$FLEET" up --no-supervisor alpha > "$TMP/up_pair.out" 2>&1
+sleep 0.6
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_up_pair.out" 2>/dev/null
+hasline "fleet up starts the base worker" "$TMP/wins_up_pair.out" "alpha"
+hasline "fleet up starts opposite-provider companion by default" "$TMP/wins_up_pair.out" "alpha-codex"
+has "auto-pair prompt identifies companion agent" "$FLEET_CODEX_STUB_LOG" "COMPANION AGENT"
+has "auto-pair state records base member" "$WS2/.fleet/state/alpha-codex.json" "\"companion_for\": \"alpha\""
+"$FLEET" down >/dev/null 2>&1; sleep 0.3
 
 # --- 8. mixed-provider launch, pair, handoff, and refute --------------------
 section "8. mixed-provider launch / pair / handoff / refute"

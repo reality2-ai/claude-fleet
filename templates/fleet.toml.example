@@ -19,9 +19,9 @@ max_hops     = 6
 # Each [[child]] is one worker session — typically one per repo in your
 # workspace. List them in dependency order (foundational repos first); the tmux
 # windows follow this order, with the supervisor first.
-# When both Claude and Codex have available tokens, use `fleet pair [id]` to add
-# an opposite-provider companion in the same repo; add that companion here only
-# if you want it to be relaunched automatically by `fleet up`.
+# `fleet up` starts an opposite-provider companion for each worker by default
+# when that provider CLI is available. Use `fleet up --no-pairs` or
+# FLEET_PAIR_ON_UP=off for single-agent startup.
 #
 #   id              stable name (also the tmux window name)
 #   cwd             working dir, relative to the workspace root (or absolute)
