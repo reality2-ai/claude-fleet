@@ -44,6 +44,10 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - When a child is `failed` (restart-intensity breaker tripped), do **not** blindly
   restart it — report it and ask, or investigate `fleet logs <id>` first. A
   crash-loop usually means a real problem, not a transient blip.
+- When Claude Code shows `/usage-credits` or "request more usage from your admin",
+  treat it as hard provider exhaustion, not a transient throttle. Do not keep
+  nudging it. Ask for/administer more Claude usage, or hand the repo to Codex with
+  `fleet handoff <id> --stop-source` once `RESUME.md` is usable.
 - When asked to bring things back after a reboot, run `fleet up` and then
   `fleet status` to confirm each child resumed.
 - Flag conflicts proactively but do not edit workers' files to "resolve" them —

@@ -477,11 +477,16 @@ cmd_brief() {
   while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen[$id]=1; ids+=("$id"); }; done < <(fleet_state_ids)
 
   local -a attention=() waiting=() working=()
-  local live ready mail snip managed
+  local live ready mail snip managed provider
   for id in "${ids[@]}"; do
     [[ "$id" == "supervisor" ]] && continue                 # the overseer isn't triaged
     managed="$(fleet_state_get "$id" '.managed' false)"
     [[ -n "${MAN[$id]:-}" || "$managed" == "true" ]] || continue
+    if fleet_pane_is_provider_exhausted "$id" 2>/dev/null; then
+      provider="$(_fleet_id_provider "$id")"
+      attention+=("$id — $provider usage/credits exhausted · use 'fleet handoff $id --stop-source' or request more provider usage")
+      continue
+    fi
     live="$(fleet_liveness "$id")"; ready="$(fleet_state_get "$id" '.ready' false)"
     mail="$(_undelivered_count "$id")"
     case "$live" in
@@ -1361,7 +1366,9 @@ cmd_reap() {
 #   * sum(.inject_failures)==0 (the honest-inbox failure counter is clear);
 # and fleet-wide: both watchdogs are alive. A worker blocked on an API
 # rate-limit is reported as THROTTLED (healthy-but-waiting), kept DISTINCT from
-# idle/dead so it is never mistaken for stuck/dead and restarted.
+# idle/dead so it is never mistaken for stuck/dead and restarted. A worker blocked
+# on hard provider credits/quota is reported separately because retry nudges will
+# not fix it; it needs operator/admin action or cross-provider handoff.
 FLEET_MAIL_STALE_SECS="${FLEET_MAIL_STALE_SECS:-300}"
 cmd_doctor() {
   local quiet=0
@@ -1385,10 +1392,16 @@ cmd_doctor() {
   local -A RESUME_CHECKED=()
 
   local total_inject_failures=0
-  local -a throttled=()
+  local -a throttled=() exhausted=()
   for id in "${ids[@]}"; do
     [[ -n "$id" ]] || continue
     local has_win=0; fleet_tmux_has_window "$id" 2>/dev/null && has_win=1
+
+    # hard usage/credits exhaustion is actionable, but not a restart condition.
+    if [[ "$has_win" == 1 ]] && fleet_pane_is_provider_exhausted "$id"; then
+      exhausted+=("$id")
+      problems+=("$id: provider usage/credits exhausted; request quota or hand off to another provider")
+    fi
 
     # throttle is reported but is NOT a problem (worker is healthy-but-waiting).
     if [[ "$has_win" == 1 ]] && fleet_pane_is_throttled "$id"; then throttled+=("$id"); fi
@@ -1415,8 +1428,9 @@ cmd_doctor() {
         [.[] | select(.delivered==false) | ($now - (.ts // $now))] | (max // 0)' "$inbox" 2>/dev/null || echo 0)"
       [[ "$oldest" =~ ^[0-9]+$ ]] || oldest=0
       if (( oldest > FLEET_MAIL_STALE_SECS )); then
-        # A throttled target legitimately can't receive yet — don't flag it stale.
-        if [[ " ${throttled[*]:-} " != *" $id "* ]]; then
+        # Throttled/exhausted targets legitimately can't receive yet — don't flag
+        # their mail as stale; report the provider condition instead.
+        if [[ " ${throttled[*]:-} " != *" $id "* && " ${exhausted[*]:-} " != *" $id "* ]]; then
           problems+=("$id: undelivered mail ${oldest}s old (> ${FLEET_MAIL_STALE_SECS}s stale)")
         fi
       fi
@@ -1458,6 +1472,9 @@ cmd_doctor() {
   printf '%sfleet doctor%s\n' "$c_bold" "$c_reset"
   if [[ ${#throttled[@]} -gt 0 ]]; then
     printf '  %sthrottled%s (API rate-limit; healthy, NOT restarted): %s\n' "$c_yel" "$c_reset" "${throttled[*]}"
+  fi
+  if [[ ${#exhausted[@]} -gt 0 ]]; then
+    printf '  %sexhausted%s (provider usage/credits; handoff or request quota): %s\n' "$c_red" "$c_reset" "${exhausted[*]}"
   fi
   if [[ ${#problems[@]} -eq 0 ]]; then
     printf '  %sok%s   all invariants hold (%d child(ren), inject_failures=%d)\n' "$c_grn" "$c_reset" "${#ids[@]}" "$total_inject_failures"

@@ -21,6 +21,9 @@ set -uo pipefail
 SESSION="${FLEET_TMUX_SESSION:-fleet}"
 INTERVAL="${FLEET_API_WATCHDOG_INTERVAL:-75}"
 NUDGE="${FLEET_API_NUDGE:-try again}"
+# Hard quota/credits exhaustion signatures. These need operator/admin action or
+# cross-provider handoff, not retry nudges.
+EXHAUSTED='usage-credits|request more usage from your admin|contact your admin.*usage|usage from your admin|quota exhausted|credits exhausted'
 # Rate-limit / transient-API-error signatures Claude Code surfaces in the pane.
 SIG='temporarily (limiting|unavailable)|rate.?limit|Overloaded|overloaded_error|API [Ee]rror|error 529|529 |Internal server error|exceeded your|usage limit|temporarily limiting requests'
 # Active-auto-retry markers — leave these alone (Claude is recovering itself).
@@ -34,7 +37,9 @@ while true; do
   while IFS= read -r w; do
     [[ -n "$w" ]] || continue
     tail="$(tmux capture-pane -p -t "$SESSION:$w" 2>/dev/null | grep -vE '^[[:space:]]*$' | tail -n 6)"
-    if printf '%s' "$tail" | grep -qiE "$SIG" && ! printf '%s' "$tail" | grep -qiE "$RETRYING"; then
+    if printf '%s' "$tail" | grep -qiE "$EXHAUSTED"; then
+      nudged[$w]=0
+    elif printf '%s' "$tail" | grep -qiE "$SIG" && ! printf '%s' "$tail" | grep -qiE "$RETRYING"; then
       if [[ "$tail" == "${last[$w]:-}" ]]; then          # stuck (unchanged) on an API error
         n=$(( ${nudged[$w]:-0} + 1 )); nudged[$w]=$n
         tmux send-keys -t "$SESSION:$w" -l "$NUDGE" 2>/dev/null

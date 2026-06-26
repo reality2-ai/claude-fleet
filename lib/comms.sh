@@ -79,6 +79,20 @@ fleet_pane_is_idle() {
   return 1
 }
 
+# Is <to>'s pane blocked on a hard provider quota/credits exhaustion? This is
+# distinct from a transient throttle: retry nudges will not fix it. The operator
+# should request usage/admin credits or hand off to another provider.
+fleet_pane_is_provider_exhausted() {
+  local to="$1"
+  [[ "${FLEET_PROVIDER_EXHAUSTION_CHECK:-on}" == "off" ]] && return 1
+  fleet_tmux_has_window "$to" 2>/dev/null || return 1
+  local tgt="$FLEET_TMUX_SESSION:$to" tail
+  tail="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null | grep -vE '^[[:space:]]*$' | tail -n 10)" || return 1
+  [[ -n "$tail" ]] || return 1
+  local sig='usage-credits|request more usage from your admin|contact your admin.*usage|usage from your admin|quota exhausted|credits exhausted'
+  printf '%s\n' "$tail" | grep -qiE "$sig"
+}
+
 # Is <to>'s pane currently blocked on an API rate-limit / transient API error
 # (i.e. "throttled")? Distinct from idle/dead: a throttled worker is HEALTHY but
 # waiting on the provider, and must NEVER be restarted for it (the api-watchdog
@@ -89,6 +103,7 @@ fleet_pane_is_throttled() {
   local to="$1"
   [[ "${FLEET_THROTTLE_CHECK:-on}" == "off" ]] && return 1
   fleet_tmux_has_window "$to" 2>/dev/null || return 1
+  fleet_pane_is_provider_exhausted "$to" && return 1
   local tgt="$FLEET_TMUX_SESSION:$to" tail
   tail="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null | grep -vE '^[[:space:]]*$' | tail -n 8)" || return 1
   [[ -n "$tail" ]] || return 1

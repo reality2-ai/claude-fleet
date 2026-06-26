@@ -305,6 +305,13 @@ fi
 # throttle stays DISTINCT from idle/dead (a throttled pane is not idle)
 if run_lib 'fleet_pane_is_idle thrw'; then no "throttled pane misclassified as idle"; else ok "throttled pane is not idle (distinct state)"; fi
 
+command tmux -L "$SOCK" new-window -t "$SOCK" -n credw \
+  "printf 'Claude usage limit reached\nUse /usage-credits to request more usage from your admin.\n'; sleep 120" 2>/dev/null
+sleep 0.4
+if run_lib 'fleet_pane_is_provider_exhausted credw'; then ok "provider-exhaustion classifier detects /usage-credits"; else no "provider-exhaustion classifier missed /usage-credits"; fi
+if run_lib 'fleet_pane_is_throttled credw'; then no "provider exhaustion misclassified as transient throttle"; else ok "provider exhaustion is not transient throttle"; fi
+if run_lib 'fleet_pane_is_idle credw'; then no "provider-exhausted pane misclassified as idle"; else ok "provider-exhausted pane is not idle"; fi
+
 # --- summary ----------------------------------------------------------------
 printf '\n%s\n' "------------------------------------------"
 printf 'robustness: %d passed, %d failed\n' "$pass" "$fail"

@@ -724,6 +724,12 @@ Honest about where this is heading, not what's done:
   idles at its prompt; `fleet up` nudges it (`carry on` by default). If you set
   `FLEET_RESUME_NUDGE=""` (or `resume_nudge = ""`) that's expected — nudge them
   yourself with `fleet send <id> "carry on"`.
+- **Claude says `/usage-credits` or "request more usage from your admin".** That
+  is hard Claude usage/credits exhaustion, not a transient rate limit. `fleet`
+  reports it as provider-exhausted and the API watchdog will not keep typing
+  `try again`. Request more Claude usage from the admin, or move the repo to
+  Codex with `fleet handoff <id> --stop-source` (or `fleet pair <id>` first, if
+  no Codex companion is already running).
 - **`fleet up` says "another 'fleet up' is in progress — skipping".** A boot service
   and a manual run raced; the per-workspace lock is doing its job. It's already up,
   or will be once the first run finishes.
