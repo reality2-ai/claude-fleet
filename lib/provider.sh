@@ -140,13 +140,11 @@ fleet_agent_build_args() {
       argv+=("$bin" --cd "$cwd")
       fleet_codex_add_managed_hooks "$arr_name"
       fleet_codex_add_common_flags "$arr_name" "$id" "$pm"
+      local combined; combined="$(fleet_prompt_join "$primer" "$prompt")"
       if [[ -n "$sid" ]]; then
         argv+=(resume "$sid")
-        [[ -n "$prompt" ]] && argv+=("$prompt")
-      else
-        local combined; combined="$(fleet_prompt_join "$primer" "$prompt")"
-        [[ -n "$combined" ]] && argv+=("$combined")
       fi
+      [[ -n "$combined" ]] && argv+=("$combined")
       ;;
     *) die "unknown agent provider '$provider' (expected claude or codex)" ;;
   esac

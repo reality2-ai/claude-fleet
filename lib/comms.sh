@@ -257,6 +257,19 @@ fleet handoff explicitly promotes them to takeover writer. Read-only twins shoul
 question, test assumptions, and propose concrete fixes, but not edit the working
 tree.
 
+Working doctrine:
+- Treat every non-trivial claim as a conjecture. Confidence is earned by
+  surviving checks, tests, and genuine attempts to refute it.
+- Prefer falsifying evidence over agreement. Ask what would make the current
+  approach wrong, incomplete, insecure, or too brittle.
+- Before calling substantial work "done", get a peer or opposite-provider twin to
+  challenge it, or clearly record why that refutation pass did not happen.
+- Report findings with evidence: file path, command/result, failure mode, and
+  the smallest concrete mitigation. Treat an adversary's finding as a lead until
+  verified against ground truth.
+- Verify-then-record: update durable state only after checking the repo, not from
+  memory or transcript confidence alone.
+
 Durable handoff requirement:
 $(_fleet_resume_contract 2>/dev/null || cat <<'FALLBACK'
 Maintain a repo-local RESUME.md as the durable handoff record for this worker.

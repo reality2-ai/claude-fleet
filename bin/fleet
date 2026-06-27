@@ -79,6 +79,9 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]
                                   start an opposite-provider takeover from a
                                   source member's state, git context, and transcript tail
+  fleet failover [--provider claude|codex] [--all|--exhausted] [id...]
+                                  non-AI switch-over: stop source writer(s) and
+                                  promote/start target-provider takeover(s)
   fleet refute [--provider claude|codex] [--id id] <target> [claim]
                                   start a read-only cross-model adversarial reviewer
   fleet attach <id>             attach your terminal to a child's tmux window
@@ -1379,7 +1382,7 @@ cmd_handoff() {
   fleet_ensure_managed_settings
   local primer prompt pm exitfile summary resume_sid="" stopped_source=0 promoting_standby=0
   [[ -f "$RUN_DIR/$to.session" ]] && resume_sid="$(<"$RUN_DIR/$to.session")"
-  if fleet_tmux_has_window "$to" && _fleet_is_readonly_standby "$to"; then
+  if _fleet_is_readonly_standby "$to"; then
     promoting_standby=1
     [[ "${FLEET_HANDOFF_EXCLUSIVE:-on}" != "off" ]] && stop_source=1
     if [[ "$stop_source" == "1" ]]; then
@@ -1388,9 +1391,11 @@ cmd_handoff() {
       fleet_log down "$from" "handoff to $to"
       stopped_source=1
     fi
-    fleet_tmux_stop_child "$to"
-    fleet_state_jq "$to" '.state="stopped" | .reason="promoting read-only standby for handoff"' >/dev/null || true
-    fleet_log handoff "$to" "restarting read-only standby as takeover writer from=$from"
+    if fleet_tmux_has_window "$to"; then
+      fleet_tmux_stop_child "$to"
+      fleet_state_jq "$to" '.state="stopped" | .reason="promoting read-only standby for handoff"' >/dev/null || true
+      fleet_log handoff "$to" "restarting read-only standby as takeover writer from=$from"
+    fi
   fi
   if fleet_tmux_has_window "$to"; then
     local live_provider
@@ -1439,6 +1444,92 @@ cmd_handoff() {
   fi
   info "handoff: '$from' ($source_provider) -> '$to' ($provider)"
   info "attach with: fleet attach $to"
+}
+
+cmd_failover() {
+  local provider="codex" mode="exhausted" dry=0 id source_provider role
+  local -a targets=()
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --provider) provider="${2:?usage: fleet failover [--provider claude|codex] [--all|--exhausted] [id...]}"; shift 2 ;;
+      --claude) provider="claude"; shift ;;
+      --codex) provider="codex"; shift ;;
+      --all) mode="all"; shift ;;
+      --exhausted|--only-exhausted) mode="exhausted"; shift ;;
+      --dry-run|-n) dry=1; shift ;;
+      -h|--help) die "usage: fleet failover [--provider claude|codex] [--all|--exhausted] [id...]" ;;
+      *) targets+=("$1"); shift ;;
+    esac
+  done
+  _fleet_validate_provider "$provider"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required for failover. Run: sudo apt install tmux"
+  fleet_ensure_managed_settings
+  fleet_tmux_ensure_session
+
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    if [[ "$mode" == "all" ]]; then
+      targets=("${CHILD_IDS[@]:-}")
+    else
+      while IFS= read -r id; do
+        [[ -n "$id" ]] || continue
+        source_provider="$(_fleet_id_provider "$id")"
+        [[ "$source_provider" != "$provider" ]] || continue
+        fleet_tmux_has_window "$id" 2>/dev/null || continue
+        fleet_pane_is_provider_exhausted "$id" 2>/dev/null || continue
+        targets+=("$id")
+      done < <(printf '%s\n' "${CHILD_IDS[@]:-}")
+    fi
+  fi
+  [[ ${#targets[@]} -gt 0 ]] || { info "failover: no ${mode} source lanes found for provider '$provider'"; return 0; }
+
+  local acted=0 skipped=0
+  for id in "${targets[@]}"; do
+    [[ -n "$id" ]] || continue
+    if fleet_is_supervisor_id "$id"; then
+      if [[ "$dry" == "1" ]]; then
+        info "failover: would ensure supervisor companion for '$id'"
+      else
+        fleet_start_supervisor_companion
+        info "failover: ensured supervisor companion"
+      fi
+      acted=$(( acted + 1 ))
+      continue
+    fi
+    if _fleet_manifest_marks_companion "$id"; then
+      info "failover: skip '$id' (manifest marks it as companion)"
+      skipped=$(( skipped + 1 ))
+      continue
+    fi
+    role="$(fleet_state_get "$id" '.role' "")"
+    case "$role" in
+      standby|adversary)
+        info "failover: skip '$id' (role=$role)"
+        skipped=$(( skipped + 1 ))
+        continue ;;
+    esac
+    source_provider="$(_fleet_id_provider "$id")"
+    if [[ "$source_provider" == "$provider" ]]; then
+      info "failover: skip '$id' (already provider=$provider)"
+      skipped=$(( skipped + 1 ))
+      continue
+    fi
+    if [[ "$mode" == "exhausted" ]]; then
+      if ! fleet_tmux_has_window "$id" 2>/dev/null || ! fleet_pane_is_provider_exhausted "$id" 2>/dev/null; then
+        info "failover: skip '$id' (not live provider-exhausted)"
+        skipped=$(( skipped + 1 ))
+        continue
+      fi
+    fi
+    if [[ "$dry" == "1" ]]; then
+      info "failover: would handoff '$id' ($source_provider) -> $provider"
+    else
+      info "failover: handoff '$id' ($source_provider) -> $provider"
+      cmd_handoff --provider "$provider" --stop-source "$id"
+    fi
+    acted=$(( acted + 1 ))
+  done
+  info "failover: acted=$acted skipped=$skipped provider=$provider mode=$mode"
 }
 
 cmd_refute() {
@@ -1890,6 +1981,7 @@ main() {
     pair)      cmd_pair "$@" ;;
     pairs|pair-status|pair-ls) cmd_pairs "$@" ;;
     handoff)   cmd_handoff "$@" ;;
+    failover)  cmd_failover "$@" ;;
     refute|adversary|adversarial) cmd_refute "$@" ;;
     attach)    cmd_attach "$@" ;;
     reap)      cmd_reap "$@" ;;

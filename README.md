@@ -295,6 +295,7 @@ fleet pair                         # pair every manifest child with its opposite
 fleet pairs core                   # show the logical pair and its provider lanes
 fleet pair-send core "status?"     # send one note to every lane in the pair
 fleet pair-ask core "what changed?" # ask every lane off-thread
+fleet failover --provider codex --all # non-AI switch-over to Codex writers
 fleet refute core                  # default: opposite-provider read-only adversary
 fleet dispatch --provider codex audit "Review the auth diff" core
 ```
@@ -394,6 +395,7 @@ fleet pairs [id]                    # logical pair view: base + provider lanes
 fleet pair-send <id> "<msg>"        # send to all lanes in a pair
 fleet pair-ask <id> "<question>"    # ask all lanes off-thread
 fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]
+fleet failover [--provider claude|codex] [--all|--exhausted] [id...]
 fleet refute [--provider claude|codex] [--id id] <target> [claim]
 fleet attach <id>                 # attach your terminal to a member's window
 fleet order                       # arrange windows: supervisor, then manifest order
@@ -774,8 +776,11 @@ Honest about where this is heading, not what's done:
   is hard Claude usage/credits exhaustion, not a transient rate limit. `fleet`
   reports it as provider-exhausted and the API watchdog will not keep typing
   `try again`. Request more Claude usage from the admin, or move the repo to
-  Codex with `fleet handoff <id> --stop-source` (or `fleet pair <id>` first, if
-  no Codex companion is already running).
+  Codex with `fleet failover --provider codex <id>` or
+  `fleet handoff --provider codex --stop-source <id>` (or `fleet pair <id>`
+  first, if no Codex companion is already running). Use
+  `fleet failover --provider codex --all` when the Claude account is exhausted
+  fleet-wide and the supervisor cannot coordinate the switch itself.
 - **`fleet up` says "another 'fleet up' is in progress — skipping".** A boot service
   and a manual run raced; the per-workspace lock is doing its job. It's already up,
   or will be once the first run finishes.

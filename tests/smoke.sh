@@ -85,6 +85,13 @@ id="alpha"
 cwd="repoA"
 restart="transient"
 seed="seedwork"
+
+[[child]]
+id="beta"
+cwd="repoA"
+restart="transient"
+provider="codex"
+seed="codex seedwork"
 TOML
 export FLEET_WORKSPACE="$WS2"
 
@@ -114,9 +121,18 @@ hasline "resume appends 'carry on' nudge" "$FLEET_STUB_LOG" "carry on"
 # disable nudge via env
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 export FLEET_STUB_LOG="$TMP/alpha.nonudge.log"; : > "$FLEET_STUB_LOG"
+export FLEET_CODEX_STUB_LOG="$TMP/beta.codex.resume.log"; : > "$FLEET_CODEX_STUB_LOG"
 FLEET_RESUME_NUDGE="" "$FLEET" up --no-supervisor --no-pairs alpha > /dev/null 2>&1
 sleep 0.6
 lacks "FLEET_RESUME_NUDGE='' suppresses the nudge" "$FLEET_STUB_LOG" "carry on"
+echo "sid-BETA-CODEX" > "$WS2/.fleet/run/beta.session"
+"$FLEET" up --no-supervisor --no-pairs beta > "$TMP/beta_codex_resume.out" 2>&1
+sleep 0.6
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_beta_resume.out" 2>/dev/null
+hasline "codex resume starts beta while alpha is live" "$TMP/wins_beta_resume.out" "beta"
+hasline "codex resume passes resume subcommand" "$FLEET_CODEX_STUB_LOG" "resume"
+hasline "codex resume passes the session id" "$FLEET_CODEX_STUB_LOG" "sid-BETA-CODEX"
+has "codex resume includes fleet doctrine primer" "$FLEET_CODEX_STUB_LOG" "Treat every non-trivial claim as a conjecture"
 
 # --- 5. down tears the window down ------------------------------------------
 section "5. down"
@@ -199,6 +215,8 @@ hasline "pair creates per-repo companion window" "$TMP/wins_pair.out" "alpha-due
 has "pair prompt identifies adversarial pair role" "$FLEET_CODEX_STUB_LOG" "ADVERSARIAL PAIR PROGRAMMER"
 has "pair state records base member" "$WS2/.fleet/state/alpha-duet.json" "\"companion_for\": \"alpha\""
 has "pair state records standby role" "$WS2/.fleet/state/alpha-duet.json" "\"role\": \"standby\""
+"$FLEET" failover --all --dry-run alpha > "$TMP/failover_dry.out" 2>&1
+has "failover dry-run can plan codex takeover" "$TMP/failover_dry.out" "would handoff 'alpha' (claude) -> codex"
 
 "$FLEET" handoff alpha > "$TMP/handoff_live.out" 2>&1
 sleep 0.2
@@ -235,17 +253,17 @@ printf '%s\n' "\$@" > "$TMP/responder.args"
 echo "FORKED-ANSWER: the registry lives in lib/registry.sh"
 EOF
 chmod +x "$RSTUB"
-echo "sid-TARGET-99" > "$WS2/.fleet/run/beta.session"   # pretend beta has a live session
+echo "sid-TARGET-99" > "$WS2/.fleet/run/alpha.session"   # pretend alpha has a live Claude session
 mkdir -p "$WS2/repoB"
 TOOL_ROOT="$ROOT" FLEET_WORKSPACE="$WS2" FLEET_TMUX_SOCKET="$SOCK" FLEET_CLAUDE_BIN="$RSTUB" \
-  bash "$ROOT/lib/responder.sh" beta alpha "where does the registry live?" 1 >/dev/null 2>&1
+  bash "$ROOT/lib/responder.sh" alpha beta "where does the registry live?" 1 >/dev/null 2>&1
 has "responder forked the target session (--fork-session)" "$TMP/responder.args" "--fork-session"
 hasline "responder resumed the target's session id"        "$TMP/responder.args" "sid-TARGET-99"
-has "full answer stored in asker's inbox"     "$WS2/.fleet/inbox/alpha.jsonl" "FORKED-ANSWER"
-has "one-line summary queued for the asker"   "$WS2/.fleet/inbox/alpha.jsonl" "answered"
-has "brief no-action FYI queued for target"   "$WS2/.fleet/inbox/beta.jsonl"  "no action needed"
-has   "target gets a fyi-kind note"                 "$WS2/.fleet/inbox/beta.jsonl" "\"kind\":\"fyi\""
-lacks "target is NOT handed an 'ask' to answer"     "$WS2/.fleet/inbox/beta.jsonl" "\"kind\":\"ask\""
+has "full answer stored in asker's inbox"     "$WS2/.fleet/inbox/beta.jsonl" "FORKED-ANSWER"
+has "one-line summary queued for the asker"   "$WS2/.fleet/inbox/beta.jsonl" "answered"
+has "brief no-action FYI queued for target"   "$WS2/.fleet/inbox/alpha.jsonl"  "no action needed"
+has   "target gets a fyi-kind note"                 "$WS2/.fleet/inbox/alpha.jsonl" "\"kind\":\"fyi\""
+lacks "target is NOT handed an 'ask' to answer"     "$WS2/.fleet/inbox/alpha.jsonl" "\"kind\":\"ask\""
 
 # --- 10. auto-approve PreToolUse hook ---------------------------------------
 section "10. auto-approve hook"

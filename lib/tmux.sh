@@ -20,7 +20,10 @@ fleet_has_tmux() { command -v tmux >/dev/null 2>&1; }
 # Every fleet tmux call goes through this so they all hit the fleet's own
 # socket/server. (The server-spawning command in fleet_tmux_ensure_session is
 # the one exception — it must invoke the real binary so systemd-run can exec it.)
-fleet_tmux() { command tmux -L "$FLEET_TMUX_SOCKET" "$@"; }
+# Close fd 8 in tmux children: cmd_up holds its workspace lock there, and panes
+# must not inherit it or a later `fleet up <id>` will think the first launch is
+# still in progress.
+fleet_tmux() { command tmux -L "$FLEET_TMUX_SOCKET" "$@" 8>&-; }
 
 fleet_tmux_session_exists() {
   fleet_has_tmux || return 1
@@ -52,12 +55,12 @@ fleet_tmux_ensure_session() {
   if fleet_tmux_user_manager_ok; then
     systemctl --user reset-failed "$FLEET_TMUX_UNIT" 2>/dev/null || true
     if systemd-run --user --quiet --collect --unit="$FLEET_TMUX_UNIT" \
-         --property=Type=forking "${srv[@]}" 2>/dev/null; then
+         --property=Type=forking "${srv[@]}" 8>&- 2>/dev/null; then
       return 0
     fi
     warn "systemd-run --user failed; starting tmux in the login session (may not survive logout)"
   fi
-  "${srv[@]}" 2>/dev/null || true
+  "${srv[@]}" 8>&- 2>/dev/null || true
 }
 
 # does a window named after <id> exist?

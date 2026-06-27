@@ -30,6 +30,7 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - `fleet pair-send <id> "<msg>"` — send one short instruction/FYI to every lane in a logical pair.
 - `fleet pair-ask <id> "<q>"` — ask every lane in a logical pair off-thread, useful when you want independent Claude/Codex answers.
 - `fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]` — deliver a takeover packet from an existing member to another provider. If `to-id` is already live, it receives the packet and is promoted; otherwise a new provider session is started. Use this when a member is token-limited, rate-limited beyond recovery, or when a different engine should take over. It does not mutate `fleet.toml`.
+- `fleet failover [--provider claude|codex] [--all|--exhausted] [id...]` — non-AI switch-over for provider exhaustion. Use `fleet failover --provider codex --all` when Claude is hard-exhausted fleet-wide and a Claude supervisor cannot coordinate its own recovery.
 - `fleet refute [--provider claude|codex] [--id id] <target> [claim]` — start a read-only opposite-model adversarial reviewer against a target member's current work.
 - `fleet attach <id>` — (for the human) jump into a worker's tmux window.
 - `fleet ask <to> "<q>"` — ask a worker a question. A provider-native off-thread responder answers from that worker's current context (Claude forks; Codex resumes headlessly), so its live session is untouched; the reply comes back to YOU — a one-line summary in your thread, the full answer in your inbox.
@@ -49,8 +50,11 @@ Run these via Bash (the `fleet` binary is on PATH, or at
   crash-loop usually means a real problem, not a transient blip.
 - When Claude Code shows `/usage-credits` or "request more usage from your admin",
   treat it as hard provider exhaustion, not a transient throttle. Do not keep
-  nudging it. Ask for/administer more Claude usage, or hand the repo to Codex with
-  `fleet handoff <id> --stop-source` once `RESUME.md` is usable.
+  nudging it. Ask for/administer more Claude usage, or move the repo to Codex with
+  `fleet failover --provider codex <id>` / `fleet handoff --provider codex --stop-source <id>`
+  once `RESUME.md` is usable. If Claude is exhausted fleet-wide, use
+  `fleet failover --provider codex --all`; do not rely on the exhausted Claude
+  supervisor to action the switch-over.
 - When asked to bring things back after a reboot, run `fleet up` and then
   `fleet status` to confirm each child resumed.
 - Flag conflicts proactively but do not edit workers' files to "resolve" them —
