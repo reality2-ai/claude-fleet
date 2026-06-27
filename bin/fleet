@@ -62,7 +62,7 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
 
   fleet up [--no-supervisor] [--no-pairs] [id]
                                   start the suite + supervisor in tmux; by
-                                  default also starts opposite-provider companions
+                                  default also starts opposite-provider read-only twins
                                   when the opposite CLI exists  [needs tmux]
   fleet supervise               start (or point you to) the supervisor session
   fleet order                   arrange tmux windows: supervisor, then manifest order
@@ -72,7 +72,7 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
                                   start a fresh worker seeded with a task
   fleet init-resume [--force] [id] scaffold repo-local RESUME.md handoff file(s)
   fleet pair [--provider claude|codex] [--id companion-id] [id]
-                                  start per-repo opposite-provider companion(s)
+                                  start per-repo adversarial read-only twin(s)
   fleet pairs [id]               show logical Claude/Codex pairs and lane state
   fleet pair-send <id> "<msg>"   send one message to all live lanes in a pair
   fleet pair-ask <id> "<q>"      ask all live lanes in a pair off-thread
@@ -813,6 +813,14 @@ _fleet_live_companion_id() {
   return 1
 }
 
+_fleet_is_readonly_standby() {
+  local id="$1" role mode writer
+  role="$(fleet_state_get "$id" '.role' "")"
+  mode="$(fleet_state_get "$id" '.pair_mode' "")"
+  writer="$(fleet_state_get "$id" '.writer' "")"
+  [[ "$role" == "standby" || "$mode" == "read_only" || "$writer" == "false" ]]
+}
+
 _fleet_limited_lines() {
   local max="$1"
   sed -n "1,${max}p"
@@ -981,6 +989,8 @@ conversation state directly. Treat this packet as orientation, then verify
 against ground truth in the working tree before acting.
 
 Takeover rules:
+- You are the sole writer for this repo after this handoff. Do not assume the
+  source member is still active.
 - First inspect the repo state yourself: run git status and read the relevant files.
 - Continue the source member's current task if it is still valid.
 - Preserve any useful progress; do not assume the transcript excerpt is complete.
@@ -1062,17 +1072,21 @@ _fleet_companion_prompt() {
   resume_path="$(_fleet_resume_path "$cwd")"
   gitctx="$(FLEET_HANDOFF_GIT_LINES="${FLEET_PAIR_GIT_LINES:-8}" _fleet_git_context "$cwd")"
   cat <<EOF
-You are "$companion", a $companion_provider COMPANION AGENT for "$base" ($base_provider).
+You are "$companion", a $companion_provider ADVERSARIAL PAIR PROGRAMMER and
+FAIL-OVER STANDBY for "$base" ($base_provider).
 
 You work in the SAME repo as "$base": $cwd.
 
 Mission:
-- Work in concert with "$base", not as a passive global reviewer.
-- Maintain independent judgment: check "$base"'s assumptions, tests, and edits.
-- Coordinate before touching the same file or changing the same behavior.
-- Keep the repo-local handoff file current so either engine can take over.
-- Before declaring work done, make sure the other engine has had a chance to
-  challenge the result, or record why that did not happen.
+- Your primary job is to question "$base": challenge assumptions, look for
+  counterexamples, attack test gaps, security risks, edge cases, and weak
+  architectural choices.
+- Pair actively, but stay read-only while "$base" is the writer. Do not edit
+  files, commit, reformat, apply patches, or otherwise modify the working tree.
+- Treat "$base" as the sole writer for this repo until an explicit fleet handoff
+  promotes you to takeover writer.
+- Stay fail-over ready: keep enough situational awareness to take over cleanly if
+  "$base" hits a hard provider limit, but do not take over on your own.
 
 Operating protocol:
 - Start with: git status, read $resume_path, inspect relevant changed files.
@@ -1081,10 +1095,10 @@ Operating protocol:
     fleet send $base "brief status / finding"
 - If you find a problem, report concrete evidence: file path, failure mode,
   severity, and the smallest fix.
-- If you make edits, update $resume_path with current objective, verified state,
-  next actions, changed files, tests/results, blockers/risks, branch/commit, and
-  any "do not assume" notes.
-- Avoid duplicate work. Split work by files, tests, or hypotheses whenever possible.
+- If changes are needed, describe the exact patch or test for "$base" to apply.
+- Watch $resume_path and ask "$base" to update it if takeover state is missing,
+  stale, or misleading.
+- If a handoff promotes you, re-check git status and $resume_path before writing.
 
 Base member: $base
 Base provider: $base_provider
@@ -1125,7 +1139,7 @@ _fleet_start_companion() {
     return 0
   fi
 
-  local base_provider target_provider cid cwd pm primer prompt exitfile summary
+  local base_provider target_provider cid cwd pm primer prompt exitfile summary sid had_skip=0 old_skip=""
   base_provider="$(_fleet_id_provider "$base")"
   target_provider="${provider:-$(_fleet_opposite_provider "$base_provider")}"
   _fleet_validate_provider "$target_provider"
@@ -1146,21 +1160,25 @@ _fleet_start_companion() {
   fi
   cwd="$(_fleet_id_cwd "$base")"
   [[ -d "$cwd" ]] || { warn "$base: cwd does not exist: $cwd"; return 0; }
-  pm="$(fleet_child_get "$base" permission_mode "")"
+  pm="${FLEET_PAIR_PERMISSION_MODE:-plan}"
   primer="$(fleet_peer_primer "$cid")"
   prompt="$(_fleet_companion_prompt "$base" "$cid" "$base_provider" "$target_provider")"
+  sid=""; [[ -f "$RUN_DIR/$cid.session" ]] && sid="$(<"$RUN_DIR/$cid.session")"
   exitfile="$RUN_DIR/$cid.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   local -a cargs=()
-  fleet_agent_build_args cargs "$target_provider" "$cid" "$cid" "$cwd" "$primer" "$prompt" "" "$pm"
+  [[ -n "${FLEET_SKIP_PERMISSIONS+x}" ]] && { had_skip=1; old_skip="$FLEET_SKIP_PERMISSIONS"; }
+  FLEET_SKIP_PERMISSIONS=off; export FLEET_SKIP_PERMISSIONS
+  fleet_agent_build_args cargs "$target_provider" "$cid" "$cid" "$cwd" "$primer" "$prompt" "$sid" "$pm"
+  _fleet_restore_skip_permissions "$had_skip" "$old_skip"
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$cid" -c "$cwd" \
     -e "FLEET_CHILD_ID=$cid" -e "FLEET_AGENT_PROVIDER=$target_provider" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
   fleet_state_ensure "$cid" "$cwd" true
-  summary="Companion for $base"
+  summary="Adversarial read-only pair / failover standby for $base"
   fleet_state_jq "$cid" --arg p "$target_provider" --arg base "$base" --arg t "$summary" \
-    '.state="running" | .reason=null | .provider=$p | .role="companion" | .companion_for=$base | .current_task=$t' >/dev/null
-  fleet_log pair "$cid" "base=$base base_provider=$base_provider companion_provider=$target_provider source=$source"
-  info "pair: '$base' ($base_provider) + '$cid' ($target_provider)"
+    '.state="running" | .reason=null | .provider=$p | .role="standby" | .pair_mode="read_only" | .writer=false | .companion_for=$base | .current_task=$t' >/dev/null
+  fleet_log pair "$cid" "base=$base base_provider=$base_provider companion_provider=$target_provider source=$source mode=adversarial_read_only_standby"
+  info "pair: '$base' ($base_provider writer) + '$cid' ($target_provider adversarial read-only standby)"
 }
 
 _fleet_pair_base() {
@@ -1195,10 +1213,10 @@ _fleet_pair_targets() {
 }
 
 cmd_pairs() {
-  local only="${1:-}" base id provider live task
+  local only="${1:-}" base id provider live role task
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_reconcile
-  printf '%s%-16s %-16s %-8s %-8s %s%s\n' "$c_bold" "PAIR" "LANE" "PROVIDER" "STATE" "TASK" "$c_reset"
+  printf '%s%-16s %-16s %-8s %-10s %-8s %s%s\n' "$c_bold" "PAIR" "LANE" "PROVIDER" "ROLE" "STATE" "TASK" "$c_reset"
   local -A bases=()
   if [[ -n "$only" ]]; then
     bases["$(_fleet_pair_base "$only")"]=1
@@ -1216,8 +1234,9 @@ cmd_pairs() {
       [[ -n "$id" ]] || continue
       provider="$(_fleet_id_provider "$id")"
       live="$(fleet_liveness "$id")"
+      role="$(fleet_state_get "$id" '.role' "")"
       task="$(fleet_state_get "$id" '.current_task' "")"; task="${task:0:48}"
-      printf '  %-14s %-16s %-8s %-8s %s\n' "$base" "$id" "$provider" "$live" "$task"
+      printf '  %-14s %-16s %-8s %-10s %-8s %s\n' "$base" "$id" "$provider" "${role:-writer}" "$live" "$task"
     done < <(_fleet_pair_targets "$base")
   done
 }
@@ -1366,7 +1385,21 @@ cmd_handoff() {
   fleet_tmux_ensure_session
 
   fleet_ensure_managed_settings
-  local primer prompt pm exitfile summary
+  local primer prompt pm exitfile summary resume_sid="" stopped_source=0 promoting_standby=0
+  [[ -f "$RUN_DIR/$to.session" ]] && resume_sid="$(<"$RUN_DIR/$to.session")"
+  if fleet_tmux_has_window "$to" && _fleet_is_readonly_standby "$to"; then
+    promoting_standby=1
+    [[ "${FLEET_HANDOFF_EXCLUSIVE:-on}" != "off" ]] && stop_source=1
+    if [[ "$stop_source" == "1" ]]; then
+      fleet_tmux_stop_child "$from"
+      fleet_state_jq "$from" --arg r "fleet handoff to $to" '.state="stopped" | .reason=$r' >/dev/null || true
+      fleet_log down "$from" "handoff to $to"
+      stopped_source=1
+    fi
+    fleet_tmux_stop_child "$to"
+    fleet_state_jq "$to" '.state="stopped" | .reason="promoting read-only standby for handoff"' >/dev/null || true
+    fleet_log handoff "$to" "restarting read-only standby as takeover writer from=$from"
+  fi
   if fleet_tmux_has_window "$to"; then
     local live_provider
     live_provider="$(_fleet_id_provider "$to")"
@@ -1381,9 +1414,9 @@ cmd_handoff() {
     summary="takeover from $from"
     [[ -n "$task" ]] && summary="$summary: ${task:0:120}"
     fleet_state_jq "$to" --arg p "$provider" --arg from "$from" --arg t "$summary" \
-      '.state="running" | .reason=null | .provider=$p | .role="takeover" | .handoff_from=$from | .current_task=$t' >/dev/null
+      '.state="running" | .reason=null | .provider=$p | .role="takeover" | .writer=true | .pair_mode="takeover" | .handoff_from=$from | .current_task=$t' >/dev/null
     fleet_log handoff "$to" "from=$from source_provider=$source_provider target_provider=$provider existing=true delivered=$delivered"
-    if [[ "$stop_source" == "1" ]]; then
+    if [[ "$stop_source" == "1" && "$stopped_source" == "0" ]]; then
       fleet_tmux_stop_child "$from"
       fleet_state_jq "$from" --arg r "fleet handoff to $to" '.state="stopped" | .reason=$r' >/dev/null || true
       fleet_log down "$from" "handoff to $to"
@@ -1397,17 +1430,19 @@ cmd_handoff() {
   pm="$(fleet_child_get "$from" permission_mode "")"
   exitfile="$RUN_DIR/$to.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   local -a cargs=()
-  fleet_agent_build_args cargs "$provider" "$to" "$to" "$cwd" "$primer" "$prompt" "" "$pm"
+  fleet_agent_build_args cargs "$provider" "$to" "$to" "$cwd" "$primer" "$prompt" "$resume_sid" "$pm"
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$to" -c "$cwd" \
     -e "FLEET_CHILD_ID=$to" -e "FLEET_AGENT_PROVIDER=$provider" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
   fleet_state_ensure "$to" "$cwd" true
   summary="handoff from $from"
   [[ -n "$task" ]] && summary="$summary: ${task:0:120}"
-  fleet_state_jq "$to" --arg p "$provider" --arg from "$from" --arg t "$summary" \
-    '.state="running" | .reason=null | .provider=$p | .role="handoff" | .handoff_from=$from | .current_task=$t' >/dev/null
+  local target_role="handoff"
+  [[ "$promoting_standby" == "1" ]] && target_role="takeover"
+  fleet_state_jq "$to" --arg p "$provider" --arg from "$from" --arg t "$summary" --arg role "$target_role" \
+    '.state="running" | .reason=null | .provider=$p | .role=$role | .writer=true | .pair_mode="takeover" | .handoff_from=$from | .current_task=$t' >/dev/null
   fleet_log handoff "$to" "from=$from source_provider=$source_provider target_provider=$provider"
-  if [[ "$stop_source" == "1" ]]; then
+  if [[ "$stop_source" == "1" && "$stopped_source" == "0" ]]; then
     fleet_tmux_stop_child "$from"
     fleet_state_jq "$from" --arg r "fleet handoff to $to" '.state="stopped" | .reason=$r' >/dev/null || true
     fleet_log down "$from" "handoff to $to"

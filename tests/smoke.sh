@@ -147,11 +147,15 @@ sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_up_pair.out" 2>/dev/null
 hasline "fleet up starts the base worker" "$TMP/wins_up_pair.out" "alpha"
 hasline "fleet up starts opposite-provider companion by default" "$TMP/wins_up_pair.out" "alpha-codex"
-has "auto-pair prompt identifies companion agent" "$FLEET_CODEX_STUB_LOG" "COMPANION AGENT"
+has "auto-pair prompt identifies adversarial pair role" "$FLEET_CODEX_STUB_LOG" "ADVERSARIAL PAIR PROGRAMMER"
+has "auto-pair codex twin is read-only" "$FLEET_CODEX_STUB_LOG" "read-only"
 has "auto-pair state records base member" "$WS2/.fleet/state/alpha-codex.json" "\"companion_for\": \"alpha\""
+has "auto-pair state records standby role" "$WS2/.fleet/state/alpha-codex.json" "\"role\": \"standby\""
+has "auto-pair state records non-writer" "$WS2/.fleet/state/alpha-codex.json" "\"writer\": false"
 "$FLEET" pairs alpha > "$TMP/pairs_alpha.out" 2>&1
 has "pairs command shows logical base" "$TMP/pairs_alpha.out" "alpha"
 has "pairs command shows companion lane" "$TMP/pairs_alpha.out" "alpha-codex"
+has "pairs command shows standby role" "$TMP/pairs_alpha.out" "standby"
 "$FLEET" pair-send alpha "PAIR-FYI" > "$TMP/pair_send.out" 2>&1 || true
 has "pair-send writes base inbox" "$WS2/.fleet/inbox/alpha.jsonl" "PAIR-FYI"
 has "pair-send writes companion inbox" "$WS2/.fleet/inbox/alpha-codex.jsonl" "PAIR-FYI"
@@ -191,14 +195,16 @@ printf '\nHANDOFF-SENTINEL: repo-local state wins over private transcript.\n' >>
 sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_pair.out" 2>/dev/null
 hasline "pair creates per-repo companion window" "$TMP/wins_pair.out" "alpha-duet"
-has "pair prompt identifies companion agent" "$FLEET_CODEX_STUB_LOG" "COMPANION AGENT"
+has "pair prompt identifies adversarial pair role" "$FLEET_CODEX_STUB_LOG" "ADVERSARIAL PAIR PROGRAMMER"
 has "pair state records base member" "$WS2/.fleet/state/alpha-duet.json" "\"companion_for\": \"alpha\""
+has "pair state records standby role" "$WS2/.fleet/state/alpha-duet.json" "\"role\": \"standby\""
 
 "$FLEET" handoff alpha > "$TMP/handoff_live.out" 2>&1
 sleep 0.2
-has "handoff can promote live companion" "$TMP/handoff_live.out" "live 'alpha-duet'"
-has "live handoff packet includes repo-local RESUME.md" "$WS2/.fleet/inbox/alpha-duet.jsonl" "HANDOFF-SENTINEL"
+has "handoff can promote read-only standby" "$TMP/handoff_live.out" "handoff: 'alpha' (claude) -> 'alpha-duet' (codex)"
+has "promoted standby handoff prompt includes repo-local RESUME.md" "$FLEET_CODEX_STUB_LOG" "HANDOFF-SENTINEL"
 has "live handoff promotes companion role" "$WS2/.fleet/state/alpha-duet.json" "\"role\": \"takeover\""
+has "live handoff promotes companion to writer" "$WS2/.fleet/state/alpha-duet.json" "\"writer\": true"
 has "live handoff state records source" "$WS2/.fleet/state/alpha-duet.json" "\"handoff_from\": \"alpha\""
 
 "$FLEET" handoff --provider codex alpha alpha-codex > "$TMP/handoff.out" 2>&1

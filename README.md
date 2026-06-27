@@ -309,18 +309,24 @@ truth from the repo and carries on from durable state instead of inheriting a
 hidden, provider-owned context. Add the new member to `fleet.toml` if the
 handoff or companion should be durable across `fleet up` later.
 
-`fleet pair` is the standing co-work mode. It starts an opposite-provider
-companion in the same repo as a member (`core` + `core-codex`, for example).
-Companions are normal implementation workers, not read-only reviewers: they
-coordinate through `fleet ask/send`, split hypotheses or files where possible,
-keep the same repo-local `RESUME.md` current, and challenge each other's work
-before either engine treats the repo as done. This also simplifies failover:
-when both engines have tokens, `fleet handoff core --stop-source` finds and
-promotes the already-running opposite-provider companion instead of cold-starting
-context after the source is exhausted.
+`fleet pair` is the standing adversarial co-work mode. It starts an
+opposite-provider twin in the same repo as a member (`core` + `core-codex`, for
+example). The default ownership rule is **one writer per repo**: Claude lanes are
+normally the resident writers, while Codex twins are read-only pair programmers
+and fail-over standbys. Their primary job is to question the writer: challenge
+assumptions, look for counterexamples, attack test gaps, review security and
+edge cases, and propose concrete patches or tests for the writer to apply. They
+do not edit the shared working tree unless `fleet handoff` promotes them to the
+sole takeover writer.
 
-Because pair programming is now the default operating mode, `fleet up` starts
-these companions automatically. Tune with `FLEET_PAIR_ON_UP=off`,
+This also simplifies failover: when Claude hits a hard usage limit,
+`fleet handoff core --stop-source` finds the already-running Codex twin, restarts
+it as the takeover writer if it was read-only, and stops the source lane so both
+engines are never writers in the same repo at once.
+
+Because adversarial pair programming is now the default operating mode,
+`fleet up` starts these read-only standbys automatically. Tune with
+`FLEET_PAIR_ON_UP=off`, `FLEET_PAIR_PERMISSION_MODE=plan`,
 `FLEET_PAIR_RESUME_LINES`, `FLEET_PAIR_GIT_LINES`, and
 `FLEET_PAIR_MAX_CLAIMS`. The companion launch prompt is deliberately compact so
 large `RESUME.md` files do not hit tmux/CLI argument limits.
@@ -337,7 +343,8 @@ The pair facade keeps the operator model simple: target the logical pair id
 (`core`) while fleet routes to the concrete lanes (`core` and `core-codex`).
 Use `fleet pairs` to inspect lanes, `fleet pair-send` to broadcast a short
 instruction to both, and `fleet pair-ask` when you want independent off-thread
-answers from both providers.
+answers from both providers. `fleet pairs` shows the concrete lane role so it is
+clear which lane is writer and which is read-only standby.
 
 ### Repo-local handoff state — `RESUME.md`
 

@@ -25,7 +25,7 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - `fleet restart <id>` — restart one child.
 - `fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]` — start a fresh worker on a task.
 - `fleet init-resume [--force] [id]` — scaffold the repo-local `RESUME.md` handoff file for one member or all manifest members. It does not overwrite unless `--force`.
-- `fleet pair [--provider claude|codex] [--id companion-id] [id]` — start an opposite-provider companion in the same repo as a member, or for every manifest member if no id is passed. Use this when both Claude and Codex have tokens and the repo should have two implementation agents checking each other.
+- `fleet pair [--provider claude|codex] [--id companion-id] [id]` — start an opposite-provider adversarial read-only twin in the same repo as a member, or for every manifest member if no id is passed. Use this when both Claude and Codex have tokens and the repo should have a second model questioning the writer and staying fail-over ready.
 - `fleet pairs [id]` — show logical pairs and their concrete provider lanes (`core` + `core-codex`, `supervisor` + `supervisor-codex`).
 - `fleet pair-send <id> "<msg>"` — send one short instruction/FYI to every lane in a logical pair.
 - `fleet pair-ask <id> "<q>"` — ask every lane in a logical pair off-thread, useful when you want independent Claude/Codex answers.
@@ -73,11 +73,11 @@ Run these via Bash (the `fleet` binary is on PATH, or at
   Codex cannot directly resume each other's private transcripts. The new engine
   gets repo-local `RESUME.md`, state, git context, claimed files, and a transcript
   excerpt, then must verify ground truth from the repo.
-- `fleet pair` starts a second implementation worker in the same repo, not a
-  read-only reviewer. `fleet up` starts these pairs by default. This simplifies
-  failover because `fleet handoff from to-live-companion` can promote the
-  already-running companion, but both agents still share one working tree and
-  must coordinate file ownership.
+- One writer per repo. Claude workers are normally the resident writers. Codex
+  twins are adversarial read-only pair programmers and fail-over standbys: they
+  question assumptions, attack test gaps/security/edge cases, and propose fixes,
+  but do not edit unless `fleet handoff` promotes them to the sole takeover
+  writer. `fleet up` starts these read-only standbys by default.
 - The supervisor itself has provider lanes. If the Claude supervisor is exhausted,
   continue from `supervisor-codex` using `fleet brief`, `fleet pairs`, `fleet
   pair-send`, and handoff commands. Treat the logical supervisor as one role even
