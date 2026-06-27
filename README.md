@@ -346,6 +346,11 @@ instruction to both, and `fleet pair-ask` when you want independent off-thread
 answers from both providers. `fleet pairs` shows the concrete lane role so it is
 clear which lane is writer and which is read-only standby.
 
+The scoped track-2 replacement is in
+[`docs/R2-FLEET-RUNTIME-SCOPE.md`](docs/R2-FLEET-RUNTIME-SCOPE.md): a Rust
+`r2-fleetd` runtime with a tmux-like TUI, typed agent roles, one-writer leases,
+event logging, worktree isolation, and a later mobile/web hive.
+
 ### Repo-local handoff state — `RESUME.md`
 
 Every implementation worker is expected to maintain `<repo>/RESUME.md` as the
