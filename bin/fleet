@@ -606,9 +606,7 @@ fleet_start_supervisor() {
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" supervisor fleet-supervisor "$WORKSPACE" "$primer" "$prompt" "$sid" ""
   local exitfile="$RUN_DIR/supervisor.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n supervisor -c "$WORKSPACE" -e "FLEET_CHILD_ID=supervisor" \
-    -e "FLEET_AGENT_PROVIDER=$provider" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_tmux_new_agent_window supervisor "$WORKSPACE" "$exitfile" "$provider" cargs
   fleet_state_ensure supervisor "$WORKSPACE" true
   fleet_state_jq supervisor --arg p "$provider" --arg cwd "$WORKSPACE" \
     '.state="running" | .reason=null | .role="supervisor" | .provider=$p | .cwd=$cwd | .managed=true' >/dev/null
@@ -632,9 +630,7 @@ fleet_start_supervisor_companion() {
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$id" fleet-supervisor-codex "$WORKSPACE" "$primer" "$prompt" "$sid" ""
   exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$WORKSPACE" -e "FLEET_CHILD_ID=$id" \
-    -e "FLEET_AGENT_PROVIDER=$provider" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_tmux_new_agent_window "$id" "$WORKSPACE" "$exitfile" "$provider" cargs
   fleet_state_ensure "$id" "$WORKSPACE" true
   fleet_state_jq "$id" --arg p "$provider" --arg cwd "$WORKSPACE" \
     '.state="running" | .reason=null | .role="supervisor" | .provider=$p | .cwd=$cwd | .managed=true | .companion_for="supervisor" | .current_task="Backup fleet supervisor lane"' >/dev/null
@@ -1170,9 +1166,7 @@ _fleet_start_companion() {
   FLEET_SKIP_PERMISSIONS=off; export FLEET_SKIP_PERMISSIONS
   fleet_agent_build_args cargs "$target_provider" "$cid" "$cid" "$cwd" "$primer" "$prompt" "$sid" "$pm"
   _fleet_restore_skip_permissions "$had_skip" "$old_skip"
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$cid" -c "$cwd" \
-    -e "FLEET_CHILD_ID=$cid" -e "FLEET_AGENT_PROVIDER=$target_provider" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_tmux_new_agent_window "$cid" "$cwd" "$exitfile" "$target_provider" cargs
   fleet_state_ensure "$cid" "$cwd" true
   summary="Adversarial read-only pair / failover standby for $base"
   fleet_state_jq "$cid" --arg p "$target_provider" --arg base "$base" --arg t "$summary" \
@@ -1271,9 +1265,7 @@ cmd_dispatch() {
   local primer; primer="$(fleet_peer_primer "$id")"
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$id" "$id" "$cwd" "$primer" "$task" "" ""
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" -e "FLEET_CHILD_ID=$id" \
-    -e "FLEET_AGENT_PROVIDER=$provider" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_tmux_new_agent_window "$id" "$cwd" "$exitfile" "$provider" cargs
   fleet_state_ensure "$id" "$cwd" true
   fleet_state_jq "$id" --arg t "$task" --arg p "$provider" '.state="running" | .current_task=$t | .provider=$p' >/dev/null
   fleet_log dispatch "$id" "$task"
@@ -1431,9 +1423,7 @@ cmd_handoff() {
   exitfile="$RUN_DIR/$to.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$to" "$to" "$cwd" "$primer" "$prompt" "$resume_sid" "$pm"
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$to" -c "$cwd" \
-    -e "FLEET_CHILD_ID=$to" -e "FLEET_AGENT_PROVIDER=$provider" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_tmux_new_agent_window "$to" "$cwd" "$exitfile" "$provider" cargs
   fleet_state_ensure "$to" "$cwd" true
   summary="handoff from $from"
   [[ -n "$task" ]] && summary="$summary: ${task:0:120}"
@@ -1495,9 +1485,7 @@ cmd_refute() {
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$reviewer" "$reviewer" "$cwd" "$primer" "$prompt" "" "plan"
   _fleet_restore_skip_permissions "$had_skip" "$old_skip"
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$reviewer" -c "$cwd" \
-    -e "FLEET_CHILD_ID=$reviewer" -e "FLEET_AGENT_PROVIDER=$provider" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_tmux_new_agent_window "$reviewer" "$cwd" "$exitfile" "$provider" cargs
   fleet_state_ensure "$reviewer" "$cwd" true
   fleet_state_jq "$reviewer" --arg p "$provider" --arg target "$target" \
     '.state="running" | .reason=null | .provider=$p | .role="adversary" | .refutes=$target | .current_task=("Adversarial review of " + $target)' >/dev/null

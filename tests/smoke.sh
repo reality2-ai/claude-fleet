@@ -169,10 +169,11 @@ hasline "supervise starts supervisor provider companion" "$TMP/wins_supervisor_p
 # --- 8. mixed-provider launch, pair, handoff, and refute --------------------
 section "8. mixed-provider launch / pair / handoff / refute"
 export FLEET_CODEX_STUB_LOG="$TMP/codex.mixed.log"; : > "$FLEET_CODEX_STUB_LOG"
-"$FLEET" dispatch --provider codex gamma "codex dispatch task" repoA > "$TMP/dispatch_codex.out" 2>&1
+FLEET_TMUX_ARG_MAX=1 "$FLEET" dispatch --provider codex gamma "codex dispatch task" repoA > "$TMP/dispatch_codex.out" 2>&1
 sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_mixed.out" 2>/dev/null
 hasline "dispatch --provider codex creates gamma window" "$TMP/wins_mixed.out" "gamma"
+assert "dispatch can launch via argv file for long prompts" test -f "$WS2/.fleet/run/gamma.argv"
 hasline "codex dispatch uses --cd" "$FLEET_CODEX_STUB_LOG" "--cd"
 hasline "codex managed worker bypasses interaction by default" "$FLEET_CODEX_STUB_LOG" "--dangerously-bypass-approvals-and-sandbox"
 has "codex dispatch receives task prompt" "$FLEET_CODEX_STUB_LOG" "codex dispatch task"

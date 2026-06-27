@@ -81,6 +81,45 @@ fleet_tmux_window_ids() {
   done < <(fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null)
 }
 
+fleet_agent_argv_size() {
+  local arr_name="$1" a total=0
+  local -n argv="$arr_name"
+  for a in "${argv[@]}"; do
+    total=$(( total + ${#a} + 1 ))
+  done
+  printf '%s\n' "$total"
+}
+
+fleet_write_agent_argv_file() {
+  local id="$1" arr_name="$2" f
+  local -n argv="$arr_name"
+  mkdir -p "$RUN_DIR"
+  f="$RUN_DIR/$id.argv"
+  : >"$f"
+  local a
+  for a in "${argv[@]}"; do
+    printf '%s\0' "$a"
+  done >"$f"
+  printf '%s\n' "$f"
+}
+
+fleet_tmux_new_agent_window() {
+  local id="$1" cwd="$2" exitfile="$3" provider="$4" arr_name="$5"
+  local -n argv="$arr_name"
+  local max="${FLEET_TMUX_ARG_MAX:-20000}" size argvfile
+  size="$(fleet_agent_argv_size "$arr_name")"
+  if [[ "$size" =~ ^[0-9]+$ && "$max" =~ ^[0-9]+$ && "$size" -gt "$max" ]]; then
+    argvfile="$(fleet_write_agent_argv_file "$id" "$arr_name")"
+    fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+      -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
+      "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "$TOOL_ROOT/lib/run-argv-file.sh" "$argvfile"
+  else
+    fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+      -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
+      "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${argv[@]}"
+  fi
+}
+
 # Start one child in its own window. fleet_tmux_start_child <id>
 # Resumes from run/<id>.session when present, else seeds a fresh session.
 fleet_tmux_start_child() {
@@ -122,9 +161,7 @@ fleet_tmux_start_child() {
   local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"
   # -e sets env in the new window (tmux ≥3.0); command + args passed as argv so
   # no shell-quoting of the seed prompt is needed.
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
-    -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
-    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${agent_args[@]}"
+  fleet_tmux_new_agent_window "$id" "$cwd" "$exitfile" "$provider" agent_args
 
   fleet_state_ensure "$id" "$cwd" true
   fleet_state_jq "$id" --arg p "$provider" '.state="running" | .reason=null | .provider=$p' >/dev/null
