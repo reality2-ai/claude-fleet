@@ -17,6 +17,10 @@ fleet_provider_bin() {
   esac
 }
 
+fleet_is_supervisor_id() {
+  [[ "$1" == "supervisor" || "$1" == supervisor-* ]]
+}
+
 fleet_prompt_join() {
   local primer="$1" prompt="$2"
   if [[ -n "$primer" && -n "$prompt" ]]; then
@@ -83,7 +87,7 @@ fleet_codex_add_common_flags() {
   # unattended unless FLEET_SKIP_PERMISSIONS=off. The supervisor remains
   # prompt-gated, and callers such as `fleet refute` can force plan/read-only by
   # temporarily setting FLEET_SKIP_PERMISSIONS=off.
-  if [[ "${FLEET_SKIP_PERMISSIONS:-on}" == "on" && "$id" != "supervisor" ]]; then
+  if [[ "${FLEET_SKIP_PERMISSIONS:-on}" == "on" ]] && ! fleet_is_supervisor_id "$id"; then
     argv+=(--dangerously-bypass-approvals-and-sandbox)
     sandbox=""; approval=""
   else
@@ -123,8 +127,8 @@ fleet_agent_build_args() {
       # '…espflash…serial…') the auto-approve hook didn't cover — no human to press "Yes".
       # Skip-permissions for workers (GitHub-failsafe doctrine: don't gate, checkpoint instead;
       # safety = pre-push secret-scan + auto-checkpoint hook + sandboxed worktrees). The
-      # SUPERVISOR keeps prompt-gating (Roy oversees it). Toggle: FLEET_SKIP_PERMISSIONS=off
-      if [[ "${FLEET_SKIP_PERMISSIONS:-on}" == "on" && "$id" != "supervisor" ]]; then
+      # SUPERVISOR lanes keep prompt-gating (Roy oversees them). Toggle: FLEET_SKIP_PERMISSIONS=off
+      if [[ "${FLEET_SKIP_PERMISSIONS:-on}" == "on" ]] && ! fleet_is_supervisor_id "$id"; then
         argv+=(--dangerously-skip-permissions)
       elif [[ -n "$pm" ]]; then
         argv+=(--permission-mode "$pm")
@@ -146,6 +150,7 @@ fleet_agent_build_args() {
       ;;
     *) die "unknown agent provider '$provider' (expected claude or codex)" ;;
   esac
+  return 0
 }
 
 fleet_agent_headless_answer() {

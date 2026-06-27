@@ -277,8 +277,9 @@ copy/resume of your context; you'll just see a brief "no action needed" note. A
 your current work. Nothing ever hijacks your thread with someone else's question.
 Read anything queued any time with:  fleet inbox
 
-There is also a "supervisor" coordinating the fleet. Escalate to it (blockers,
-cross-cutting decisions, "who owns X?") with:  fleet send supervisor "..."
+There is also a logical "supervisor" pair coordinating the fleet. Escalate to it
+(blockers, cross-cutting decisions, "who owns X?") with:
+fleet pair-send supervisor "..."
 
 Keep cross-agent messages short and specific, and prefer asking the right peer
 over guessing about a repo that isn't yours. Notes are tagged with a hop counter

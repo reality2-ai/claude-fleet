@@ -177,8 +177,10 @@ fleet attach api                            # drop into a member's tmux window
 After a reboot, `fleet up` brings the whole suite back, resuming each member's
 conversation. By default it also starts an opposite-provider companion for each
 manifest worker when that provider CLI is available, so each repo gets a
-Claude/Codex pair. Use `fleet up --no-pairs` or `FLEET_PAIR_ON_UP=off` for the
-old single-agent startup mode.
+Claude/Codex pair. The supervisor is paired too (`supervisor` +
+`supervisor-codex`) so control does not depend on Claude credits alone. Use
+`fleet up --no-pairs` or `FLEET_PAIR_ON_UP=off` for the old single-agent startup
+mode.
 
 In `fleet status`, `STATE` is derived honestly from the transcript
 (live / idle / dead / failed), `WIN` shows a live tmux window, `CLAIMS` counts
@@ -290,6 +292,9 @@ fleet handoff core                 # default: start core-codex from core's state
 fleet handoff --provider claude api api-claude
 fleet pair core                    # start core-codex as a live companion
 fleet pair                         # pair every manifest child with its opposite provider
+fleet pairs core                   # show the logical pair and its provider lanes
+fleet pair-send core "status?"     # send one note to every lane in the pair
+fleet pair-ask core "what changed?" # ask every lane off-thread
 fleet refute core                  # default: opposite-provider read-only adversary
 fleet dispatch --provider codex audit "Review the auth diff" core
 ```
@@ -327,6 +332,12 @@ nodes/edges with source, timestamp, agent, provider, and verification status.
 Companion prompts should receive only a compact frontier plus retrieval commands;
 the graph supplies the rest on demand and gives both engines a shared, auditable
 memory that is smaller than a transcript and richer than a flat `RESUME.md`.
+
+The pair facade keeps the operator model simple: target the logical pair id
+(`core`) while fleet routes to the concrete lanes (`core` and `core-codex`).
+Use `fleet pairs` to inspect lanes, `fleet pair-send` to broadcast a short
+instruction to both, and `fleet pair-ask` when you want independent off-thread
+answers from both providers.
 
 ### Repo-local handoff state — `RESUME.md`
 
@@ -367,6 +378,9 @@ fleet restart <id>                # restart one member
 fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]
 fleet init-resume [--force] [id]  # scaffold repo-local RESUME.md handoff file(s)
 fleet pair [--provider claude|codex] [--id companion-id] [id]
+fleet pairs [id]                    # logical pair view: base + provider lanes
+fleet pair-send <id> "<msg>"        # send to all lanes in a pair
+fleet pair-ask <id> "<question>"    # ask all lanes off-thread
 fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]
 fleet refute [--provider claude|codex] [--id id] <target> [claim]
 fleet attach <id>                 # attach your terminal to a member's window
@@ -485,8 +499,10 @@ after editing it; the primer is applied at launch.)
 ## The supervisor
 
 `fleet up` starts a dedicated **supervisor** window — an agent session primed with
-the role in `skill/SUPERVISOR.md` — alongside the members. Start or jump to it
-directly with:
+the role in `skill/SUPERVISOR.md` — alongside the members. By default it also
+starts an opposite-provider backup supervisor lane (`supervisor-codex` when the
+primary is Claude), so the control plane survives Claude usage-credit exhaustion.
+Start or jump to it directly with:
 
 ```sh
 fleet supervise            # start it (or tell you it's already up)

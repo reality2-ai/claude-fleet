@@ -149,6 +149,17 @@ hasline "fleet up starts the base worker" "$TMP/wins_up_pair.out" "alpha"
 hasline "fleet up starts opposite-provider companion by default" "$TMP/wins_up_pair.out" "alpha-codex"
 has "auto-pair prompt identifies companion agent" "$FLEET_CODEX_STUB_LOG" "COMPANION AGENT"
 has "auto-pair state records base member" "$WS2/.fleet/state/alpha-codex.json" "\"companion_for\": \"alpha\""
+"$FLEET" pairs alpha > "$TMP/pairs_alpha.out" 2>&1
+has "pairs command shows logical base" "$TMP/pairs_alpha.out" "alpha"
+has "pairs command shows companion lane" "$TMP/pairs_alpha.out" "alpha-codex"
+"$FLEET" pair-send alpha "PAIR-FYI" > "$TMP/pair_send.out" 2>&1 || true
+has "pair-send writes base inbox" "$WS2/.fleet/inbox/alpha.jsonl" "PAIR-FYI"
+has "pair-send writes companion inbox" "$WS2/.fleet/inbox/alpha-codex.jsonl" "PAIR-FYI"
+"$FLEET" supervise > "$TMP/supervise_pair.out" 2>&1
+sleep 0.6
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_supervisor_pair.out" 2>/dev/null
+hasline "supervise starts primary supervisor" "$TMP/wins_supervisor_pair.out" "supervisor"
+hasline "supervise starts supervisor provider companion" "$TMP/wins_supervisor_pair.out" "supervisor-codex"
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 
 # --- 8. mixed-provider launch, pair, handoff, and refute --------------------

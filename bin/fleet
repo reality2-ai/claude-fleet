@@ -73,6 +73,9 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet init-resume [--force] [id] scaffold repo-local RESUME.md handoff file(s)
   fleet pair [--provider claude|codex] [--id companion-id] [id]
                                   start per-repo opposite-provider companion(s)
+  fleet pairs [id]               show logical Claude/Codex pairs and lane state
+  fleet pair-send <id> "<msg>"   send one message to all live lanes in a pair
+  fleet pair-ask <id> "<q>"      ask all live lanes in a pair off-thread
   fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]
                                   start an opposite-provider takeover from a
                                   source member's state, git context, and transcript tail
@@ -482,7 +485,7 @@ cmd_brief() {
   local -a attention=() waiting=() working=()
   local live ready mail snip managed provider
   for id in "${ids[@]}"; do
-    [[ "$id" == "supervisor" ]] && continue                 # the overseer isn't triaged
+    fleet_is_supervisor_id "$id" && continue                 # overseer lanes aren't triaged
     managed="$(fleet_state_get "$id" '.managed' false)"
     [[ -n "${MAN[$id]:-}" || "$managed" == "true" ]] || continue
     if fleet_pane_is_provider_exhausted "$id" 2>/dev/null; then
@@ -563,7 +566,7 @@ fleet_reorder_windows() {
   fleet_tmux_session_exists || return 0
   local -a current=(); mapfile -t current < <(fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null)
   [[ ${#current[@]} -eq 0 ]] && return 0
-  local -a want=(supervisor) desired=(); local -A seen=(); local w id
+  local -a want=(supervisor supervisor-codex) desired=(); local -A seen=(); local w id
   for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && want+=("$id"); done
   for w in "${want[@]}"; do
     printf '%s\n' "${current[@]}" | grep -qxF -- "$w" && { desired+=("$w"); seen["$w"]=1; }
@@ -607,8 +610,35 @@ fleet_start_supervisor() {
     -e "FLEET_AGENT_PROVIDER=$provider" \
     "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
   fleet_state_ensure supervisor "$WORKSPACE" true
-  fleet_state_jq supervisor --arg p "$provider" '.state="running" | .role="supervisor" | .provider=$p' >/dev/null
+  fleet_state_jq supervisor --arg p "$provider" --arg cwd "$WORKSPACE" \
+    '.state="running" | .reason=null | .role="supervisor" | .provider=$p | .cwd=$cwd | .managed=true' >/dev/null
   fleet_log supervisor - "started"
+}
+
+fleet_start_supervisor_companion() {
+  local base_provider provider id="supervisor-codex"
+  fleet_tmux_has_window "$id" && return 0
+  base_provider="$(_fleet_id_provider supervisor)"
+  provider="${FLEET_SUPERVISOR_COMPANION_PROVIDER:-$(_fleet_opposite_provider "$base_provider")}"
+  _fleet_validate_provider "$provider"
+  _fleet_provider_available "$provider" || { warn "supervisor: provider '$provider' CLI not found; skipping supervisor companion"; return 0; }
+  fleet_ensure_managed_settings
+  fleet_tmux_ensure_session
+  local primer prompt sid exitfile
+  primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
+  prompt="You are the $provider backup supervisor lane for this fleet. Work as the same logical supervisor as 'supervisor', but from a different provider. Monitor fleet status, doctor output, provider exhaustion, conflicts, RESUME.md health, and pair handoffs. If the Claude supervisor is exhausted or unavailable, continue coordination from ground truth using fleet commands. Do not assume private Claude transcript state."
+  sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
+  [[ -n "$sid" && -n "${FLEET_RESUME_NUDGE-carry on}" ]] && prompt="${FLEET_RESUME_NUDGE-carry on}"
+  local -a cargs=()
+  fleet_agent_build_args cargs "$provider" "$id" fleet-supervisor-codex "$WORKSPACE" "$primer" "$prompt" "$sid" ""
+  exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$WORKSPACE" -e "FLEET_CHILD_ID=$id" \
+    -e "FLEET_AGENT_PROVIDER=$provider" \
+    "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${cargs[@]}"
+  fleet_state_ensure "$id" "$WORKSPACE" true
+  fleet_state_jq "$id" --arg p "$provider" --arg cwd "$WORKSPACE" \
+    '.state="running" | .reason=null | .role="supervisor" | .provider=$p | .cwd=$cwd | .managed=true | .companion_for="supervisor" | .current_task="Backup fleet supervisor lane"' >/dev/null
+  fleet_log supervisor "$id" "started provider=$provider companion_for=supervisor"
 }
 
 cmd_supervise() {
@@ -618,6 +648,9 @@ cmd_supervise() {
     info "supervisor already running."
   else
     fleet_start_supervisor; info "supervisor session started."
+  fi
+  if [[ "${FLEET_SUPERVISOR_PAIR:-on}" != "off" && "${FLEET_PAIR_ON_UP:-on}" != "off" ]]; then
+    fleet_start_supervisor_companion
   fi
   info "attach with:  fleet attach supervisor"
 }
@@ -658,6 +691,9 @@ cmd_up() {
   (( started == 0 )) && warn "nothing started (check id / manifest)"
   if [[ -z "$only" && "$no_sup" == 0 ]]; then
     fleet_start_supervisor && info "up: started 'supervisor'"
+    if [[ "${FLEET_SUPERVISOR_PAIR:-on}" != "off" && "${FLEET_PAIR_ON_UP:-on}" != "off" && "$no_pairs" == 0 ]]; then
+      fleet_start_supervisor_companion
+    fi
   fi
   fleet_reorder_windows
   info "tmux session '$FLEET_TMUX_SESSION' — attach with: fleet attach <id>"
@@ -740,6 +776,7 @@ _fleet_id_provider() {
   p="$(fleet_state_get "$id" '.provider' "")"
   if [[ -z "$p" || "$p" == "null" ]]; then
     if [[ "$id" == "supervisor" ]]; then p="$(fleet_default_provider)"
+    elif [[ "$id" == supervisor-* ]]; then p="${id#supervisor-}"
     else p="$(fleet_provider_for_child "$id")"; fi
   fi
   case "$p" in claude|codex) printf '%s\n' "$p" ;; *) fleet_default_provider ;; esac
@@ -747,7 +784,7 @@ _fleet_id_provider() {
 
 _fleet_id_cwd() {
   local id="$1" cwd rel
-  [[ "$id" == "supervisor" ]] && { printf '%s\n' "$WORKSPACE"; return; }
+  fleet_is_supervisor_id "$id" && { printf '%s\n' "$WORKSPACE"; return; }
   cwd="$(fleet_state_get "$id" '.cwd' "")"
   if [[ -n "$cwd" && "$cwd" != "null" ]]; then printf '%s\n' "$cwd"; return; fi
   rel="$(fleet_child_get "$id" cwd "")"
@@ -848,7 +885,7 @@ EOF
 _fleet_resume_status_problem() {
   local id="$1" cwd="$2" role f mt act delta stale
   [[ "${FLEET_RESUME_CHECK:-on}" == "off" ]] && return 0
-  [[ "$id" == "supervisor" ]] && return 0
+  fleet_is_supervisor_id "$id" && return 0
   role="$(fleet_state_get "$id" '.role' "")"
   [[ "$role" == "adversary" ]] && return 0
   [[ -d "$cwd" ]] || return 0
@@ -1124,6 +1161,65 @@ _fleet_start_companion() {
     '.state="running" | .reason=null | .provider=$p | .role="companion" | .companion_for=$base | .current_task=$t' >/dev/null
   fleet_log pair "$cid" "base=$base base_provider=$base_provider companion_provider=$target_provider source=$source"
   info "pair: '$base' ($base_provider) + '$cid' ($target_provider)"
+}
+
+_fleet_pair_base() {
+  local id="$1" base
+  base="$(fleet_state_get "$id" '.companion_for' "")"
+  [[ -n "$base" && "$base" != "null" ]] && { printf '%s\n' "$base"; return; }
+  case "$id" in
+    supervisor-claude|supervisor-codex) printf 'supervisor\n' ;;
+    *-claude) printf '%s\n' "${id%-claude}" ;;
+    *-codex)  printf '%s\n' "${id%-codex}" ;;
+    *)        printf '%s\n' "$id" ;;
+  esac
+}
+
+_fleet_pair_targets() {
+  local base="$(_fleet_pair_base "$1")" id expected
+  local -A seen=()
+  for id in "$base" "$base-claude" "$base-codex"; do
+    [[ -n "$id" && -z "${seen[$id]:-}" ]] || continue
+    if fleet_tmux_has_window "$id" 2>/dev/null || [[ -f "$(fleet_state_path "$id")" ]]; then
+      seen["$id"]=1
+      printf '%s\n' "$id"
+    fi
+  done
+  while IFS= read -r id; do
+    [[ -n "$id" && -z "${seen[$id]:-}" ]] || continue
+    expected="$(fleet_state_get "$id" '.companion_for' "")"
+    [[ "$expected" == "$base" ]] || continue
+    seen["$id"]=1
+    printf '%s\n' "$id"
+  done < <(fleet_state_ids)
+}
+
+cmd_pairs() {
+  local only="${1:-}" base id provider live task
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_reconcile
+  printf '%s%-16s %-16s %-8s %-8s %s%s\n' "$c_bold" "PAIR" "LANE" "PROVIDER" "STATE" "TASK" "$c_reset"
+  local -A bases=()
+  if [[ -n "$only" ]]; then
+    bases["$(_fleet_pair_base "$only")"]=1
+  else
+    bases["supervisor"]=1
+    for base in "${CHILD_IDS[@]:-}"; do [[ -n "$base" ]] && bases["$base"]=1; done
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      base="$(_fleet_pair_base "$id")"
+      [[ -n "$base" ]] && bases["$base"]=1
+    done < <(fleet_state_ids)
+  fi
+  for base in "${!bases[@]}"; do
+    while IFS= read -r id; do
+      [[ -n "$id" ]] || continue
+      provider="$(_fleet_id_provider "$id")"
+      live="$(fleet_liveness "$id")"
+      task="$(fleet_state_get "$id" '.current_task' "")"; task="${task:0:48}"
+      printf '  %-14s %-16s %-8s %-8s %s\n' "$base" "$id" "$provider" "$live" "$task"
+    done < <(_fleet_pair_targets "$base")
+  done
 }
 
 _fleet_restore_skip_permissions() {
@@ -1563,6 +1659,48 @@ _fleet_deliver() {   # <kind> <to> <from> <text>
   fi
 }
 
+cmd_pair_send() {
+  _fleet_parse_msg "$@"
+  [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet pair-send <pair-id> \"<msg>\" [--from <id>]"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required. Run: sudo apt install tmux"
+  local pair="$_F_TO" from="$_F_FROM" text="$_F_TEXT" to sent=0 queued=0
+  local -a targets=()
+  mapfile -t targets < <(_fleet_pair_targets "$pair")
+  [[ ${#targets[@]} -gt 0 ]] || die "unknown pair '$pair'"
+  local cap hop
+  cap="$(fleet_max_hops)"
+  hop="$(fleet_next_hop "$from")" || {
+    fleet_log hop-limit "$pair" "from=$from cap=$cap"
+    die "hop limit ($cap) reached for this thread — not sent to pair '$pair'. Start a fresh thread, or raise [supervisor] max_hops."
+  }
+  for to in "${targets[@]}"; do
+    [[ -n "$to" && "$to" != "$from" ]] || continue
+    fleet_enqueue "$to" "$from" "$text" "$hop" msg
+    fleet_log msg "$to" "pair=$pair from=$from hop=$hop"
+    if transport_deliver "$to"; then sent=$(( sent + 1 )); else queued=$(( queued + 1 )); fi
+  done
+  (( sent + queued > 0 )) || die "pair '$pair' has no recipient other than '$from'"
+  info "→ pair '$(_fleet_pair_base "$pair")': delivered=$sent queued=$queued (from $from, hop $hop/$cap)"
+}
+
+cmd_pair_ask() {
+  _fleet_parse_msg "$@"
+  [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet pair-ask <pair-id> \"<question>\" [--from <id>]"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_has_tmux || die "tmux required. Run: sudo apt install tmux"
+  local pair="$_F_TO" from="$_F_FROM" q="$_F_TEXT" to asked=0
+  local -a targets=()
+  mapfile -t targets < <(_fleet_pair_targets "$pair")
+  [[ ${#targets[@]} -gt 0 ]] || die "unknown pair '$pair'"
+  for to in "${targets[@]}"; do
+    [[ -n "$to" && "$to" != "$from" ]] || continue
+    cmd_ask --from "$from" "$to" "$q"
+    asked=$(( asked + 1 ))
+  done
+  (( asked > 0 )) || die "pair '$pair' has no ask target other than '$from'"
+}
+
 cmd_send() {
   _fleet_parse_msg "$@"
   [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet send <to> \"<msg>\" [--from <id>]"
@@ -1584,12 +1722,10 @@ cmd_ask() {
     die "hop limit ($cap) reached for this thread — not asking '$to'. Start a fresh thread, or raise [supervisor] max_hops."
   }
   local rel cwd
-  if [[ "$to" == "supervisor" ]]; then
+  if fleet_is_supervisor_id "$to"; then
     cwd="$WORKSPACE"                       # the supervisor lives at the workspace root
   else
-    rel="$(fleet_child_get "$to" cwd "")"
-    [[ -n "$rel" ]] || die "unknown target '$to' (not in the manifest)"
-    cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
+    cwd="$(_fleet_id_cwd "$to")"
   fi
   [[ -d "$cwd" ]] || die "target '$to' cwd does not exist: $cwd"
   fleet_tmux_ensure_session
@@ -1729,6 +1865,7 @@ main() {
     dispatch)  cmd_dispatch "$@" ;;
     init-resume|resume-init) cmd_init_resume "$@" ;;
     pair)      cmd_pair "$@" ;;
+    pairs|pair-status|pair-ls) cmd_pairs "$@" ;;
     handoff)   cmd_handoff "$@" ;;
     refute|adversary|adversarial) cmd_refute "$@" ;;
     attach)    cmd_attach "$@" ;;
@@ -1738,6 +1875,8 @@ main() {
     remote)    cmd_remote "$@" ;;
     ask)       cmd_ask "$@" ;;
     send)      cmd_send "$@" ;;
+    pair-send|psend) cmd_pair_send "$@" ;;
+    pair-ask|pask) cmd_pair_ask "$@" ;;
     broadcast) cmd_broadcast "$@" ;;
     inbox)     cmd_inbox "$@" ;;
     version|-v|--version) echo "fleet $FLEET_VERSION" ;;
