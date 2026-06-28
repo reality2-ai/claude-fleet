@@ -36,6 +36,12 @@ _faculty_caps_codex_daemon="durable_body attachable headless_answer native_tui u
 # faculty_capability <cap> [adapter]  → exit 0 (true) / 1 (false)
 faculty_capability() {
   local cap="$1" adapter="${2:-$FLEET_FACULTY_ADAPTER}" var list
+  # cli-tmux gains NATIVE dead-detection (#{pane_dead}) once dead panes are kept
+  # (FLEET_TMUX_REMAIN_ON_EXIT=on) — reflect that dynamically rather than claiming it
+  # unconditionally for the default config (where liveness is still mtime/window-based).
+  if [[ "$cap" == native_liveness && "$adapter" == cli-tmux && "${FLEET_TMUX_REMAIN_ON_EXIT:-off}" == on ]]; then
+    return 0
+  fi
   var="_faculty_caps_${adapter//-/_}"
   list="${!var:-}"
   [[ " $list " == *" $cap "* ]]

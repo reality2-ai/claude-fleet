@@ -1607,8 +1607,12 @@ cmd_reap() {
   local id reaped=0
   for id in "${CHILD_IDS[@]:-}"; do
     [[ -n "$id" ]] || continue
-    # a managed child with no window but not intentionally stopped → crashed
-    fleet_tmux_has_window "$id" 2>/dev/null && continue
+    # a managed child that is down but not intentionally stopped → crashed.
+    # "down" = no window, OR (under remain-on-exit) a window whose pane has DIED —
+    # otherwise a lingering dead pane would be mistaken for a live worker and skipped.
+    if fleet_tmux_has_window "$id" 2>/dev/null && ! fleet_tmux_pane_dead "$id" 2>/dev/null; then
+      continue
+    fi
     local st; st="$(fleet_state_get "$id" '.state' unknown)"
     [[ "$st" == "stopped" || "$st" == "failed" ]] && continue
     [[ "$st" == "running" ]] || continue

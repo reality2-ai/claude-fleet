@@ -69,6 +69,28 @@ fleet_tmux_has_window() {
   fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null | grep -qxF -- "$1"
 }
 
+# Is <id>'s pane DEAD — its command exited but the window lingers (only possible
+# under remain-on-exit on)? Structured ground truth via #{pane_dead}, not text
+# scraping. Returns non-zero (treated as "not dead") when tmux/window is absent or
+# the query fails — so a failed query never flips a live worker to dead.
+fleet_tmux_pane_dead() {
+  fleet_tmux_session_exists || return 1
+  local v
+  v="$(fleet_tmux display-message -p -t "$FLEET_TMUX_SESSION:$1" '#{pane_dead}' 2>/dev/null)" || return 1
+  [[ "$v" == "1" ]]
+}
+
+# Last-output epoch for <id>'s window (#{window_activity}) — a tmux-native activity
+# signal. Prints the epoch, or 0 if unavailable. NOTE: this counts ANY pane output
+# incl. TUI repaints, so it is a reliable ALIVE signal but NOT an idle-vs-busy
+# discriminator; bench against a real idle Claude pane before wiring it into liveness.
+fleet_tmux_window_activity() {
+  fleet_tmux_session_exists || { echo 0; return; }
+  local v
+  v="$(fleet_tmux display-message -p -t "$FLEET_TMUX_SESSION:$1" '#{window_activity}' 2>/dev/null)"
+  [[ "$v" =~ ^[0-9]+$ ]] && printf '%s\n' "$v" || echo 0
+}
+
 # List the ids of live CHILD windows (one per line). This is ground truth: a
 # child shows here from its tmux window alone, independent of any state doc.
 # Filters out the placeholder root window and the transient `ask:<id>` responder
@@ -120,6 +142,13 @@ fleet_tmux_new_agent_window() {
     fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
       -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
       "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${argv[@]}"
+  fi
+  # opt-in hardening: keep a crashed worker's window as a DEAD pane (a visible
+  # corpse + its exit code) instead of letting it vanish — so #{pane_dead} liveness
+  # and reap can SEE the crash rather than the window silently disappearing. Default
+  # off → live-fleet behaviour unchanged. Enable with FLEET_TMUX_REMAIN_ON_EXIT=on.
+  if [[ "${FLEET_TMUX_REMAIN_ON_EXIT:-off}" == "on" ]]; then
+    fleet_tmux set-option -w -t "$FLEET_TMUX_SESSION:$id" remain-on-exit on 2>/dev/null || true
   fi
 }
 

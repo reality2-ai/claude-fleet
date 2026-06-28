@@ -108,6 +108,13 @@ fleet_liveness() {
     fleet_tmux_has_window "$id" 2>/dev/null || _present=0
   fi
   if (( _present == 1 )); then
+    # Native dead-detection: a lingering window whose pane has EXITED is dead, not
+    # live/idle. Structured (#{pane_dead}), not text-scraped. Graceful: acts only on
+    # a positive dead signal, so a failed/absent query never changes the old answer;
+    # and a no-op under the default config (windows close on exit → no dead pane).
+    if [[ "${FLEET_TMUX_NATIVE_LIVENESS:-on}" != "off" ]] && declare -F fleet_tmux_pane_dead >/dev/null 2>&1 && fleet_tmux_pane_dead "$id"; then
+      printf 'dead\n'; return
+    fi
     if (( act > 0 && now - act > FLEET_IDLE_SECS )); then printf 'idle\n'; else printf 'live\n'; fi
     return
   fi

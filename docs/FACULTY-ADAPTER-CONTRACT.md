@@ -147,6 +147,12 @@ floor we already run on, rather than only chasing the native adapter. Ranked by 
 - **`display-message -p` formats** → `native_liveness`↑: `#{pane_dead}`/`#{pane_pid}` (exact alive/dead),
   `#{window_activity}` (last-output epoch), `#{window_activity_flag}` (silence = idle proxy). Replaces regex
   scraping. *Limit:* `#{pane_current_command}` can't distinguish idle-vs-busy (always `claude`/`codex`).
+  **LANDED (opt-in, 2026-06-29):** `fleet_tmux_pane_dead` (#{pane_dead}) is wired into `fleet_liveness` +
+  `cmd_reap`; `FLEET_TMUX_REMAIN_ON_EXIT=on` keeps a crashed worker's window as a visible dead pane (instead of
+  vanishing → fixes "supervisor goes blind") and flips cli-tmux `native_liveness`→true. Default OFF → live-fleet
+  behaviour unchanged; native dead-read defaults on but is a no-op without remain-on-exit. Covered by
+  `tests/liveness.sh` (10 refutation assertions); smoke 89/0. `fleet_tmux_window_activity` helper added but
+  **not** wired into liveness — deferred pending a bench on a real idle Claude pane (TUI-repaint ambiguity).
 - **`pipe-pane -o`** → `event_stream`↑ + cheaper delivery-verify: append-only pane-output file (mtime =
   liveness; the substrate for `faculty_stream` on cli-tmux).
 - **Control mode (`tmux -CC`)** → the strategic one: subscribe to tmux's structured event protocol
