@@ -190,5 +190,13 @@ background-session adapter as the second implementation.
 pre-existing function, `faculty_capability`/`faculty_capabilities` encode the verified matrix (with `claude-bg`
 / `codex-daemon` recorded as ready-to-switch data), `recall` reads the durable head, and `spawn_tool`/`stream`
 fail honestly until the native adapters land. Covered by `tests/faculty.sh` (34 assertions); `tests/smoke.sh`
-green (89) → zero behaviour change. **Not yet adopted at call-sites** — that is the next, separately-verifiable
-step, followed by the `claude-bg` adapter.
+green (89) → zero behaviour change.
+
+**ADOPTED at call-sites (2026-06-29):** the real fleet now routes through the verbs — `faculty_liveness`
+(status/brief/logs/doctor/pairs), `faculty_mount`/`faculty_unmount` (up/down/handoff/restart),
+`faculty_deliver` (send/ask), `faculty_headless_answer` (the ask responder). All exact delegates → still zero
+behaviour change, but the seam is now **load-bearing**: a future `claude-bg` adapter will actually intercept the
+fleet. The cli-tmux adapter also gained, behind `.fleet/env` flags: native dead-pane liveness (`#{pane_dead}` +
+`remain-on-exit`), `#{window_activity}` as a liveness signal, and event-driven reap (`pane-died` hook). Tests:
+faculty 34/0, liveness 12/0, config 5/0, smoke 89/0. **Next: the `claude-bg` adapter** (the delivery fix that
+tmux can't provide).
