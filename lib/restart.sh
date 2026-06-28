@@ -48,7 +48,7 @@ fleet_restart_child() {
     warn "child '$id': restart intensity exceeded — marked failed, not restarting"
     return 1
   fi
-  fleet_tmux_stop_child "$id"
-  fleet_tmux_start_child "$id"
+  faculty_unmount "$id"
+  faculty_mount "$id"
   fleet_log restart "$id" "rc=${rc:-?}"
 }

@@ -30,6 +30,10 @@ source "$TOOL_ROOT/lib/provider.sh"
 source "$TOOL_ROOT/lib/tmux.sh"
 # shellcheck source=comms.sh
 source "$TOOL_ROOT/lib/comms.sh"
+# shellcheck source=transport.sh
+source "$TOOL_ROOT/lib/transport.sh"
+# shellcheck source=faculty.sh
+source "$TOOL_ROOT/lib/faculty.sh"
 fleet_load_paths
 [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
 
@@ -49,7 +53,7 @@ provider="$(fleet_state_get "$to" '.provider' "")"
 primer="You are \"$to\", answering a question from a peer agent \"$from\" in the same fleet. You have been resumed from a fork of your own working session, so you carry your current context. Answer ONLY the question — concisely and specifically, citing file paths where useful. Do NOT start new work, make edits, or message other agents; just answer. If it's outside your repo or expertise, say so in one line and name who might know."
 
 ans=""
-ans="$(fleet_agent_headless_answer "$provider" "$sid" "$primer" "$q" 2>/dev/null)"
+ans="$(faculty_headless_answer "$provider" "$sid" "$primer" "$q" 2>/dev/null)"
 
 ans="${ans//$'\n'/ }"                       # single line for delivery
 maxlen="${FLEET_ANSWER_MAX:-16000}"

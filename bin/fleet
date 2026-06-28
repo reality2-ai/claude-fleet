@@ -394,7 +394,7 @@ cmd_status() {
     "CHILD" "STATE" "MANAGED" "SESSION" "ACTIVE" "CLAIMS" "WIN" "TASK" "$c_reset"
   for id in "${ids[@]}"; do
     local live managed sid ago claims win mark task color
-    live="$(fleet_liveness "$id")"
+    live="$(faculty_liveness "$id")"
     managed="$(fleet_state_get "$id" '.managed' false)"
     if [[ -n "${MAN[$id]:-}" || "$managed" == "true" ]]; then managed="managed"; else managed="ad-hoc"; fi
     sid="$(fleet_state_get "$id" '.session_id' "")"; sid="${sid:0:8}"; [[ -z "$sid" ]] && sid="-"
@@ -424,7 +424,7 @@ _conflict_set() {
   local id live p
   while read -r id; do
     [[ -n "$id" ]] || continue
-    live="$(fleet_liveness "$id")"
+    live="$(faculty_liveness "$id")"
     [[ "$live" == "dead" || "$live" == "stopped" || "$live" == "failed" ]] && continue
     while read -r p; do
       [[ -n "$p" ]] || continue
@@ -498,7 +498,7 @@ cmd_brief() {
       attention+=("$id — $provider usage/credits exhausted · use 'fleet handoff $id --stop-source' or request more provider usage")
       continue
     fi
-    live="$(fleet_liveness "$id")"; ready="$(fleet_state_get "$id" '.ready' false)"
+    live="$(faculty_liveness "$id")"; ready="$(fleet_state_get "$id" '.ready' false)"
     mail="$(_undelivered_count "$id")"
     case "$live" in
       failed)  attention+=("$id — FAILED (restart breaker tripped) · see 'fleet logs $id'") ;;
@@ -554,7 +554,7 @@ cmd_logs() {
   cwd="$(fleet_state_get "$id" '.cwd' "")"; sid="$(fleet_state_get "$id" '.session_id' "")"
   provider="$(fleet_state_get "$id" '.provider' claude)"
   info "child:        $id"
-  info "state:        $(fleet_liveness "$id")"
+  info "state:        $(faculty_liveness "$id")"
   info "session:      ${sid:-<none>}"
   info "cwd:          ${cwd:-<unknown>}"
   info "current task: $(fleet_state_get "$id" '.current_task' '<none>')"
@@ -683,7 +683,7 @@ cmd_up() {
       warn "up: '$id' is a manifest companion; start its base or use fleet pair"
       continue
     fi
-    fleet_tmux_start_child "$id"; started=$(( started + 1 ))
+    faculty_mount "$id"; started=$(( started + 1 ))
     info "up: started '$id'"
     if [[ "${FLEET_PAIR_ON_UP:-on}" != "off" && "$no_pairs" == 0 ]]; then
       _fleet_start_companion "$id" "" "" up
@@ -704,7 +704,7 @@ cmd_down() {
   fleet_load_paths
   local only="${1:-}"
   if [[ -n "$only" ]]; then
-    fleet_tmux_stop_child "$only"
+    faculty_unmount "$only"
     fleet_state_jq "$only" '.state="stopped" | .reason="fleet down"' >/dev/null || true
     fleet_log down "$only" "intentional"
     info "down: stopped '$only'"
@@ -714,7 +714,7 @@ cmd_down() {
   local id
   for id in $(fleet_state_ids); do
     fleet_tmux_has_window "$id" 2>/dev/null || continue
-    fleet_tmux_stop_child "$id"
+    faculty_unmount "$id"
     fleet_state_jq "$id" '.state="stopped" | .reason="fleet down"' >/dev/null || true
     info "down: stopped '$id'"
   done
@@ -1232,7 +1232,7 @@ cmd_pairs() {
     while IFS= read -r id; do
       [[ -n "$id" ]] || continue
       provider="$(_fleet_id_provider "$id")"
-      live="$(fleet_liveness "$id")"
+      live="$(faculty_liveness "$id")"
       role="$(fleet_state_get "$id" '.role' "")"
       task="$(fleet_state_get "$id" '.current_task' "")"; task="${task:0:48}"
       printf '  %-14s %-16s %-8s %-10s %-8s %s\n' "$base" "$id" "$provider" "${role:-writer}" "$live" "$task"
@@ -1388,13 +1388,13 @@ cmd_handoff() {
     promoting_standby=1
     [[ "${FLEET_HANDOFF_EXCLUSIVE:-on}" != "off" ]] && stop_source=1
     if [[ "$stop_source" == "1" ]]; then
-      fleet_tmux_stop_child "$from"
+      faculty_unmount "$from"
       fleet_state_jq "$from" --arg r "fleet handoff to $to" '.state="stopped" | .reason=$r' >/dev/null || true
       fleet_log down "$from" "handoff to $to"
       stopped_source=1
     fi
     if fleet_tmux_has_window "$to"; then
-      fleet_tmux_stop_child "$to"
+      faculty_unmount "$to"
       fleet_state_jq "$to" '.state="stopped" | .reason="promoting read-only standby for handoff"' >/dev/null || true
       fleet_log handoff "$to" "restarting read-only standby as takeover writer from=$from"
     fi
@@ -1409,14 +1409,14 @@ cmd_handoff() {
     prompt="$(_fleet_handoff_prompt "$from" "$to" "$source_provider" "$provider" "$task")"
     fleet_enqueue "$to" "$from" "$prompt" 1 handoff true
     local delivered="queued"
-    transport_deliver "$to" >/dev/null 2>&1 && delivered="delivered"
+    faculty_deliver "$to" >/dev/null 2>&1 && delivered="delivered"
     summary="takeover from $from"
     [[ -n "$task" ]] && summary="$summary: ${task:0:120}"
     fleet_state_jq "$to" --arg p "$provider" --arg from "$from" --arg t "$summary" \
       '.state="running" | .reason=null | .provider=$p | .role="takeover" | .writer=true | .pair_mode="takeover" | .handoff_from=$from | .current_task=$t' >/dev/null
     fleet_log handoff "$to" "from=$from source_provider=$source_provider target_provider=$provider existing=true delivered=$delivered"
     if [[ "$stop_source" == "1" && "$stopped_source" == "0" ]]; then
-      fleet_tmux_stop_child "$from"
+      faculty_unmount "$from"
       fleet_state_jq "$from" --arg r "fleet handoff to $to" '.state="stopped" | .reason=$r' >/dev/null || true
       fleet_log down "$from" "handoff to $to"
     fi
@@ -1440,7 +1440,7 @@ cmd_handoff() {
     '.state="running" | .reason=null | .provider=$p | .role=$role | .writer=true | .pair_mode="takeover" | .handoff_from=$from | .current_task=$t' >/dev/null
   fleet_log handoff "$to" "from=$from source_provider=$source_provider target_provider=$provider"
   if [[ "$stop_source" == "1" && "$stopped_source" == "0" ]]; then
-    fleet_tmux_stop_child "$from"
+    faculty_unmount "$from"
     fleet_state_jq "$from" --arg r "fleet handoff to $to" '.state="stopped" | .reason=$r' >/dev/null || true
     fleet_log down "$from" "handoff to $to"
   fi
@@ -1772,7 +1772,7 @@ _fleet_deliver() {   # <kind> <to> <from> <text>
   fleet_log "$kind" "$to" "from=$from hop=$hop"
   # deliver call site — routed through the transport seam (tmux branch IS
   # fleet_drain_inbox; behaviour identical).
-  if transport_deliver "$to"; then
+  if faculty_deliver "$to"; then
     info "→ delivered to '$to' (from $from, hop $hop/$cap) — it's in '$to's thread now"
   else
     info "→ queued for '$to' (busy/offline, hop $hop/$cap) — lands in its thread when it's next at its prompt"
@@ -1798,7 +1798,7 @@ cmd_pair_send() {
     [[ -n "$to" && "$to" != "$from" ]] || continue
     fleet_enqueue "$to" "$from" "$text" "$hop" msg
     fleet_log msg "$to" "pair=$pair from=$from hop=$hop"
-    if transport_deliver "$to"; then sent=$(( sent + 1 )); else queued=$(( queued + 1 )); fi
+    if faculty_deliver "$to"; then sent=$(( sent + 1 )); else queued=$(( queued + 1 )); fi
   done
   (( sent + queued > 0 )) || die "pair '$pair' has no recipient other than '$from'"
   info "→ pair '$(_fleet_pair_base "$pair")': delivered=$sent queued=$queued (from $from, hop $hop/$cap)"
