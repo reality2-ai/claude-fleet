@@ -136,6 +136,30 @@ verdicts = [ adapter[p].headless_answer(E, refute_prompt(claim))
 claim.survives = majority(verdicts, "could not refute")
 ```
 
+## cli-tmux adapter — under-exploited tmux features (backlog, verified tmux 3.6b)
+
+The `cli-tmux` adapter currently scrapes pane *text* for liveness and has no event stream. tmux itself offers
+more, and using it would flip cli-tmux capability flags toward TRUE **without leaving tmux** — hardening the
+floor we already run on, rather than only chasing the native adapter. Ranked by value/risk:
+
+- **`set-hook pane-died|pane-exited`** → *mechanical floor:* event-driven crash detection/reap (instant), vs
+  today's polling. Strengthens `cmd_reap` + actor-of-last-resort (ADR-002 §7c).
+- **`display-message -p` formats** → `native_liveness`↑: `#{pane_dead}`/`#{pane_pid}` (exact alive/dead),
+  `#{window_activity}` (last-output epoch), `#{window_activity_flag}` (silence = idle proxy). Replaces regex
+  scraping. *Limit:* `#{pane_current_command}` can't distinguish idle-vs-busy (always `claude`/`codex`).
+- **`pipe-pane -o`** → `event_stream`↑ + cheaper delivery-verify: append-only pane-output file (mtime =
+  liveness; the substrate for `faculty_stream` on cli-tmux).
+- **Control mode (`tmux -CC`)** → the strategic one: subscribe to tmux's structured event protocol
+  (`%output`/`%exit`/…) for native liveness + stream + delivery signalling, no scraping/polling — makes
+  cli-tmux ~as native as `claude-bg`. Cost: a persistent control client + protocol parsing.
+- Minor: **`respawn-pane`** (restart in place, preserve window identity), **`@user` options** (store
+  entity id/provider/role on the window), **`wait-for`** (block-on-event vs poll), **`capture-pane -e/-S -`**.
+
+**Boundary (what tmux CANNOT fix):** idle-vs-busy judgment (inherent to a TUI always running `claude`) and
+**delivery** fragility (the unsubmitted-Enter bug is `send-keys`; even control mode confirms *output*, not
+*submit*). Those need the programmatic-control substrate (`claude-bg` / Codex app-server). ⇒ Split the work:
+harden liveness/stream on tmux now; reserve the new adapter for the delivery fix.
+
 ## Migration mapping (seam, not rewrite)
 
 | Contract verb | Today's implementation (the first adapter) |
