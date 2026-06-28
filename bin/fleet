@@ -38,6 +38,8 @@ source "$TOOL_ROOT/lib/restart.sh"
 source "$TOOL_ROOT/lib/comms.sh"
 # shellcheck source=../lib/transport.sh
 source "$TOOL_ROOT/lib/transport.sh"
+# shellcheck source=../lib/faculty.sh
+source "$TOOL_ROOT/lib/faculty.sh"
 
 FLEET_VERSION="0.1.0"
 
