@@ -85,5 +85,27 @@ sleep 0.4
 isfalse "exited pane WITHOUT remain-on-exit leaves no window" fleet_tmux_has_window gone_one
 eq "vanished worker → liveness 'dead' (unchanged path)" "$(fleet_liveness gone_one)" "dead"
 
+# --- 5. set-hook pane-died → event-driven reap -------------------------------
+section "5. pane-died death hook (functional; show-hooks doesn't list pane-died in 3.6)"
+# CONJECTURE: with the hook ON + remain-on-exit, a dying pane runs `<FLEET_BIN> reap`
+# (instant event-driven recovery); with it OFF, a dying pane does NOT.
+MARKER="$TMP/reap-called"
+STUB="$TMP/fleetstub"; printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$MARKER" > "$STUB"; chmod +x "$STUB"
+die_pane() {  # spawn a window, make it linger dead under remain-on-exit
+  local w="$1"
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$w" -c "$TMP" "sleep 30" 2>/dev/null
+  sleep 0.2; fleet_tmux set-option -w -t "$FLEET_TMUX_SESSION:$w" remain-on-exit on 2>/dev/null
+  fleet_tmux respawn-window -k -t "$FLEET_TMUX_SESSION:$w" "true" 2>/dev/null
+  sleep 0.8
+}
+# gated OFF → hook removed → a dying pane does NOT invoke reap
+FLEET_TMUX_DEATH_HOOK=off fleet_tmux_install_server_hooks
+rm -f "$MARKER"; die_pane dyer_off
+[[ ! -f "$MARKER" ]] && ok "gated off → pane death does NOT reap" || no "off: reap fired unexpectedly"
+# gated ON → hook installed → a dying pane invokes reap (our stub)
+FLEET_TMUX_DEATH_HOOK=on FLEET_BIN="$STUB" fleet_tmux_install_server_hooks
+rm -f "$MARKER"; die_pane dyer_on
+if [[ -f "$MARKER" ]] && grep -q reap "$MARKER"; then ok "gated on → pane death invokes reap"; else no "on: death hook did not invoke reap"; fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

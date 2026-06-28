@@ -41,9 +41,31 @@ fleet_tmux_user_manager_ok() {
   systemctl --user show-environment >/dev/null 2>&1
 }
 
+# Install server-global tmux hooks (idempotent). pane-died → reap IMMEDIATELY, so a
+# crashed worker is recovered the instant its pane dies instead of waiting for the
+# watchdog's next poll (the mechanical-floor upgrade, ADR-002 §7c). Only meaningful
+# under remain-on-exit (else the window vanishes and pane-died never fires). Reap is
+# the existing, guarded mechanism (only restarts manifest children that are `running`
+# per policy), so this only changes TIMING, not behaviour — and an intentional
+# `fleet down` marks children stopped, which reap skips. Best-effort; never blocks.
+# Gated (default off); enable with FLEET_TMUX_DEATH_HOOK=on. NB: assumes no spaces in
+# WORKSPACE / the fleet bin path (nested tmux-hook quoting can't portably handle them).
+fleet_tmux_install_server_hooks() {
+  if [[ "${FLEET_TMUX_DEATH_HOOK:-off}" != "on" ]]; then
+    # symmetric toggle: off actively removes any hook we set, so flipping it off takes
+    # effect on the next fleet command without needing a server restart.
+    fleet_tmux_session_exists && fleet_tmux set-hook -gu pane-died 2>/dev/null || true
+    return 0
+  fi
+  [[ -n "${WORKSPACE:-}" ]] || return 0
+  local fleetbin="${FLEET_BIN:-$TOOL_ROOT/bin/fleet}"
+  fleet_tmux set-hook -g pane-died \
+    "run-shell -b 'FLEET_WORKSPACE=$WORKSPACE $fleetbin reap >/dev/null 2>&1'" 2>/dev/null || true
+}
+
 fleet_tmux_ensure_session() {
   fleet_has_tmux || die "tmux is not installed (needed for 'up/down/restart'). Run: sudo apt install tmux"
-  fleet_tmux_session_exists && return 0
+  fleet_tmux_session_exists && { fleet_tmux_install_server_hooks; return 0; }
   # A detached, placeholder-free session; the first child replaces window 0 once
   # __fleet_root's keepalive command exits.
   local -a srv=(tmux -L "$FLEET_TMUX_SOCKET" new-session -d -s "$FLEET_TMUX_SESSION" -n __fleet_root "true; sleep 1")
@@ -56,11 +78,12 @@ fleet_tmux_ensure_session() {
     systemctl --user reset-failed "$FLEET_TMUX_UNIT" 2>/dev/null || true
     if systemd-run --user --quiet --collect --unit="$FLEET_TMUX_UNIT" \
          --property=Type=forking "${srv[@]}" 8>&- 2>/dev/null; then
-      return 0
+      fleet_tmux_install_server_hooks; return 0
     fi
     warn "systemd-run --user failed; starting tmux in the login session (may not survive logout)"
   fi
   "${srv[@]}" 8>&- 2>/dev/null || true
+  fleet_tmux_install_server_hooks
 }
 
 # does a window named after <id> exist?
