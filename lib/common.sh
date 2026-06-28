@@ -39,6 +39,18 @@ fleet_load_paths() {
   CHILDSTATE_DIR="$STATE_DIR/state"
   LOG_FILE="$STATE_DIR/log/fleet.log"
   export WORKSPACE STATE_DIR MANIFEST RUN_DIR CHILDSTATE_DIR LOG_FILE
+  # Per-workspace config: source .fleet/env if present — persistent FLEET_* settings
+  # for this workspace (e.g. the liveness hardening), so they survive restarts/reboot
+  # without relying on the launching shell's environment. It is the user's own file in
+  # their own workspace (trusted). Read at call time, so it overrides call-time-read
+  # FLEET_* vars; it cannot override source-time lib defaults (e.g. FLEET_TMUX_SESSION).
+  # NB: if/fi (not `&& source`) so an ABSENT env file doesn't make this function return
+  # non-zero — under `set -e` that would abort every caller.
+  if [[ -f "$STATE_DIR/env" ]]; then
+    # shellcheck disable=SC1090
+    source "$STATE_DIR/env"
+  fi
+  return 0
 }
 
 # --- transcript helpers ------------------------------------------------------

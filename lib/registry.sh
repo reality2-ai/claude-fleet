@@ -140,6 +140,15 @@ fleet_last_activity() {
   if [[ "${FLEET_JOURNAL:-off}" != "off" ]]; then
     jt="$(fleet_mtime "$(fleet_journal_path "$id")")"; (( jt > best )) && best=$jt
   fi
+  # tmux-native activity: #{window_activity} is the pane's last-output epoch — a more
+  # responsive liveness signal than transcript mtime. Bench (2026-06-29): it stays
+  # FLAT while the TUI sits idle, so it raises "live" only on real output and never
+  # masks a genuinely idle worker. Opt-in (FLEET_TMUX_ACTIVITY); only ever increases
+  # `best`, so it can't make a live worker look dead.
+  if [[ "${FLEET_TMUX_ACTIVITY:-off}" != "off" ]] && declare -F fleet_tmux_window_activity >/dev/null 2>&1; then
+    local wa; wa="$(fleet_tmux_window_activity "$id")"
+    [[ "$wa" =~ ^[0-9]+$ ]] && (( wa > best )) && best=$wa
+  fi
   printf '%s\n' "$best"
 }
 
