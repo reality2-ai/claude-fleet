@@ -40,6 +40,8 @@ source "$TOOL_ROOT/lib/comms.sh"
 source "$TOOL_ROOT/lib/transport.sh"
 # shellcheck source=../lib/faculty.sh
 source "$TOOL_ROOT/lib/faculty.sh"
+# shellcheck source=../lib/faculty-bg.sh
+source "$TOOL_ROOT/lib/faculty-bg.sh"
 
 FLEET_VERSION="0.1.0"
 

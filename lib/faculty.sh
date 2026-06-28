@@ -69,7 +69,12 @@ faculty_liveness(){ case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) fleet_liveness 
 # --- work --------------------------------------------------------------------
 # deliver queued mail to the entity's brain (routes through the transport seam, whose
 # only branch today IS fleet_drain_inbox/fleet_inject).
-faculty_deliver(){ case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) transport_deliver "$@" ;; esac; }
+faculty_deliver(){
+  case "$FLEET_FACULTY_ADAPTER" in
+    claude-bg)  fleet_bg_drain "$1" ;;                       # Model B: programmatic turns (ADR-003)
+    cli-tmux|*) transport_deliver "$@" ;;
+  esac
+}
 
 # one-shot forked answer that does NOT disturb the live body (the `ask` responder).
 # Isolation is the adapter's responsibility; a native adapter does it via a worktree

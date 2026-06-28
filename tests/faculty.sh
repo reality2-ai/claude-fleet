@@ -35,7 +35,7 @@ mkdir -p "$CHILDSTATE_DIR" "$RUN_DIR" "$(dirname "$LOG_FILE")" "$STATE_DIR/memor
 
 # source the libs the way bin/fleet does (functions resolve at call time)
 # shellcheck disable=SC1091
-for lib in common manifest registry provider tmux comms transport faculty; do
+for lib in common manifest registry provider tmux comms transport faculty faculty-bg; do
   source "$ROOT/lib/$lib.sh" || { echo "cannot source lib/$lib.sh"; exit 1; }
 done
 
@@ -85,6 +85,20 @@ printf 'RESUME-FALLBACK-MARKER\n' > "$WORKSPACE/repoB/RESUME.md"
 fleet_state_ensure beta "$WORKSPACE/repoB" true
 out="$(faculty_recall beta 2>/dev/null)"
 if [[ "$out" == *RESUME-FALLBACK-MARKER* ]]; then ok "recall falls back to repo RESUME.md"; else no "recall RESUME fallback"; fi
+
+# --- 4b. claude-bg adapter slice (Model B delivery primitive) ----------------
+section "4b. claude-bg adapter (delivery primitive)"
+for v in fleet_bg_deliver_turn fleet_bg_drain; do
+  if declare -F "$v" >/dev/null 2>&1; then ok "claude-bg fn defined: $v"; else no "claude-bg fn MISSING: $v"; fi
+done
+istrue  "claude-bg: durable_body"    faculty_capability durable_body claude-bg
+istrue  "claude-bg: native_delivery" faculty_capability native_delivery claude-bg
+# faculty_deliver routes to the bg drain under the claude-bg adapter
+if declare -f faculty_deliver | grep -q 'fleet_bg_drain'; then ok "faculty_deliver has claude-bg branch"; else no "no claude-bg deliver branch"; fi
+# no durable session id → drain keeps mail queued (returns non-zero), never crashes
+mkdir -p "$STATE_DIR/inbox"; printf '{"from":"x","to":"node9","text":"hi","delivered":false}\n' > "$STATE_DIR/inbox/node9.jsonl"
+fleet_state_ensure node9 "$TMP" true   # no session_id
+isfalse "bg_drain with no session id keeps mail queued" fleet_bg_drain node9
 
 # --- 5. honest unimplemented verbs ------------------------------------------
 section "5. unimplemented verbs fail honestly"
