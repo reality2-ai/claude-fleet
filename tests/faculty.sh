@@ -95,7 +95,8 @@ istrue  "claude-bg: durable_body"    faculty_capability durable_body claude-bg
 istrue  "claude-bg: native_delivery" faculty_capability native_delivery claude-bg
 # faculty_deliver routes to the bg drain under the claude-bg adapter
 if declare -f faculty_deliver | grep -q 'claude-bg'; then ok "faculty_deliver has claude-bg branch"; else no "no claude-bg deliver branch"; fi
-for v in fleet_bg_start_session fleet_bg_mount fleet_bg_has_mail; do
+if declare -f fleet_bg_drain | grep -q 'codex'; then ok "fleet_bg_drain dispatches on provider (codex)"; else no "drain not provider-aware"; fi
+for v in fleet_bg_start_session fleet_bg_mount fleet_bg_has_mail fleet_codex_start_session fleet_codex_deliver_turn; do
   if declare -F "$v" >/dev/null 2>&1; then ok "claude-bg lifecycle fn: $v"; else no "missing: $v"; fi
 done
 if declare -f faculty_mount | grep -q 'fleet_bg_mount'; then ok "faculty_mount has claude-bg branch"; else no "no claude-bg mount branch"; fi

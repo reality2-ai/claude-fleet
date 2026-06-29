@@ -22,14 +22,23 @@ fleet_load_paths
 rel="$(fleet_child_get "$id" cwd ".")"; cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
 primer=""; declare -F fleet_peer_primer >/dev/null 2>&1 && primer="$(fleet_peer_primer "$id" 2>/dev/null || true)"
 poll="${FLEET_BG_POLL:-15}"
+# Provider-aware: claude → `claude -p --resume json`; codex → `codex exec resume`.
+provider="$(fleet_state_get "$id" '.provider' "")"
+[[ -z "$provider" || "$provider" == "null" ]] && provider="$(fleet_provider_for_child "$id" 2>/dev/null || echo claude)"
+_ctl_start_session() {  # <prompt> → prints session id
+  if [[ "$provider" == "codex" ]]; then fleet_codex_start_session "$cwd" "$1"; else fleet_bg_start_session "$cwd" "$1"; fi
+}
+_ctl_deliver_turn() {   # <sid> <text> → prints reply tail
+  if [[ "$provider" == "codex" ]]; then fleet_codex_deliver_turn "$1" "$cwd" "$2"; else fleet_bg_deliver_turn "$1" "$cwd" "$2"; fi
+}
 
-printf '[bg-controller %s] start · cwd=%s · adapter=claude-bg (keystroke-free delivery)\n' "$id" "$cwd"
+printf '[bg-controller %s] start · cwd=%s · provider=%s · adapter=claude-bg (keystroke-free delivery)\n' "$id" "$cwd" "$provider"
 
 sid="$(fleet_state_get "$id" '.session_id' "")"
 if [[ -z "$sid" || "$sid" == "null" ]]; then
   seed="$(fleet_child_get "$id" seed "Resume work in this repo. Run 'git status' first and summarise where things stand.")"
   printf '[bg-controller %s] establishing durable session…\n' "$id"
-  sid="$(fleet_bg_start_session "$cwd" "$(fleet_prompt_join "$primer" "$seed")")"
+  sid="$(_ctl_start_session "$(fleet_prompt_join "$primer" "$seed")")"
   if [[ -n "$sid" ]]; then
     fleet_state_jq "$id" --arg s "$sid" '.session_id=$s | .state="running" | .reason=null' >/dev/null 2>&1 || true
     fleet_log bg-start "$id" "session=$sid"
@@ -56,7 +65,7 @@ while true; do
   fleet_state_jq "$id" --argjson t "$(date +%s)" '.heartbeat=$t | .ready=true' >/dev/null 2>&1 || true
   sid="$(fleet_state_get "$id" '.session_id' "")"
   if [[ -z "$sid" || "$sid" == "null" ]]; then
-    sid="$(fleet_bg_start_session "$cwd" "$(fleet_prompt_join "$primer" "carry on")")"
+    sid="$(_ctl_start_session "$(fleet_prompt_join "$primer" "carry on")")"
     [[ -n "$sid" ]] && fleet_state_jq "$id" --arg s "$sid" '.session_id=$s' >/dev/null 2>&1 || true
   fi
   if fleet_bg_has_mail "$id"; then
@@ -64,7 +73,7 @@ while true; do
   elif [[ "$autonomy" == "on" && "$idle_turns" -lt "$max_idle" && -n "$sid" && "$sid" != "null" ]]; then
     before="$(_git_fp)"
     printf '── autonomous continue turn ──\n'
-    reply="$(fleet_bg_deliver_turn "$sid" "$cwd" "Continue your current task. If you are blocked or have nothing left to do, say so in one line.")" || reply=""
+    reply="$(_ctl_deliver_turn "$sid" "Continue your current task. If you are blocked or have nothing left to do, say so in one line.")" || reply=""
     printf '  ← %s\n' "${reply:0:400}"
     if [[ "$(_git_fp)" != "$before" ]]; then
       idle_turns=0; printf '  (progress)\n'
