@@ -21,6 +21,12 @@ set -uo pipefail
 SESSION="${FLEET_TMUX_SESSION:-fleet}"
 INTERVAL="${FLEET_API_WATCHDOG_INTERVAL:-75}"
 NUDGE="${FLEET_API_NUDGE:-try again}"
+# Exponential backoff on the stuck-pane nudge: don't poke a persistently rate-limited
+# pane every tick. After each nudge, wait BACKOFF^(n-1) ticks (capped at MAXWAIT) before
+# the next — so spacing grows 1,2,4,8,…  ticks instead of nudging every INTERVAL forever.
+# A pane that recovers (its tail changes off the error) resets the backoff immediately.
+BACKOFF="${FLEET_API_BACKOFF:-2}"
+MAXWAIT="${FLEET_API_BACKOFF_MAX_TICKS:-16}"
 # Hard quota/credits exhaustion signatures. These need operator/admin action or
 # cross-provider handoff, not retry nudges.
 EXHAUSTED='usage-credits|request more usage from your admin|contact your admin.*usage|usage from your admin|quota exhausted|credits exhausted'
@@ -29,8 +35,8 @@ SIG='temporarily (limiting|unavailable)|rate.?limit|Overloaded|overloaded_error|
 # Active-auto-retry markers — leave these alone (Claude is recovering itself).
 RETRYING='[Rr]etrying|retry in|auto-?retry|backoff'
 
-declare -A last nudged
-echo "fleet-api-watchdog: session=$SESSION interval=${INTERVAL}s nudge='$NUDGE' (covers supervisor)"
+declare -A last nudged wait
+echo "fleet-api-watchdog: session=$SESSION interval=${INTERVAL}s nudge='$NUDGE' backoff=${BACKOFF}x cap=${MAXWAIT}t (covers supervisor)"
 while true; do
   sleep "$INTERVAL"
   tmux has-session -t "$SESSION" 2>/dev/null || continue
@@ -41,14 +47,21 @@ while true; do
       nudged[$w]=0
     elif printf '%s' "$tail" | grep -qiE "$SIG" && ! printf '%s' "$tail" | grep -qiE "$RETRYING"; then
       if [[ "$tail" == "${last[$w]:-}" ]]; then          # stuck (unchanged) on an API error
-        n=$(( ${nudged[$w]:-0} + 1 )); nudged[$w]=$n
-        tmux send-keys -t "$SESSION:$w" -l "$NUDGE" 2>/dev/null
-        sleep 0.4; tmux send-keys -t "$SESSION:$w" Enter 2>/dev/null
-        sleep 0.3; tmux send-keys -t "$SESSION:$w" Enter 2>/dev/null   # 2nd Enter: harmless no-op if 1st landed
-        printf '%s api-stuck %-12s -> nudged x%d\n' "$(date '+%F %T')" "$w" "$n"
+        if [[ "${wait[$w]:-0}" -gt 0 ]]; then
+          wait[$w]=$(( ${wait[$w]:-0} - 1 ))             # backing off — skip this tick
+        else
+          n=$(( ${nudged[$w]:-0} + 1 )); nudged[$w]=$n
+          tmux send-keys -t "$SESSION:$w" -l "$NUDGE" 2>/dev/null
+          sleep 0.4; tmux send-keys -t "$SESSION:$w" Enter 2>/dev/null
+          sleep 0.3; tmux send-keys -t "$SESSION:$w" Enter 2>/dev/null   # 2nd Enter: harmless no-op if 1st landed
+          d=1; for ((k=1; k<n; k++)); do d=$(( d * BACKOFF )); done       # BACKOFF^(n-1)
+          (( d > MAXWAIT )) && d=$MAXWAIT
+          wait[$w]=$d
+          printf '%s api-stuck %-12s -> nudged x%d (next retry in %d tick(s))\n' "$(date '+%F %T')" "$w" "$n" "$d"
+        fi
       fi
     else
-      nudged[$w]=0
+      nudged[$w]=0; wait[$w]=0                            # recovered/changed → reset backoff
     fi
     last[$w]="$tail"
   done < <(tmux list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null)

@@ -155,6 +155,32 @@ fleet_inject() {
   return 1
 }
 
+# Bound a worker's growing context by injecting Claude Code's /compact slash
+# command at its prompt. A long-lived `--resume` session re-processes its whole
+# transcript every turn, so token cost climbs with session age; /compact replaces
+# the transcript with a summary so subsequent turns run cheap again. RESUME.md +
+# entity memory are the durable anchors, so a compaction never loses real state.
+#
+# ONLY safe to call when the pane is idle (at its prompt with no queued mail) —
+# the caller (the Stop hook) guarantees that. Returns non-zero for a non-TUI
+# worker (claude-bg, driven by a bash controller), an offline window, or a send
+# failure, so the counter that triggers it can decline to reset and retry later.
+fleet_compact() {
+  local to="$1"
+  # a claude-bg window hosts a controller, not a TUI — never keystroke /compact there
+  [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1
+  fleet_tmux_has_window "$to" || return 1
+  local tgt="$FLEET_TMUX_SESSION:$to"
+  fleet_tmux send-keys -t "$tgt" -l "/compact" 2>/dev/null || return 1
+  sleep "${FLEET_INJECT_DELAY:-0.2}"
+  fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
+  # A flaky first Enter can leave /compact sitting unsubmitted in the input box;
+  # a spurious second Enter at an empty prompt is a harmless no-op in Claude Code.
+  sleep 0.3; fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || true
+  fleet_log compact "$to" "injected /compact (context bound)" 2>/dev/null || true
+  return 0
+}
+
 # Deliver any undelivered mail to <to>. Returns 0 if delivered (or nothing to
 # do), 1 if it had to leave mail queued (target offline or busy).
 #   fleet_drain_inbox <to> [force]

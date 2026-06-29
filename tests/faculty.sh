@@ -132,6 +132,23 @@ fleet_manifest_load "$STATE_DIR/m.toml"
 eq "adapter from manifest field wins" "$(_faculty_adapter_for mw)" "claude-bg"
 if declare -f faculty_mount | grep -q '_faculty_adapter_for'; then ok "faculty_mount routes per-worker"; else no "faculty_mount not per-worker"; fi
 
+# --- 4c. proactive compaction (token optimisation) --------------------------
+section "4c. proactive compaction"
+if declare -F fleet_compact >/dev/null 2>&1; then ok "fleet_compact defined"; else no "fleet_compact MISSING"; fi
+# contract: refuses claude-bg (controller window, not a TUI), sends /compact, guards on the window
+if declare -f fleet_compact | grep -q 'claude-bg'; then ok "fleet_compact refuses claude-bg"; else no "fleet_compact has no claude-bg guard"; fi
+if declare -f fleet_compact | grep -q '/compact'; then ok "fleet_compact sends /compact"; else no "fleet_compact does not send /compact"; fi
+if declare -f fleet_compact | grep -q 'fleet_tmux_has_window'; then ok "fleet_compact guards on window present"; else no "fleet_compact no window guard"; fi
+# behavioural: no tmux window (unused socket) → returns non-zero, never crashes
+isfalse "fleet_compact with no window returns non-zero" fleet_compact ghostC
+# the on-stop hook carries the turn-counter trigger gated by FLEET_COMPACT_EVERY
+if grep -q 'FLEET_COMPACT_EVERY' "$ROOT/hooks/on-stop.sh"; then ok "on-stop hook has FLEET_COMPACT_EVERY trigger"; else no "on-stop hook missing compaction trigger"; fi
+if grep -q 'turns_since_compact' "$ROOT/hooks/on-stop.sh" && declare -f fleet_compact >/dev/null; then ok "on-stop hook tracks turns_since_compact"; else no "on-stop hook no turn counter"; fi
+# the counter mechanism the hook relies on: state round-trips an integer
+fleet_state_ensure cmpw "$TMP" true
+fleet_state_jq cmpw --argjson t 3 '.turns_since_compact=$t' >/dev/null 2>&1
+eq "turns_since_compact round-trips in state" "$(fleet_state_get cmpw '.turns_since_compact' 0)" "3"
+
 # --- 5. honest unimplemented verbs ------------------------------------------
 section "5. unimplemented verbs fail honestly"
 isfalse "spawn_tool returns non-zero (unimplemented)" faculty_spawn_tool x "task"
