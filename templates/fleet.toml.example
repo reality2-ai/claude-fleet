@@ -34,6 +34,11 @@ max_hops     = 6
 #   provider        claude | codex (optional; default is claude or FLEET_AGENT_PROVIDER)
 #   seed            initial prompt used ONLY on a fresh start; once a session
 #                   exists, `fleet up` resumes it instead of re-seeding.
+#   adapter         cli-tmux | claude-bg (optional; default cli-tmux or
+#                     $FLEET_FACULTY_ADAPTER). cli-tmux = a provider CLI in a tmux
+#                     window (keystroke delivery). claude-bg = a durable session
+#                     driven turn-by-turn programmatically (keystroke-free; ADR-003),
+#                     still shown as a tmux window. Mixable per worker.
 
 # Example: a shared library and two services that depend on it.
 

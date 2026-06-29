@@ -219,7 +219,7 @@ fleet_tmux_start_child() {
   fleet_tmux_new_agent_window "$id" "$cwd" "$exitfile" "$provider" agent_args
 
   fleet_state_ensure "$id" "$cwd" true
-  fleet_state_jq "$id" --arg p "$provider" '.state="running" | .reason=null | .provider=$p' >/dev/null
+  fleet_state_jq "$id" --arg p "$provider" '.state="running" | .reason=null | .provider=$p | .faculty="cli-tmux"' >/dev/null
   # record the transport that hosts this child (down-payment on a future
   # native-primitives migration). No-op if the seam isn't sourced.
   declare -F transport_register >/dev/null 2>&1 && transport_register "$id"

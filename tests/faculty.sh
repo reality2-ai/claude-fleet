@@ -108,6 +108,17 @@ fleet_state_ensure bgw "$TMP" true; fleet_state_jq bgw '.faculty="claude-bg"' >/
 printf '{"from":"x","to":"bgw","text":"hi","delivered":false}\n' > "$(fleet_inbox_file bgw)"
 isfalse "fleet_drain_inbox skips a claude-bg worker"  fleet_drain_inbox bgw
 isfalse "fleet_inject skips a claude-bg worker"        fleet_inject bgw x "hi"
+# per-worker adapter resolution (mixable claude-bg + cli-tmux in one fleet)
+eq "adapter from state .faculty"      "$(_faculty_adapter_for bgw)" "claude-bg"
+eq "adapter falls back to global"     "$(FLEET_FACULTY_ADAPTER=cli-tmux _faculty_adapter_for ghostX)" "cli-tmux"
+cat > "$STATE_DIR/m.toml" <<TOML
+[[child]]
+id = "mw"
+adapter = "claude-bg"
+TOML
+fleet_manifest_load "$STATE_DIR/m.toml"
+eq "adapter from manifest field wins" "$(_faculty_adapter_for mw)" "claude-bg"
+if declare -f faculty_mount | grep -q '_faculty_adapter_for'; then ok "faculty_mount routes per-worker"; else no "faculty_mount not per-worker"; fi
 
 # --- 5. honest unimplemented verbs ------------------------------------------
 section "5. unimplemented verbs fail honestly"

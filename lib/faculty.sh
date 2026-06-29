@@ -20,6 +20,19 @@
 # falls back to it so a typo can never silently drop the oversight wire.
 FLEET_FACULTY_ADAPTER="${FLEET_FACULTY_ADAPTER:-cli-tmux}"
 
+# Resolve the adapter for a SPECIFIC worker, so claude-bg and cli-tmux workers can
+# coexist in one fleet. Precedence: manifest `[[child]] adapter=` (declared intent) →
+# state `.faculty` (what it was last mounted as) → global $FLEET_FACULTY_ADAPTER →
+# cli-tmux. Manifest parsing already stores arbitrary child fields, so no parser change.
+#   _faculty_adapter_for <id>
+_faculty_adapter_for() {
+  local id="$1" a=""
+  declare -F fleet_child_get >/dev/null 2>&1 && a="$(fleet_child_get "$id" adapter "")"
+  [[ -z "$a" ]] && a="$(fleet_state_get "$id" '.faculty' '' 2>/dev/null)"
+  [[ -z "$a" || "$a" == "null" ]] && a="${FLEET_FACULTY_ADAPTER:-cli-tmux}"
+  printf '%s\n' "$a"
+}
+
 # --- capability declaration --------------------------------------------------
 # What each adapter can do (verified 2026-06-29; see the matrix in
 # docs/FACULTY-ADAPTER-CONTRACT.md). The entity layer queries these so it never
@@ -58,7 +71,7 @@ faculty_capabilities() {
 # mount/resume a brain for an entity. The cli-tmux adapter's start function already
 # resumes from run/<id>.session when present, else seeds fresh — so mount and resume
 # are the same call today; a durable native adapter may split them later.
-faculty_mount()  { case "$FLEET_FACULTY_ADAPTER" in claude-bg) fleet_bg_mount "$@" ;; cli-tmux|*) fleet_tmux_start_child "$@" ;; esac; }
+faculty_mount()  { case "$(_faculty_adapter_for "$1")" in claude-bg) fleet_bg_mount "$@" ;; cli-tmux|*) fleet_tmux_start_child "$@" ;; esac; }
 faculty_resume() { faculty_mount "$@"; }
 faculty_unmount(){ case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) fleet_tmux_stop_child "$@" ;; esac; }
 
@@ -70,7 +83,7 @@ faculty_liveness(){ case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) fleet_liveness 
 # deliver queued mail to the entity's brain (routes through the transport seam, whose
 # only branch today IS fleet_drain_inbox/fleet_inject).
 faculty_deliver(){
-  case "$FLEET_FACULTY_ADAPTER" in
+  case "$(_faculty_adapter_for "$1")" in
     # Model B: the worker's controller is the SOLE driver of its session (single-
     # controller), so delivery just leaves mail queued (enqueued upstream) and the
     # controller drains it as a turn. No second driver here → no -p --resume conflict.
