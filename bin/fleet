@@ -1645,6 +1645,62 @@ cmd_reap() {
 # on hard provider credits/quota is reported separately because retry nudges will
 # not fix it; it needs operator/admin action or cross-provider handoff.
 FLEET_MAIL_STALE_SECS="${FLEET_MAIL_STALE_SECS:-300}"
+# fleet tokens — per-worker CONTEXT size (the per-turn token cost that drives
+# rate-limits / running-out). Reads each live worker's transcript tail
+# (fleet_ctx_tokens), shows tokens, % of the context ceiling, liveness, and a
+# throttled/heavy note. The supervisor checks this each sweep (SUPERVISOR.md) and
+# `fleet compact`s a worker pinned heavy; the human runs it ad hoc.
+cmd_tokens() {
+  fleet_load_paths
+  [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  fleet_reconcile
+  local ceil="${FLEET_CTX_CEILING:-1000000}" warn="${FLEET_CTX_WARN_PCT:-90}"
+  local -A seen=(); local -a ids=(); local id
+  for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] || continue; seen["$id"]=1; ids+=("$id"); done
+  while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen["$id"]=1; ids+=("$id"); }; done < <(fleet_state_ids)
+  printf '%s%-14s %12s %6s %-7s %s%s\n' "$c_bold" "CHILD" "CTX(tok)" "%CEIL" "STATE" "NOTE" "$c_reset"
+  local sum=0 ctx pct live note
+  for id in "${ids[@]}"; do
+    [[ -n "$id" ]] || continue
+    fleet_tmux_has_window "$id" 2>/dev/null || continue      # only a live window has a current ctx
+    ctx="$(fleet_ctx_tokens "$id" 2>/dev/null)" || ctx=0; [[ "$ctx" =~ ^[0-9]+$ ]] || ctx=0
+    (( ctx == 0 )) && continue
+    sum=$(( sum + ctx )); pct=$(( ctx * 100 / ceil ))
+    live="$(faculty_liveness "$id" 2>/dev/null)"
+    note=""
+    fleet_pane_is_throttled "$id" 2>/dev/null && note="throttled"
+    (( pct >= warn )) && note="${note:+$note, }heavy→compact"
+    printf '  %-14s %12s %5d%% %-7s %s\n' "$id" "$ctx" "$pct" "$live" "$note"
+  done
+  printf '  %-14s %12s   (sum across live workers; ceiling=%s, warn=%s%%)\n' "(total)" "$sum" "$ceil" "$warn"
+}
+
+# fleet compact [id | --all] [--force] — inject /compact into a worker to bound its
+# context. Only compacts a worker IDLE at its prompt (safe) unless --force. The
+# supervisor uses this on a worker `fleet tokens` shows pinned heavy.
+cmd_compact() {
+  fleet_load_paths
+  [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  local force=0 all=0
+  while [[ $# -gt 0 ]]; do case "$1" in --force|-f) force=1; shift ;; --all) all=1; shift ;; -h|--help) die "usage: fleet compact <id> | --all [--force]" ;; *) break ;; esac; done
+  local -a targets=()
+  if [[ "$all" == 1 ]]; then
+    fleet_reconcile; local x; while read -r x; do [[ -n "$x" ]] && fleet_tmux_has_window "$x" 2>/dev/null && targets+=("$x"); done < <(fleet_state_ids)
+  else
+    [[ -n "${1:-}" ]] || die "usage: fleet compact <id> | --all [--force]"
+    targets=("$1")
+  fi
+  local t rc=0
+  for t in "${targets[@]}"; do
+    if ! fleet_tmux_has_window "$t" 2>/dev/null; then warn "compact: '$t' has no live window"; rc=1; continue; fi
+    if [[ "$force" != 1 ]] && declare -F fleet_pane_is_idle >/dev/null 2>&1 && ! fleet_pane_is_idle "$t" 2>/dev/null; then
+      warn "compact: '$t' is busy (not at an idle prompt) — skipped; --force to compact anyway"; rc=1; continue
+    fi
+    if fleet_compact "$t"; then info "compact: sent /compact to '$t'"; else warn "compact: send failed for '$t'"; rc=1; fi
+  done
+  return $rc
+}
+
 cmd_doctor() {
   local quiet=0
   while [[ $# -gt 0 ]]; do case "$1" in --quiet|-q) quiet=1; shift ;; *) shift ;; esac; done
@@ -1667,10 +1723,22 @@ cmd_doctor() {
   local -A RESUME_CHECKED=()
 
   local total_inject_failures=0
-  local -a throttled=() exhausted=()
+  local -a throttled=() exhausted=() heavy=()
   for id in "${ids[@]}"; do
     [[ -n "$id" ]] || continue
     local has_win=0; fleet_tmux_has_window "$id" 2>/dev/null && has_win=1
+
+    # context-heavy advisory (near the ceiling = a compaction candidate). Informational,
+    # NOT a problem: proactive /compact + Claude auto-compact resolve it on their own. It
+    # is surfaced so a worker PINNED heavy (never idling to auto-compact) can be
+    # `fleet compact`ed. Kept out of the --quiet digest so it never spams the supervisor.
+    if [[ "$has_win" == 1 ]]; then
+      # fleet_ctx_tokens returns non-zero when a worker has no transcript yet; swallow it
+      # so set -e doesn't abort doctor mid-loop (it worked live only because real workers
+      # have transcripts — smoke's windowed-but-transcript-less workers exposed this).
+      local cx; cx="$(fleet_ctx_tokens "$id" 2>/dev/null)" || cx=0; [[ "$cx" =~ ^[0-9]+$ ]] || cx=0
+      (( cx >= ${FLEET_CTX_WARN_TOKENS:-900000} )) && heavy+=("$id(${cx})")
+    fi
 
     # hard usage/credits exhaustion is actionable, but not a restart condition.
     if [[ "$has_win" == 1 ]] && fleet_pane_is_provider_exhausted "$id"; then
@@ -1750,6 +1818,9 @@ cmd_doctor() {
   fi
   if [[ ${#exhausted[@]} -gt 0 ]]; then
     printf '  %sexhausted%s (provider usage/credits; handoff or request quota): %s\n' "$c_red" "$c_reset" "${exhausted[*]}"
+  fi
+  if [[ ${#heavy[@]} -gt 0 ]]; then
+    printf '  %sheavy-context%s (near ceiling; `fleet compact <id>` if pinned, else auto-compacts): %s\n' "$c_yel" "$c_reset" "${heavy[*]}"
   fi
   if [[ ${#problems[@]} -eq 0 ]]; then
     printf '  %sok%s   all invariants hold (%d child(ren), inject_failures=%d)\n' "$c_grn" "$c_reset" "${#ids[@]}" "$total_inject_failures"
@@ -1985,6 +2056,8 @@ main() {
       else fleet_install_commands "${1:-$PWD}"; fi ;;
     install-service) cmd_install_service "$@" ;;
     status|ls) cmd_status "$@" ;;
+    tokens|load) cmd_tokens "$@" ;;
+    compact)   cmd_compact "$@" ;;
     brief)     cmd_brief "$@" ;;
     conflicts) cmd_conflicts "$@" ;;
     logs|log)  cmd_logs "$@" ;;

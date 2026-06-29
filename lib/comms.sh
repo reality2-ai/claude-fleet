@@ -119,23 +119,42 @@ FLEET_INJECT_DELAY="${FLEET_INJECT_DELAY:-0.2}"
 FLEET_INJECT_CHUNK="${FLEET_INJECT_CHUNK:-500}"
 FLEET_INJECT_CHUNK_DELAY="${FLEET_INJECT_CHUNK_DELAY:-0.05}"
 
-# Is <to>'s Claude Code input box non-empty — i.e. holds text we must NOT type onto
-# (a human mid-typing in an attached session, or a prior un-submitted inject)? This
-# is the root of the "message stuck + truncated in the current prompt" bug: typing
-# into an occupied box concatenates onto the existing text and the Enter can't
-# cleanly submit. The input line is the LAST line beginning with the ❯ prompt glyph
-# (history lines also start with ❯, so we take the last one, within the input region).
-# CONSERVATIVE: reports busy only on clear evidence of content after ❯, so a missed
-# read errs toward delivering (at worst the old behaviour), never toward never-delivering.
+# Does a captured (escapes-preserved) ❯ input line hold REAL, non-dim content? Pure +
+# deterministic (no tmux) so it is unit-testable. Claude Code renders ghost/placeholder
+# text in an EMPTY box DIM (\e[2m…); real typed input is NON-dim. Drop DIM spans (to
+# their reset, or to end-of-line if unclosed), strip remaining SGR codes, the ❯ glyph,
+# the U+00A0 (NBSP) pad Claude Code uses, and whitespace — anything left is real input.
+_fleet_line_has_real_input() {
+  local line="$1" esc on off; esc=$'\e'; on=$'\x01'; off=$'\x02'
+  # Map dim-ON (\e[2m) → on-sentinel and dim-OFF (\e[0m / \e[22m / \e[m) → off-sentinel,
+  # strip every other SGR code, then delete all text between the sentinels (the dim
+  # ghost/placeholder run — even when it carries intermediate SGR like \e[39m, which a
+  # naive [^\e]* would stop at). Whatever survives outside a dim region is real input.
+  line="$(printf '%s' "$line" | sed -E \
+    -e "s/${esc}\[2m/${on}/g" \
+    -e "s/${esc}\[(0|22|)m/${off}/g" \
+    -e "s/${esc}\[[0-9;]*m//g" \
+    -e "s/${on}[^${off}]*${off}//g" \
+    -e "s/${on}[^${off}]*\$//g" \
+    -e "s/[${on}${off}]//g")"
+  line="${line#❯}"
+  line="${line//$' '/}"
+  line="${line//[[:space:]]/}"
+  [[ -n "$line" ]]
+}
+
+# Is <to>'s Claude Code input box occupied by REAL input we must NOT type onto (a human
+# mid-typing, or a prior un-submitted inject)? Typing onto it concatenates + can't
+# cleanly submit (the "stuck + truncated in the current prompt" bug). Capture WITH
+# escapes (-e) so dim ghost text isn't mistaken for content; take the LAST ❯ line
+# (history lines also have ❯). Conservative: no window / capture failure → "not busy",
+# so a missed read errs toward delivering, never toward never-delivering.
 fleet_input_busy() {
   local to="$1" region line
-  region="$(fleet_tmux capture-pane -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | tail -n 6)" || return 1
-  line="$(printf '%s\n' "$region" | grep -E '^❯' | tail -n1)"
-  [[ -z "$line" ]] && return 1                 # no prompt visible → don't block delivery
-  line="${line#❯}"
-  line="${line//$'\u00a0'/}"                   # Claude Code pads an EMPTY box with U+00A0 (NBSP)
-  line="${line//[[:space:]]/}"                 # ordinary whitespace
-  [[ -n "$line" ]]                             # real content after ❯ → occupied
+  region="$(fleet_tmux capture-pane -e -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | tail -n 6)" || return 1
+  line="$(printf '%s\n' "$region" | grep -aF '❯' | tail -n1)"
+  [[ -z "$line" ]] && return 1
+  _fleet_line_has_real_input "$line"
 }
 
 fleet_inject() {
@@ -148,7 +167,9 @@ fleet_inject() {
   # "stuck + truncated in the current prompt" bug). Defer: leave the message queued;
   # the next drain delivers it once the box is clear. FLEET_INJECT_DEFER=off restores
   # the old always-type behaviour.
-  if [[ "${FLEET_INJECT_DEFER:-on}" != "off" ]] && fleet_input_busy "$to"; then return 1; fi
+  # Occupied box (real, non-dim input) → DEFER with a distinct code (2) so the drain
+  # treats it as backpressure, not an inject failure. Leaves the message queued.
+  if [[ "${FLEET_INJECT_DEFER:-on}" != "off" ]] && fleet_input_busy "$to"; then return 2; fi
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
   local tag="fleet msg"; [[ "$kind" == "ask" ]] && tag="fleet ask"
   local full
@@ -234,7 +255,7 @@ fleet_drain_inbox() {
     # by line position so a re-drain can't double-deliver a line already consumed.
     local -a lines=(); local line
     while IFS= read -r line; do lines+=("$line"); done <"$f"
-    local idx delivered from text hops kind maxhop=0 ok_count=0 fail_count=0
+    local idx delivered from text hops kind maxhop=0 ok_count=0 fail_count=0 deferred_count=0
     : >"$f.tmp"
     for idx in "${!lines[@]}"; do
       line="${lines[$idx]}"
@@ -248,22 +269,24 @@ fleet_drain_inbox() {
       # inject call site — routed through the transport seam when present (its tmux
       # branch IS fleet_inject; hooks that don't source transport.sh fall through
       # to fleet_inject directly, so behaviour is identical on both paths).
-      local _injected=0
+      local _rc=0
       if declare -F transport_enqueue >/dev/null 2>&1; then
-        transport_enqueue "$to" "$from" "$text" "$hops" "$kind" && _injected=1
+        transport_enqueue "$to" "$from" "$text" "$hops" "$kind"; _rc=$?
       else
-        fleet_inject "$to" "$from" "$text" "$hops" "$kind" && _injected=1
+        fleet_inject "$to" "$from" "$text" "$hops" "$kind"; _rc=$?
       fi
-      if (( _injected == 1 )); then
+      if (( _rc == 0 )); then
         (( hops > maxhop )) && maxhop="$hops"
         ok_count=$(( ok_count + 1 ))
         printf '%s\n' "$(jq -c '.delivered=true' <<<"$line")" >>"$f.tmp"
       else
-        # Leave undelivered for the next drain. Stop trying further lines this
-        # pass (the pane is likely wedged/busy); they too stay queued.
-        fail_count=$(( fail_count + 1 ))
+        # Not delivered. rc==2 = DEFERRED (box has real input — a human typing or a
+        # stuck inject): normal backpressure, NOT a failure — leave queued, copy the
+        # rest, bail WITHOUT bumping the failure counter (doctor stays quiet; the next
+        # drain retries once the box clears). Any other rc = a genuine inject failure.
+        if (( _rc == 2 )); then deferred_count=$(( deferred_count + 1 ))
+        else fail_count=$(( fail_count + 1 )); fi
         printf '%s\n' "$line" >>"$f.tmp"
-        # copy the remaining lines verbatim (still undelivered) and bail.
         local j
         for (( j=idx+1; j<${#lines[@]}; j++ )); do
           [[ -n "${lines[$j]}" ]] && printf '%s\n' "${lines[$j]}" >>"$f.tmp"
@@ -288,6 +311,13 @@ fleet_drain_inbox() {
       fleet_state_jq "$to" --argjson n "$fail_count" --argjson t "$now" \
         '.inject_failures = ((.inject_failures // 0) + $n) | .last_drain_attempt = $t' >/dev/null 2>&1 || true
       fleet_log deliver-fail "$to" "$fail_count message(s) left queued (inject unverified)"
+      flock -u 9 2>/dev/null || true; exec 9>&-
+      return 1
+    fi
+    if (( deferred_count > 0 )); then
+      # Deferred (box occupied by real input) — NOT a failure: mail stays queued, no
+      # counter bump, quiet log. The next drain delivers once the prompt is clear.
+      fleet_log deliver-defer "$to" "$deferred_count message(s) deferred (prompt busy)" 2>/dev/null || true
       flock -u 9 2>/dev/null || true; exec 9>&-
       return 1
     fi

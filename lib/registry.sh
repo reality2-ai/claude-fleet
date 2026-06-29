@@ -87,6 +87,25 @@ fleet_state_get() {
   printf '%s\n' "${v:-$def}"
 }
 
+# Last-turn CONTEXT size for <id>, in tokens = cache_read + cache_creation input
+# tokens of the most recent assistant turn in its transcript. This is the figure
+# every turn re-processes — the per-turn token cost that drives rate-limits and
+# "running out" — and what proactive /compact makes sawtooth. Prints an integer
+# (0 if unknown). Cheap: reads only the transcript TAIL, not the whole file.
+fleet_ctx_tokens() {
+  local id="$1" sid cwd provider f buf r c
+  sid="$(fleet_state_get "$id" '.session_id' '')"
+  cwd="$(fleet_state_get "$id" '.cwd' '')"
+  provider="$(fleet_state_get "$id" '.provider' claude)"
+  [[ -z "$sid" || "$sid" == "null" || -z "$cwd" || "$cwd" == "null" ]] && { printf '0\n'; return 1; }
+  f="$(fleet_transcript_path "$cwd" "$sid" "$provider")"
+  [[ -f "$f" ]] || { printf '0\n'; return 1; }
+  buf="$(tail -c "${FLEET_CTX_TAIL_BYTES:-300000}" "$f" 2>/dev/null)"
+  r="$(printf '%s' "$buf" | grep -o '"cache_read_input_tokens":[0-9]*'     | tail -1 | grep -o '[0-9]*')"
+  c="$(printf '%s' "$buf" | grep -o '"cache_creation_input_tokens":[0-9]*' | tail -1 | grep -o '[0-9]*')"
+  printf '%s\n' "$(( ${r:-0} + ${c:-0} ))"
+}
+
 # Derive liveness for a child: prints one of live|idle|dead|stopped|failed.
 # Declared terminal states win; otherwise threshold on last activity (the max of
 # the self-reported heartbeat and the transcript mtime), with a tmux window as a

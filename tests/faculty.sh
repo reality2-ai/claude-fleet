@@ -151,16 +151,29 @@ eq "turns_since_compact round-trips in state" "$(fleet_state_get cmpw '.turns_si
 
 # --- 4d. inject defer / stuck-message guard ---------------------------------
 section "4d. inject defer (stuck+truncated message fix)"
-if declare -F fleet_input_busy >/dev/null 2>&1; then ok "fleet_input_busy defined"; else no "fleet_input_busy MISSING"; fi
+for v in fleet_input_busy _fleet_line_has_real_input; do
+  if declare -F "$v" >/dev/null 2>&1; then ok "defined: $v"; else no "MISSING: $v"; fi
+done
 # no window (unused socket) → capture fails → conservative "not busy" (delivery not blocked)
 isfalse "fleet_input_busy with no window → not busy (errs toward delivering)" fleet_input_busy ghostI
-# strips the NBSP (U+00A0) padding Claude Code uses in an empty box — else every empty
-# box reads as occupied and delivery defers forever (the regression the live bench caught)
-if declare -f fleet_input_busy | grep -qF $'\u00a0'; then ok "fleet_input_busy strips NBSP padding"; else no "fleet_input_busy does NOT strip NBSP (would defer forever)"; fi
-# fleet_inject defers on an occupied box instead of typing onto existing prompt text
+# --- dim discrimination (deterministic, the crux): Claude Code renders ghost/placeholder
+# text DIM (\e[2m…) in an EMPTY box; real typed input is NON-dim. Only NON-dim = occupied.
+_E=$'\e'; _NB=$' '
+isfalse "empty box (prompt+NBSP) → not busy"                    _fleet_line_has_real_input "${_E}[39m❯${_NB} "
+isfalse "dim ghost '<no suggestion>' → not busy"               _fleet_line_has_real_input "${_E}[39m❯${_NB} ${_E}[2m<no suggestion>${_E}[0m"
+# the live regression: a dim run with an INTERMEDIATE SGR code (\e[2m\e[39mText\e[0m) — a
+# naive [^\e]* stops at the inner \e and leaks the ghost text as "occupied"
+isfalse "dim ghost w/ intermediate SGR → not busy (core-style)" _fleet_line_has_real_input "${_E}[38;5;246m❯${_NB} ${_E}[2m${_E}[39mPress up to edit queued messages${_E}[0m"
+istrue  "non-dim real input → busy"                            _fleet_line_has_real_input "${_E}[39m❯${_NB} ZZREAL typed by a human"
+istrue  "dim hint + trailing real text → busy"                 _fleet_line_has_real_input "${_E}[39m❯${_NB} ${_E}[2mhint${_E}[0m realtext"
+if declare -f _fleet_line_has_real_input | grep -qF $' '; then ok "strips NBSP padding"; else no "does NOT strip NBSP (would defer forever)"; fi
+# fleet_inject defers (distinct code 2) on an occupied box instead of typing onto it
 if declare -f fleet_inject | grep -q 'fleet_input_busy'; then ok "fleet_inject has the defer guard"; else no "fleet_inject missing defer guard"; fi
 if declare -f fleet_inject | grep -q 'FLEET_INJECT_DEFER'; then ok "defer guard is toggleable (FLEET_INJECT_DEFER)"; else no "no FLEET_INJECT_DEFER toggle"; fi
-# on verify-exhaustion it clears its partial text (C-u) so nothing stays stuck in the box
+if declare -f fleet_inject | grep -q 'return 2'; then ok "fleet_inject defers with distinct code 2"; else no "defer not a distinct return code"; fi
+# the drain treats a deferred (rc 2) message as backpressure, NOT an inject failure
+if declare -f fleet_drain_inbox | grep -q 'deferred_count'; then ok "drain counts defers separately (not failures)"; else no "drain conflates defer with failure"; fi
+# on verify-exhaustion fleet_inject clears its partial text (C-u) so nothing stays stuck
 if declare -f fleet_inject | grep -q 'C-u'; then ok "fleet_inject clears partial text on failure (C-u)"; else no "fleet_inject leaves stuck fragment on failure"; fi
 
 # --- 5. honest unimplemented verbs ------------------------------------------
