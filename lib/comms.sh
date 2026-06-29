@@ -119,6 +119,9 @@ FLEET_INJECT_DELAY="${FLEET_INJECT_DELAY:-0.2}"
 FLEET_INJECT_CHUNK="${FLEET_INJECT_CHUNK:-500}"
 fleet_inject() {
   local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}"
+  # never keystroke-inject a claude-bg worker — its window hosts a bash controller,
+  # not a TUI; delivery there goes through the controller's programmatic turns.
+  [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
   local tag="fleet msg"; [[ "$kind" == "ask" ]] && tag="fleet ask"
   local full
@@ -159,6 +162,9 @@ fleet_drain_inbox() {
   local to="$1" force="${2:-}" f
   f="$(fleet_inbox_file "$to")"
   [[ -f "$f" ]] || return 0
+  # claude-bg workers are driven by their own controller (programmatic -p turns); the
+  # cli-tmux drain must NOT type into the controller's bash window. Leave mail for it.
+  [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1
   fleet_tmux_has_window "$to" || return 1                   # offline → keep queued
   if [[ "$force" != "force" ]]; then
     [[ "$(fleet_state_get "$to" '.ready' false)" == "true" ]] || return 1   # busy → keep queued

@@ -95,7 +95,7 @@ istrue  "claude-bg: durable_body"    faculty_capability durable_body claude-bg
 istrue  "claude-bg: native_delivery" faculty_capability native_delivery claude-bg
 # faculty_deliver routes to the bg drain under the claude-bg adapter
 if declare -f faculty_deliver | grep -q 'claude-bg'; then ok "faculty_deliver has claude-bg branch"; else no "no claude-bg deliver branch"; fi
-for v in fleet_bg_start_session fleet_bg_mount; do
+for v in fleet_bg_start_session fleet_bg_mount fleet_bg_has_mail; do
   if declare -F "$v" >/dev/null 2>&1; then ok "claude-bg lifecycle fn: $v"; else no "missing: $v"; fi
 done
 if declare -f faculty_mount | grep -q 'fleet_bg_mount'; then ok "faculty_mount has claude-bg branch"; else no "no claude-bg mount branch"; fi
@@ -103,6 +103,11 @@ if declare -f faculty_mount | grep -q 'fleet_bg_mount'; then ok "faculty_mount h
 mkdir -p "$STATE_DIR/inbox"; printf '{"from":"x","to":"node9","text":"hi","delivered":false}\n' > "$STATE_DIR/inbox/node9.jsonl"
 fleet_state_ensure node9 "$TMP" true   # no session_id
 isfalse "bg_drain with no session id keeps mail queued" fleet_bg_drain node9
+# mixed-adapter guard: the cli-tmux mail path must SKIP a claude-bg worker
+fleet_state_ensure bgw "$TMP" true; fleet_state_jq bgw '.faculty="claude-bg"' >/dev/null
+printf '{"from":"x","to":"bgw","text":"hi","delivered":false}\n' > "$(fleet_inbox_file bgw)"
+isfalse "fleet_drain_inbox skips a claude-bg worker"  fleet_drain_inbox bgw
+isfalse "fleet_inject skips a claude-bg worker"        fleet_inject bgw x "hi"
 
 # --- 5. honest unimplemented verbs ------------------------------------------
 section "5. unimplemented verbs fail honestly"

@@ -39,15 +39,39 @@ if [[ -z "$sid" || "$sid" == "null" ]]; then
   fi
 fi
 
-printf '[bg-controller %s] entering deliver loop (poll=%ss). Send it work: fleet send %s "…"\n' "$id" "$poll" "$id"
+# --- autonomy policy --------------------------------------------------------
+# Mail is always priority. Between messages, drive autonomous "continue" turns ONLY
+# while the worker keeps making progress (a changed git HEAD or dirty-count); after
+# FLEET_BG_MAX_IDLE_TURNS no-progress turns, back off to await-mail (cost-bounded —
+# it can't spin forever). Incoming mail re-engages autonomy. Disable autonomous
+# turns entirely with FLEET_BG_AUTONOMY=off (pure await-mail worker).
+autonomy="${FLEET_BG_AUTONOMY:-on}"; max_idle="${FLEET_BG_MAX_IDLE_TURNS:-2}"; idle_turns=0
+_git_fp() { printf '%s:%s' \
+  "$(git -C "$cwd" rev-parse HEAD 2>/dev/null || echo none)" \
+  "$(git -C "$cwd" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"; }
+
+printf '[bg-controller %s] deliver loop (poll=%ss, autonomy=%s/max-idle=%s). Send work: fleet send %s "…"\n' \
+  "$id" "$poll" "$autonomy" "$max_idle" "$id"
 while true; do
   fleet_state_jq "$id" --argjson t "$(date +%s)" '.heartbeat=$t | .ready=true' >/dev/null 2>&1 || true
-  # establish the session if the first attempt failed
   sid="$(fleet_state_get "$id" '.session_id' "")"
   if [[ -z "$sid" || "$sid" == "null" ]]; then
     sid="$(fleet_bg_start_session "$cwd" "$(fleet_prompt_join "$primer" "carry on")")"
     [[ -n "$sid" ]] && fleet_state_jq "$id" --arg s "$sid" '.session_id=$s' >/dev/null 2>&1 || true
   fi
-  fleet_bg_drain "$id" || true     # deliver any queued mail as turns (renders above)
+  if fleet_bg_has_mail "$id"; then
+    fleet_bg_drain "$id" && idle_turns=0 || true        # mail priority; re-engages autonomy
+  elif [[ "$autonomy" == "on" && "$idle_turns" -lt "$max_idle" && -n "$sid" && "$sid" != "null" ]]; then
+    before="$(_git_fp)"
+    printf '── autonomous continue turn ──\n'
+    reply="$(fleet_bg_deliver_turn "$sid" "$cwd" "Continue your current task. If you are blocked or have nothing left to do, say so in one line.")" || reply=""
+    printf '  ← %s\n' "${reply:0:400}"
+    if [[ "$(_git_fp)" != "$before" ]]; then
+      idle_turns=0; printf '  (progress)\n'
+    else
+      idle_turns=$(( idle_turns + 1 )); printf '  (no progress; idle %s/%s)\n' "$idle_turns" "$max_idle"
+      (( idle_turns >= max_idle )) && fleet_state_jq "$id" '.reason="idle: no progress, awaiting input"' >/dev/null 2>&1 || true
+    fi
+  fi
   sleep "$poll"
 done

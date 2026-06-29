@@ -62,6 +62,13 @@ fleet_bg_drain() {
   return "$rc"
 }
 
+# Any undelivered mail queued for <to>?  (controller uses this to prioritise mail.)
+fleet_bg_has_mail() {
+  local f; f="$(fleet_inbox_file "$1")"; [[ -f "$f" ]] || return 1
+  local n; n="$(jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0)"
+  [[ "${n:-0}" -gt 0 ]]
+}
+
 # Establish a NEW durable session (first turn) in <cwd> with <prompt>; print its
 # session_id on success. The first turn IS the worker's initial autonomous work.
 #   fleet_bg_start_session <cwd> <prompt>
@@ -87,7 +94,9 @@ fleet_bg_mount() {
   cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
   [[ -d "$cwd" ]] || die "child '$id': cwd does not exist: $cwd"
   fleet_state_ensure "$id" "$cwd" true
-  fleet_state_jq "$id" '.state="running" | .reason=null | .provider="claude"' >/dev/null
+  # Record the adapter so the cli-tmux mail path (notify / on-stop drain / watchdog)
+  # SKIPS this worker — its controller is the sole, keystroke-free deliverer.
+  fleet_state_jq "$id" '.state="running" | .reason=null | .provider="claude" | .faculty="claude-bg"' >/dev/null
   fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
     -e "TOOL_ROOT=$TOOL_ROOT" -e "FLEET_WORKSPACE=$WORKSPACE" -e "FLEET_CHILD_ID=$id" \
     -e "FLEET_FACULTY_ADAPTER=claude-bg" -e "FLEET_SKIP_PERMISSIONS=${FLEET_SKIP_PERMISSIONS:-on}" \
