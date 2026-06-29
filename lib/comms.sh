@@ -117,11 +117,38 @@ fleet_pane_is_throttled() {
 # then ONE Enter — so even a long reply arrives complete, as a single turn.
 FLEET_INJECT_DELAY="${FLEET_INJECT_DELAY:-0.2}"
 FLEET_INJECT_CHUNK="${FLEET_INJECT_CHUNK:-500}"
+FLEET_INJECT_CHUNK_DELAY="${FLEET_INJECT_CHUNK_DELAY:-0.05}"
+
+# Is <to>'s Claude Code input box non-empty — i.e. holds text we must NOT type onto
+# (a human mid-typing in an attached session, or a prior un-submitted inject)? This
+# is the root of the "message stuck + truncated in the current prompt" bug: typing
+# into an occupied box concatenates onto the existing text and the Enter can't
+# cleanly submit. The input line is the LAST line beginning with the ❯ prompt glyph
+# (history lines also start with ❯, so we take the last one, within the input region).
+# CONSERVATIVE: reports busy only on clear evidence of content after ❯, so a missed
+# read errs toward delivering (at worst the old behaviour), never toward never-delivering.
+fleet_input_busy() {
+  local to="$1" region line
+  region="$(fleet_tmux capture-pane -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | tail -n 6)" || return 1
+  line="$(printf '%s\n' "$region" | grep -E '^❯' | tail -n1)"
+  [[ -z "$line" ]] && return 1                 # no prompt visible → don't block delivery
+  line="${line#❯}"
+  line="${line//$'\u00a0'/}"                   # Claude Code pads an EMPTY box with U+00A0 (NBSP)
+  line="${line//[[:space:]]/}"                 # ordinary whitespace
+  [[ -n "$line" ]]                             # real content after ❯ → occupied
+}
+
 fleet_inject() {
   local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}"
   # never keystroke-inject a claude-bg worker — its window hosts a bash controller,
   # not a TUI; delivery there goes through the controller's programmatic turns.
   [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1
+  # Don't type onto existing prompt content (a human mid-typing, or a prior
+  # un-submitted inject) — that concatenates + garbles + can't cleanly submit (the
+  # "stuck + truncated in the current prompt" bug). Defer: leave the message queued;
+  # the next drain delivers it once the box is clear. FLEET_INJECT_DEFER=off restores
+  # the old always-type behaviour.
+  if [[ "${FLEET_INJECT_DEFER:-on}" != "off" ]] && fleet_input_busy "$to"; then return 1; fi
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
   local tag="fleet msg"; [[ "$kind" == "ask" ]] && tag="fleet ask"
   local full
@@ -130,7 +157,7 @@ fleet_inject() {
   while (( i < n )); do
     fleet_tmux send-keys -t "$tgt" -l "${full:i:FLEET_INJECT_CHUNK}" 2>/dev/null || return 1
     i=$(( i + FLEET_INJECT_CHUNK ))
-    (( i < n )) && sleep 0.03
+    (( i < n )) && sleep "$FLEET_INJECT_CHUNK_DELAY"
   done
   sleep "$FLEET_INJECT_DELAY"
   fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
@@ -149,9 +176,11 @@ fleet_inject() {
     fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
   done
   # Verify loop exhausted: the message's tail is STILL in the input box after 4
-  # re-Enters — the inject did NOT land. Report failure so the caller leaves the
-  # line undelivered (at-least-once retry on the next drain) instead of the old
-  # optimistic `return 0` that silently dropped the line as "delivered".
+  # re-Enters — the inject did NOT land (or landed truncated). Clear our partial
+  # text (C-u kills the input line) so we never leave a stuck/garbled fragment in
+  # the prompt, then report failure → the line stays queued for a clean at-least-once
+  # retry on the next drain (when the box is empty again).
+  fleet_tmux send-keys -t "$tgt" C-u 2>/dev/null || true
   return 1
 }
 

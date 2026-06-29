@@ -149,6 +149,20 @@ fleet_state_ensure cmpw "$TMP" true
 fleet_state_jq cmpw --argjson t 3 '.turns_since_compact=$t' >/dev/null 2>&1
 eq "turns_since_compact round-trips in state" "$(fleet_state_get cmpw '.turns_since_compact' 0)" "3"
 
+# --- 4d. inject defer / stuck-message guard ---------------------------------
+section "4d. inject defer (stuck+truncated message fix)"
+if declare -F fleet_input_busy >/dev/null 2>&1; then ok "fleet_input_busy defined"; else no "fleet_input_busy MISSING"; fi
+# no window (unused socket) → capture fails → conservative "not busy" (delivery not blocked)
+isfalse "fleet_input_busy with no window → not busy (errs toward delivering)" fleet_input_busy ghostI
+# strips the NBSP (U+00A0) padding Claude Code uses in an empty box — else every empty
+# box reads as occupied and delivery defers forever (the regression the live bench caught)
+if declare -f fleet_input_busy | grep -qF $'\u00a0'; then ok "fleet_input_busy strips NBSP padding"; else no "fleet_input_busy does NOT strip NBSP (would defer forever)"; fi
+# fleet_inject defers on an occupied box instead of typing onto existing prompt text
+if declare -f fleet_inject | grep -q 'fleet_input_busy'; then ok "fleet_inject has the defer guard"; else no "fleet_inject missing defer guard"; fi
+if declare -f fleet_inject | grep -q 'FLEET_INJECT_DEFER'; then ok "defer guard is toggleable (FLEET_INJECT_DEFER)"; else no "no FLEET_INJECT_DEFER toggle"; fi
+# on verify-exhaustion it clears its partial text (C-u) so nothing stays stuck in the box
+if declare -f fleet_inject | grep -q 'C-u'; then ok "fleet_inject clears partial text on failure (C-u)"; else no "fleet_inject leaves stuck fragment on failure"; fi
+
 # --- 5. honest unimplemented verbs ------------------------------------------
 section "5. unimplemented verbs fail honestly"
 isfalse "spawn_tool returns non-zero (unimplemented)" faculty_spawn_tool x "task"
