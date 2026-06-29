@@ -5,6 +5,15 @@ call-site adoption (landed) — see [ADR-002](ADR-002-multibrained-entity-fleet.
 [the contract](FACULTY-ADAPTER-CONTRACT.md). **No code yet; this records the design + the open questions a
 bench must settle before implementing.**
 
+> **Update 2026-06-30 — `claude-bg` is CLAUDE-ONLY.** The codex-on-claude-bg controller path was
+> trialled and retired: codex is **not a per-worker brain**. Codex returns to its canonical role —
+> a single, read-only **refuter** window via `fleet refute` / `bin/codex-review` / `bin/codex-scan`
+> (the adversarial-helper role). The codex Model-B primitives (`fleet_codex_start_session` /
+> `fleet_codex_deliver_turn`) are retained but **dormant** as a proven building block for a possible
+> future dedicated `codex-bg` adapter. `fleet_bg_mount` diverts any codex worker to the proven
+> `cli-tmux` path; the controller refuses to drive codex. References to "Codex" below describe the
+> trialled design, not the current wiring.
+
 ---
 
 ## Where we are (honest status)

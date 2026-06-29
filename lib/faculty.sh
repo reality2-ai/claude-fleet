@@ -73,11 +73,12 @@ faculty_capabilities() {
 # are the same call today; a durable native adapter may split them later.
 faculty_mount()  { case "$(_faculty_adapter_for "$1")" in claude-bg) fleet_bg_mount "$@" ;; cli-tmux|*) fleet_tmux_start_child "$@" ;; esac; }
 faculty_resume() { faculty_mount "$@"; }
-faculty_unmount(){ case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) fleet_tmux_stop_child "$@" ;; esac; }
+faculty_unmount(){ case "$(_faculty_adapter_for "$1")" in claude-bg) fleet_bg_unmount "$@" ;; cli-tmux|*) fleet_tmux_stop_child "$@" ;; esac; }
 
 # liveness of the entity's brain: live|idle|dead|stopped|failed (+ throttled/exhausted
-# surfaced separately via the comms helpers the doctor uses).
-faculty_liveness(){ case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) fleet_liveness "$@" ;; esac; }
+# surfaced separately via the comms helpers the doctor uses). A claude-bg worker's
+# controller runs IN a tmux window, so window-based liveness applies to both adapters.
+faculty_liveness(){ case "$(_faculty_adapter_for "$1")" in cli-tmux|claude-bg|*) fleet_liveness "$@" ;; esac; }
 
 # --- work --------------------------------------------------------------------
 # deliver queued mail to the entity's brain (routes through the transport seam, whose

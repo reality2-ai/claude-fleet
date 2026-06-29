@@ -95,9 +95,20 @@ istrue  "claude-bg: durable_body"    faculty_capability durable_body claude-bg
 istrue  "claude-bg: native_delivery" faculty_capability native_delivery claude-bg
 # faculty_deliver routes to the bg drain under the claude-bg adapter
 if declare -f faculty_deliver | grep -q 'claude-bg'; then ok "faculty_deliver has claude-bg branch"; else no "no claude-bg deliver branch"; fi
-if declare -f fleet_bg_drain | grep -q 'codex'; then ok "fleet_bg_drain dispatches on provider (codex)"; else no "drain not provider-aware"; fi
-for v in fleet_bg_start_session fleet_bg_mount fleet_bg_has_mail fleet_codex_start_session fleet_codex_deliver_turn; do
+# claude-bg is CLAUDE-ONLY (codex = refuter, not a per-worker brain): the drain delivers
+# via the claude primitive and must NOT dispatch to codex.
+if declare -f fleet_bg_drain | grep -q 'fleet_bg_deliver_turn' && ! declare -f fleet_bg_drain | grep -q 'fleet_codex_deliver_turn'; then ok "fleet_bg_drain is claude-only (no codex dispatch)"; else no "drain still dispatches codex"; fi
+# fleet_bg_mount diverts a codex worker to the cli-tmux path (refuter-only on bg)
+if declare -f fleet_bg_mount | grep -q 'fleet_tmux_start_child'; then ok "fleet_bg_mount diverts codex → cli-tmux"; else no "mount has no codex divert"; fi
+# unmount reaps the controller (orphaned/duplicate-controller fix)
+if declare -F fleet_bg_unmount >/dev/null 2>&1 && declare -f fleet_bg_unmount | grep -q 'pkill'; then ok "fleet_bg_unmount reaps controller"; else no "no controller-reaping unmount"; fi
+if declare -f faculty_unmount | grep -q '_faculty_adapter_for'; then ok "faculty_unmount resolves adapter per-worker"; else no "faculty_unmount uses global adapter"; fi
+for v in fleet_bg_start_session fleet_bg_mount fleet_bg_unmount fleet_bg_has_mail; do
   if declare -F "$v" >/dev/null 2>&1; then ok "claude-bg lifecycle fn: $v"; else no "missing: $v"; fi
+done
+# codex primitives retained but DORMANT (proven building block for a future codex-bg adapter)
+for v in fleet_codex_start_session fleet_codex_deliver_turn; do
+  if declare -F "$v" >/dev/null 2>&1; then ok "codex primitive retained (dormant): $v"; else no "missing: $v"; fi
 done
 if declare -f faculty_mount | grep -q 'fleet_bg_mount'; then ok "faculty_mount has claude-bg branch"; else no "no claude-bg mount branch"; fi
 # no durable session id → drain keeps mail queued (returns non-zero), never crashes

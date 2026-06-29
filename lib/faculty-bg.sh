@@ -36,12 +36,11 @@ fleet_bg_deliver_turn() {
 # leave mail queued (no session id, or a turn failed).
 #   fleet_bg_drain <to>
 fleet_bg_drain() {
-  local to="$1" f sid cwd provider
+  local to="$1" f sid cwd
   f="$(fleet_inbox_file "$to")"; [[ -f "$f" ]] || return 0
   sid="$(fleet_state_get "$to" '.session_id' "")"
   [[ -n "$sid" && "$sid" != "null" ]] || return 1            # no durable session yet → keep queued
   cwd="$(fleet_state_get "$to" '.cwd' "$PWD")"
-  provider="$(fleet_state_get "$to" '.provider' claude)"
   exec 9>"$f.lock"; flock 9 2>/dev/null || true
   local -a lines=(); local line; while IFS= read -r line; do lines+=("$line"); done <"$f"
   : >"$f.tmp"; local idx delivered from text rc=0
@@ -51,11 +50,7 @@ fleet_bg_drain() {
     if [[ "$delivered" == "true" ]]; then printf '%s\n' "$line" >>"$f.tmp"; continue; fi
     from="$(jq -r '.from' <<<"$line")"; text="$(jq -r '.text' <<<"$line")"
     local _reply _ok=0
-    if [[ "$provider" == "codex" ]]; then
-      _reply="$(fleet_codex_deliver_turn "$sid" "$cwd" "[fleet msg from $from] $text")" && _ok=1
-    else
-      _reply="$(fleet_bg_deliver_turn "$sid" "$cwd" "[fleet msg from $from] $text")" && _ok=1
-    fi
+    _reply="$(fleet_bg_deliver_turn "$sid" "$cwd" "[fleet msg from $from] $text")" && _ok=1   # claude-bg is claude-only
     if (( _ok == 1 )); then
       printf '  → [%s] %s\n  ← %s\n' "$from" "$text" "${_reply:0:400}"   # render the turn (visible in the controller window)
       printf '%s\n' "$(jq -c '.delivered=true' <<<"$line")" >>"$f.tmp"
@@ -69,6 +64,10 @@ fleet_bg_drain() {
 }
 
 # --- Codex Model-B primitives (codex exec resume; same shape as the claude ones) ---
+# DORMANT (2026-06-30): claude-bg is now claude-only. Codex is NOT a per-worker brain —
+# it runs as a single read-only refuter window via `fleet refute` / bin/codex-review
+# (the canonical adversarial-helper role). These primitives are retained, unused, as a
+# proven building block for a possible future dedicated codex-bg adapter. See ADR-002.
 # Codex is durable + resumable like Claude, but reports its session id on a
 # "session id: <uuid>" line (not json), and a turn is `codex exec resume <id>`.
 # Verified 0.142.3. Workers run unattended → bypass approvals/sandbox when skip-perms.
@@ -127,6 +126,12 @@ fleet_bg_mount() {
   [[ -d "$cwd" ]] || die "child '$id': cwd does not exist: $cwd"
   fleet_state_ensure "$id" "$cwd" true
   local provider; provider="$(fleet_provider_for_child "$id")"
+  # claude-bg is claude-only. A codex worker must not be driven by the controller —
+  # codex is the refuter, not a per-worker brain. Divert it to the proven cli-tmux path.
+  if [[ "$provider" == "codex" ]]; then
+    warn "child '$id': codex is not supported on claude-bg (codex = refuter only); mounting on cli-tmux instead"
+    fleet_tmux_start_child "$id"; return $?
+  fi
   # Record the adapter so the cli-tmux mail path (notify / on-stop drain / watchdog)
   # SKIPS this worker — its controller is the sole, keystroke-free deliverer. Record
   # the real provider so the controller drives claude (-p --resume) or codex (exec resume).
@@ -136,4 +141,16 @@ fleet_bg_mount() {
     -e "FLEET_FACULTY_ADAPTER=claude-bg" -e "FLEET_SKIP_PERMISSIONS=${FLEET_SKIP_PERMISSIONS:-on}" \
     "$TOOL_ROOT/lib/bg-controller.sh" "$id"
   declare -F transport_register >/dev/null 2>&1 && transport_register "$id"
+}
+
+# Unmount a claude-bg worker: kill its window (which kills the controller running in it)
+# AND reap any orphaned controller process for this id. Killing the window normally takes
+# the controller bash loop with it, but a restart that re-mounted before the prior window
+# fully died could leave a duplicate controller — so we explicitly pkill the loop by its
+# exact argv (anchored so 'specs' never matches 'specs2'). Idempotent.
+#   fleet_bg_unmount <id>
+fleet_bg_unmount() {
+  local id="$1"
+  declare -F fleet_tmux_stop_child >/dev/null 2>&1 && fleet_tmux_stop_child "$id" 2>/dev/null || true
+  pkill -f "bg-controller\.sh ${id}\$" 2>/dev/null || true
 }
