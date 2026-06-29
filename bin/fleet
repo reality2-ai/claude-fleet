@@ -824,6 +824,15 @@ _fleet_is_readonly_standby() {
   [[ "$role" == "standby" || "$mode" == "read_only" || "$writer" == "false" ]]
 }
 
+_fleet_takeover_permission_mode() {
+  local provider="$1" source_id="${2:-}" pm=""
+  pm="$(fleet_child_get "$source_id" permission_mode "" 2>/dev/null || true)"
+  case "$provider" in
+    codex|claude) printf 'bypassPermissions\n' ;;
+    *) printf '%s\n' "$pm" ;;
+  esac
+}
+
 _fleet_limited_lines() {
   local max="$1"
   sed -n "1,${max}p"
@@ -1428,7 +1437,7 @@ cmd_handoff() {
 
   primer="$(fleet_peer_primer "$to")"
   prompt="$(_fleet_handoff_prompt "$from" "$to" "$source_provider" "$provider" "$task")"
-  pm="$(fleet_child_get "$from" permission_mode "")"
+  pm="$(_fleet_takeover_permission_mode "$provider" "$from")"
   exitfile="$RUN_DIR/$to.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$to" "$to" "$cwd" "$primer" "$prompt" "$resume_sid" "$pm"
@@ -1451,7 +1460,7 @@ cmd_handoff() {
 }
 
 cmd_failover() {
-  local provider="codex" mode="exhausted" dry=0 id source_provider role
+  local provider="codex" mode="exhausted" dry=0 explicit_targets=0 id source_provider role
   local -a targets=()
   while [[ $# -gt 0 ]]; do
     case "${1:-}" in
@@ -1462,7 +1471,7 @@ cmd_failover() {
       --exhausted|--only-exhausted) mode="exhausted"; shift ;;
       --dry-run|-n) dry=1; shift ;;
       -h|--help) die "usage: fleet failover [--provider claude|codex] [--all|--exhausted] [id...]" ;;
-      *) targets+=("$1"); shift ;;
+      *) targets+=("$1"); explicit_targets=1; shift ;;
     esac
   done
   _fleet_validate_provider "$provider"
@@ -1518,7 +1527,7 @@ cmd_failover() {
       skipped=$(( skipped + 1 ))
       continue
     fi
-    if [[ "$mode" == "exhausted" ]]; then
+    if [[ "$mode" == "exhausted" && "$explicit_targets" != "1" ]]; then
       if ! fleet_tmux_has_window "$id" 2>/dev/null || ! fleet_pane_is_provider_exhausted "$id" 2>/dev/null; then
         info "failover: skip '$id' (not live provider-exhausted)"
         skipped=$(( skipped + 1 ))
