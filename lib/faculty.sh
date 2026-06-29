@@ -58,7 +58,7 @@ faculty_capabilities() {
 # mount/resume a brain for an entity. The cli-tmux adapter's start function already
 # resumes from run/<id>.session when present, else seeds fresh — so mount and resume
 # are the same call today; a durable native adapter may split them later.
-faculty_mount()  { case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) fleet_tmux_start_child "$@" ;; esac; }
+faculty_mount()  { case "$FLEET_FACULTY_ADAPTER" in claude-bg) fleet_bg_mount "$@" ;; cli-tmux|*) fleet_tmux_start_child "$@" ;; esac; }
 faculty_resume() { faculty_mount "$@"; }
 faculty_unmount(){ case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) fleet_tmux_stop_child "$@" ;; esac; }
 
@@ -71,7 +71,10 @@ faculty_liveness(){ case "$FLEET_FACULTY_ADAPTER" in cli-tmux|*) fleet_liveness 
 # only branch today IS fleet_drain_inbox/fleet_inject).
 faculty_deliver(){
   case "$FLEET_FACULTY_ADAPTER" in
-    claude-bg)  fleet_bg_drain "$1" ;;                       # Model B: programmatic turns (ADR-003)
+    # Model B: the worker's controller is the SOLE driver of its session (single-
+    # controller), so delivery just leaves mail queued (enqueued upstream) and the
+    # controller drains it as a turn. No second driver here → no -p --resume conflict.
+    claude-bg)  return 0 ;;
     cli-tmux|*) transport_deliver "$@" ;;
   esac
 }

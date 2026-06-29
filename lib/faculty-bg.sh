@@ -49,7 +49,9 @@ fleet_bg_drain() {
     delivered="$(jq -r '.delivered // false' <<<"$line" 2>/dev/null)"
     if [[ "$delivered" == "true" ]]; then printf '%s\n' "$line" >>"$f.tmp"; continue; fi
     from="$(jq -r '.from' <<<"$line")"; text="$(jq -r '.text' <<<"$line")"
-    if fleet_bg_deliver_turn "$sid" "$cwd" "[fleet msg from $from] $text" >/dev/null; then
+    local _reply
+    if _reply="$(fleet_bg_deliver_turn "$sid" "$cwd" "[fleet msg from $from] $text")"; then
+      printf '  → [%s] %s\n  ← %s\n' "$from" "$text" "${_reply:0:400}"   # render the turn (visible in the controller window)
       printf '%s\n' "$(jq -c '.delivered=true' <<<"$line")" >>"$f.tmp"
     else
       rc=1; printf '%s\n' "$line" >>"$f.tmp"   # leave queued; retry next drain
@@ -58,4 +60,37 @@ fleet_bg_drain() {
   mv "$f.tmp" "$f" 2>/dev/null || rm -f "$f.tmp"
   flock -u 9 2>/dev/null || true; exec 9>&-
   return "$rc"
+}
+
+# Establish a NEW durable session (first turn) in <cwd> with <prompt>; print its
+# session_id on success. The first turn IS the worker's initial autonomous work.
+#   fleet_bg_start_session <cwd> <prompt>
+fleet_bg_start_session() {
+  local cwd="$1" prompt="$2" bin out
+  bin="$(fleet_provider_bin claude)"
+  local -a perm=(); [[ "${FLEET_SKIP_PERMISSIONS:-on}" != "off" ]] && perm=(--dangerously-skip-permissions)
+  out="$( cd "$cwd" 2>/dev/null && timeout "${FLEET_BG_TURN_TIMEOUT:-600}" \
+    "$bin" -p --output-format json "${perm[@]}" "$prompt" 2>/dev/null )" || return 1
+  jq -r '.session_id // empty' <<<"$out" 2>/dev/null
+}
+
+# Mount a worker under the claude-bg adapter: launch its CONTROLLER in a tmux window
+# named <id> (so it still appears in the unified fleet view + reuses window-based
+# liveness/attach), and the controller drives the worker's durable session
+# turn-by-turn (keystroke-free). Mirrors fleet_tmux_start_child's setup.
+#   fleet_bg_mount <id>
+fleet_bg_mount() {
+  local id="$1"
+  fleet_tmux_ensure_session
+  fleet_tmux_has_window "$id" && { warn "child '$id' already has a window"; return 0; }
+  local rel cwd; rel="$(fleet_child_get "$id" cwd ".")"
+  cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"
+  [[ -d "$cwd" ]] || die "child '$id': cwd does not exist: $cwd"
+  fleet_state_ensure "$id" "$cwd" true
+  fleet_state_jq "$id" '.state="running" | .reason=null | .provider="claude"' >/dev/null
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+    -e "TOOL_ROOT=$TOOL_ROOT" -e "FLEET_WORKSPACE=$WORKSPACE" -e "FLEET_CHILD_ID=$id" \
+    -e "FLEET_FACULTY_ADAPTER=claude-bg" -e "FLEET_SKIP_PERMISSIONS=${FLEET_SKIP_PERMISSIONS:-on}" \
+    "$TOOL_ROOT/lib/bg-controller.sh" "$id"
+  declare -F transport_register >/dev/null 2>&1 && transport_register "$id"
 }

@@ -94,7 +94,11 @@ done
 istrue  "claude-bg: durable_body"    faculty_capability durable_body claude-bg
 istrue  "claude-bg: native_delivery" faculty_capability native_delivery claude-bg
 # faculty_deliver routes to the bg drain under the claude-bg adapter
-if declare -f faculty_deliver | grep -q 'fleet_bg_drain'; then ok "faculty_deliver has claude-bg branch"; else no "no claude-bg deliver branch"; fi
+if declare -f faculty_deliver | grep -q 'claude-bg'; then ok "faculty_deliver has claude-bg branch"; else no "no claude-bg deliver branch"; fi
+for v in fleet_bg_start_session fleet_bg_mount; do
+  if declare -F "$v" >/dev/null 2>&1; then ok "claude-bg lifecycle fn: $v"; else no "missing: $v"; fi
+done
+if declare -f faculty_mount | grep -q 'fleet_bg_mount'; then ok "faculty_mount has claude-bg branch"; else no "no claude-bg mount branch"; fi
 # no durable session id → drain keeps mail queued (returns non-zero), never crashes
 mkdir -p "$STATE_DIR/inbox"; printf '{"from":"x","to":"node9","text":"hi","delivered":false}\n' > "$STATE_DIR/inbox/node9.jsonl"
 fleet_state_ensure node9 "$TMP" true   # no session_id

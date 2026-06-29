@@ -125,6 +125,23 @@ fleet drives the faculty per message).
 - Tests: hermetic `tests/faculty.sh` (40/0) + `tests/live-bench-bg.sh` (live, non-CI: proves programmatic
   delivery + cross-turn persistence through the shipped primitive — returned 42). config/liveness/smoke green.
 
-**Still to build (next):** the worker LIFECYCLE under claude-bg — start workers as durable sessions, the
-controller loop driving autonomous turns, and `faculty_mount`/`attach` mapping a worker to a tmux window running
-`claude attach <id>` (the unified-view render). Then pilot one real worker behind the flag.
+**Worker LIFECYCLE — landed + PILOTED (2026-06-29).** The reconciliation that makes it all fit: the **controller
+runs IN a tmux window** named `<id>`, so the worker still appears in the unified fleet view and reuses the
+existing window-based liveness/attach; only *mount* and *delivery* differ.
+
+- `lib/bg-controller.sh <id>` — the Model-B controller: runs in a tmux window, establishes the worker's durable
+  session on first run (`fleet_bg_start_session`), then loops draining queued mail as programmatic
+  `-p --resume` turns (`fleet_bg_drain`), rendering each turn so attaching shows activity. SOLE driver of the
+  session (single-controller — no `-p` conflict).
+- `fleet_bg_mount <id>` — launches that controller in a tmux window. `faculty_mount` gains a claude-bg branch.
+- `faculty_deliver` (claude-bg) is enqueue-only (`return 0`); the controller drains — avoids a second driver.
+- `faculty_liveness`/`faculty_attach` need NO claude-bg branch: the controller-in-a-window means the existing
+  window-based machinery already covers them. That's the elegance of controller-in-tmux.
+
+**Live pilot PASS** (`tests/live-pilot-bg.sh`, one throwaway worker, isolated socket): window present (unified
+view) ✓, durable session established ✓, message delivered **keystroke-free** (undelivered→0) ✓. Hermetic
+`tests/faculty.sh` 43/0; config/liveness/smoke green. Default-off → zero live-fleet impact.
+
+**Still to do:** autonomous multi-step continuation policy (drive "continue" turns vs await-mail — pilot
+currently establishes the session then awaits mail), Codex-side (`codex exec resume` controller), then roll a
+real fleet worker onto `FLEET_FACULTY_ADAPTER=claude-bg` and compare delivery reliability before wider rollout.
