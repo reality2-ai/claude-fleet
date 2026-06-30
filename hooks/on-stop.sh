@@ -18,6 +18,12 @@ _pending=0
 _inbox="$(fleet_inbox_file "$CHILD_ID" 2>/dev/null)"
 [[ -n "$_inbox" && -f "$_inbox" ]] && _pending="$(jq -s '[.[]|select(.delivered==false)]|length' "$_inbox" 2>/dev/null || echo 0)"
 
+# Backstop: an earlier inject may have left a complete message unsubmitted in this worker's
+# input box (it started a turn in the paste→Enter window; Enter/C-u were swallowed mid-turn).
+# Now that it's at its prompt, submit that stuck message before draining new mail. MANAGED
+# workers only (never auto-submit the human's ad-hoc lane).
+[[ "$MANAGED" == true ]] && { fleet_flush_stuck_box "$CHILD_ID" >/dev/null 2>&1 && sleep 0.3 || true; }
+
 fleet_drain_inbox "$CHILD_ID" force >/dev/null 2>&1 || true
 
 # Event-driven idle signal (default ON): a MANAGED worker that returned to its prompt

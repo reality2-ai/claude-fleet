@@ -203,7 +203,10 @@ if declare -f fleet_drain_inbox | grep -q 'dead_count'; then ok "drain records d
 # submit-verify is the dim-aware empty-box test (multi-line / placeholder safe), not a tail grep:
 # the re-Enter loop now exits on `fleet_input_busy ... || return 0`, and the old tail-text
 # marker grep is gone (it broke on wrapped lines / paste placeholders).
-if declare -f fleet_inject | grep -q 'fleet_input_busy "$to" || return 0'; then ok "submit-verify uses dim-aware empty-box test"; else no "submit-verify not empty-box based"; fi
+if declare -f fleet_inject | grep -qE 'fleet_input_busy "\$to" \|\|'; then ok "submit-verify uses dim-aware empty-box test"; else no "submit-verify not empty-box based"; fi
+# submit only when idle (never fight a working pane with Enter), with a Stop-hook flush backstop
+if declare -F fleet_flush_stuck_box >/dev/null 2>&1; then ok "defined: fleet_flush_stuck_box (Stop-hook backstop submits a stuck-in-box inject)"; else no "fleet_flush_stuck_box missing"; fi
+if grep -q 'fleet_flush_stuck_box' hooks/on-stop.sh; then ok "on-stop hook flushes a stuck box at idle"; else no "on-stop doesn't flush stuck box"; fi
 if declare -f fleet_inject | grep -q 'marker='; then no "old tail-text marker verify still present"; else ok "old tail-text marker verify removed"; fi
 
 # --- 5. honest unimplemented verbs ------------------------------------------
