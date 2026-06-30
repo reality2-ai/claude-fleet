@@ -1586,9 +1586,21 @@ cmd_refute() {
   exitfile="$RUN_DIR/$reviewer.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   [[ -n "${FLEET_SKIP_PERMISSIONS+x}" ]] && { had_skip=1; old_skip="$FLEET_SKIP_PERMISSIONS"; }
   FLEET_SKIP_PERMISSIONS=off; export FLEET_SKIP_PERMISSIONS
+  # A refuter is READ-ONLY (it never writes), but read-only must not mean PROMPTING: the
+  # Codex default for plan mode is `--ask-for-approval untrusted`, which stops to ask "yes?"
+  # on essentially every command and strands the pane (Roy: "codex asks many questions that
+  # just require a yes"). Force NON-interactive read-only — approval `never` + a read-only
+  # sandbox — so it runs its read/analysis commands autonomously and any write is denied by
+  # the sandbox rather than prompted. (Codex-only knobs; the Claude refuter ignores them.)
+  local had_capprove=0 old_capprove="" had_csandbox=0 old_csandbox=""
+  [[ -n "${FLEET_CODEX_APPROVAL+x}" ]] && { had_capprove=1; old_capprove="$FLEET_CODEX_APPROVAL"; }
+  [[ -n "${FLEET_CODEX_SANDBOX+x}"  ]] && { had_csandbox=1; old_csandbox="$FLEET_CODEX_SANDBOX"; }
+  FLEET_CODEX_APPROVAL=never FLEET_CODEX_SANDBOX=read-only; export FLEET_CODEX_APPROVAL FLEET_CODEX_SANDBOX
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$reviewer" "$reviewer" "$cwd" "$primer" "$prompt" "" "plan"
   _fleet_restore_skip_permissions "$had_skip" "$old_skip"
+  if [[ "$had_capprove" == 1 ]]; then FLEET_CODEX_APPROVAL="$old_capprove"; export FLEET_CODEX_APPROVAL; else unset FLEET_CODEX_APPROVAL; fi
+  if [[ "$had_csandbox" == 1 ]]; then FLEET_CODEX_SANDBOX="$old_csandbox"; export FLEET_CODEX_SANDBOX; else unset FLEET_CODEX_SANDBOX; fi
   fleet_tmux_new_agent_window "$reviewer" "$cwd" "$exitfile" "$provider" cargs
   fleet_state_ensure "$reviewer" "$cwd" true
   fleet_state_jq "$reviewer" --arg p "$provider" --arg target "$target" \
