@@ -189,6 +189,9 @@ if declare -f fleet_pane_is_idle | grep -q '❯'; then ok "fleet_pane_is_idle re
 # atomic bracketed-paste insertion replaces chunked typing (no truncation, multi-line safe)
 if declare -f fleet_inject | grep -q 'paste-buffer -d -p'; then ok "fleet_inject inserts via atomic bracketed paste"; else no "fleet_inject not using bracketed paste"; fi
 if declare -f fleet_inject | grep -q 'FLEET_INJECT_PASTE'; then ok "paste path is toggleable (FLEET_INJECT_PASTE=off → legacy typing)"; else no "no FLEET_INJECT_PASTE toggle"; fi
+# TOCTOU: re-check active work right before the submit Enter, so a pane that started a turn
+# mid-inject gets a clean defer (C-u back-out) instead of a queued-then-stuck message.
+if declare -f fleet_inject | grep -c 'fleet_pane_is_working' | grep -qE '^[2-9]'; then ok "fleet_inject re-checks active work before submit (closes idle→working TOCTOU)"; else no "fleet_inject doesn't re-check work before submit → queued-stuck risk"; fi
 # confirm-landed: before Enter, fleet_inject requires its content to actually be in the box,
 # else an empty box (paste silently dropped) would be marked submitted = SILENT LOSS.
 if declare -f fleet_inject | grep -q 'landed'; then ok "fleet_inject confirms the insert landed before submitting (anti silent-loss)"; else no "fleet_inject doesn't confirm landing → silent-loss risk"; fi

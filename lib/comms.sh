@@ -243,6 +243,19 @@ fleet_inject() {
     fi
   fi
   sleep "$FLEET_INJECT_DELAY"
+  # --- RE-CHECK ACTIVE WORK right before the submit (closes the idle→working TOCTOU).
+  # The pane can start a turn between the defer gate and here (it picked up its own work,
+  # or a peer's earlier message landed). An Enter into a working pane does NOT submit our
+  # message as its own turn — Claude Code QUEUES it behind the running turn, where it can
+  # sit until manually advanced (Roy: "a message sitting in a prompt and I had to press
+  # return"). So if it went working, back out cleanly — C-u clears the box (incl. a
+  # [Pasted text] placeholder; Escape does NOT — both verified) — and DEFER (rc 2) for a
+  # clean redelivery when the pane is next idle. This trades a small extra delay for never
+  # leaving a half-submitted message stranded at the prompt.
+  if fleet_pane_is_working "$to"; then
+    fleet_tmux send-keys -t "$tgt" C-u 2>/dev/null || true
+    return 2
+  fi
   fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
 
   # --- SUBMIT VERIFY (multi-line / paste-placeholder safe). After a successful
