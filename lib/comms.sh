@@ -193,17 +193,15 @@ fleet_inject() {
   _fleet_inject_trace "$to" entry
 
   # --- DEFER GATE (rc 2 = backpressure, NOT failure — leaves the message queued for the
-  # next drain). Defer ONLY on a POSITIVE reason not to type right now; on any doubt,
-  # DELIVER. This is deliberate: a strict positive-IDLE gate strands mail forever the
-  # moment the idle detector misreads a calm pane, whereas the confirm-landed +
-  # submit-verify + dead-letter net below makes a mistimed inject SAFE (it requeues,
-  # never stuck/lost). So we err toward delivering, never toward never-delivering.
-  #  (a) ACTIVELY mid-turn — Enter would be silently swallowed and the text would sit
-  #      unsubmitted at the prompt (the "messages stuck waiting for enter" bug). Checks
-  #      the LIVE pane (fleet_pane_is_working), not the stale .ready flag.
-  #  (b) BUSY box — real, non-dim input already present (a human mid-typing or a prior
-  #      un-submitted inject). Typing onto it concatenates + garbles.
-  if fleet_pane_is_working "$to"; then return 2; fi
+  # next drain). Defer ONLY when the box already holds REAL (non-dim) input — a human
+  # mid-typing, or a prior inject still sitting unsubmitted — so we never paste on top of
+  # and garble it. We do NOT defer merely because the pane is mid-turn: GROUND TRUTH from
+  # the live trace is that an Enter submitted while Claude is working is QUEUED by Claude
+  # Code (it shows "Press up to edit queued messages") and processed when the turn ends —
+  # it is NOT swallowed. So delivering to a busy worker is fine; the earlier "submit only
+  # when idle" gate was wrong and was itself stranding messages (it skipped the Enter and
+  # left the text in the box). Note: Claude Code's dim "Press up to edit queued messages"
+  # hint reads as a CLEAR box (not real input), so it does not block the next delivery.
   if [[ "${FLEET_INJECT_DEFER:-on}" != "off" ]] && fleet_input_busy "$to"; then return 2; fi
 
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
@@ -257,36 +255,31 @@ fleet_inject() {
   fi
   sleep "$FLEET_INJECT_DELAY"
 
-  # --- SUBMIT — ONLY when the pane is idle. The message is now IN THE BOX (confirm-landed).
-  # The pane may have started a turn during our paste (idle→working TOCTOU). Do NOT fight a
-  # working pane: an Enter mid-turn is swallowed (and can leave the message visible-but-
-  # unsubmitted — Roy: "a message sitting in a prompt and I had to press return"), and C-u
-  # can't clear mid-turn while Ctrl-C would ABORT the worker's turn. So: press Enter only
-  # while idle; if the pane is working, let the (intact) message ride in the box. Whether it
-  # submits here or not, the Stop-hook flush (fleet_flush_stuck_box) submits any leftover box
-  # content the moment the worker next goes idle — so a mistimed inject is never stranded.
-  [[ "${FLEET_INJECT_VERIFY:-on}" == "off" ]] && { fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1; return 0; }
+  # --- SUBMIT — ALWAYS press Enter (the only submit). Ground truth from the live trace:
+  # an Enter is handled whether the pane is idle (submits as a turn) or busy (Claude Code
+  # QUEUES it — "Press up to edit queued messages" — and runs it when the current turn
+  # ends). It is NOT swallowed. So we always Enter; no idle-gating, which previously
+  # SKIPPED the Enter and stranded the message as box text.
+  fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
+  _fleet_inject_trace "$to" entered
+
+  # --- VERIFY: our message text should be GONE from the box now — either submitted
+  # (processing) or queued (the dim "Press up to edit queued messages" hint, which reads as
+  # a clear box). If our content still lingers, the Enter raced the paste render — re-send
+  # it (a spurious Enter at a clear/queued prompt is a harmless no-op). Disable with
+  # FLEET_INJECT_VERIFY=off.
+  [[ "${FLEET_INJECT_VERIFY:-on}" == "off" ]] && return 0
   local try
-  for try in $(seq 1 "${FLEET_INJECT_SUBMIT_TRIES:-8}"); do
-    fleet_input_busy "$to" || { _fleet_inject_trace "$to" submitted; return 0; }   # box clear → submitted
-    if ! fleet_pane_is_working "$to"; then
-      _fleet_inject_trace "$to" "enter-try-$try"
-      fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
-    fi
+  for try in $(seq 1 "${FLEET_INJECT_SUBMIT_TRIES:-6}"); do
     sleep 0.3
+    fleet_input_busy "$to" || { _fleet_inject_trace "$to" submitted; return 0; }   # box clear/queued → delivered
+    fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
   done
-  # Budget spent and the message is still in the box. If the pane is working, it's intact and
-  # the Stop-hook flush will submit it at the next idle → count it delivered (a re-paste would
-  # only duplicate it). If the pane is IDLE yet it still won't submit (Enter genuinely not
-  # landing — unusual), clear it and requeue for an honest retry rather than mark it delivered.
-  fleet_input_busy "$to" || { _fleet_inject_trace "$to" submitted; return 0; }
-  if fleet_pane_is_working "$to"; then
-    _fleet_inject_trace "$to" rode-in-box
-    return 0
-  fi
-  _fleet_inject_trace "$to" stuck-idle-clear
-  fleet_tmux send-keys -t "$tgt" C-u 2>/dev/null || true
-  return 1
+  # Still our content after repeated Enters (rare). Leave it intact in the box — the Stop-hook
+  # flush submits it at the worker's next idle — and count it delivered to avoid a duplicate
+  # re-paste. (Do NOT C-u: it would drop a valid message, and is ineffective mid-turn anyway.)
+  _fleet_inject_trace "$to" left-for-flush
+  return 0
 }
 
 # Stop-hook backstop: when a MANAGED worker returns to its prompt, an earlier inject may

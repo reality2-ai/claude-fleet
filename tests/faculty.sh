@@ -175,23 +175,24 @@ if declare -f fleet_inject | grep -q 'FLEET_INJECT_DEFER'; then ok "defer guard 
 if declare -f fleet_inject | grep -q 'return 2'; then ok "fleet_inject defers with distinct code 2"; else no "defer not a distinct return code"; fi
 # the drain treats a deferred (rc 2) message as backpressure, NOT an inject failure
 if declare -f fleet_drain_inbox | grep -q 'deferred_count'; then ok "drain counts defers separately (not failures)"; else no "drain conflates defer with failure"; fi
-# on verify-exhaustion fleet_inject clears its partial text (C-u) so nothing stays stuck
-if declare -f fleet_inject | grep -q 'C-u'; then ok "fleet_inject clears partial text on failure (C-u)"; else no "fleet_inject leaves stuck fragment on failure"; fi
+# a paste that did not LAND is dropped from the tmux buffer and requeued (rc 1), not Entered
+if declare -f fleet_inject | grep -q 'delete-buffer'; then ok "fleet_inject drops a non-landed paste buffer (no Enter into nothing)"; else no "fleet_inject doesn't clean a non-landed paste"; fi
+# anything left in the box after submit is handled by the Stop-hook flush, never C-u'd (C-u is
+# ineffective mid-turn and Ctrl-C would abort the worker's turn)
+if grep -q 'fleet_flush_stuck_box' hooks/on-stop.sh && declare -F fleet_flush_stuck_box >/dev/null 2>&1; then ok "stray box content handled by Stop-hook flush (not C-u)"; else no "no flush backstop for stray box content"; fi
 
-# active-work gate: defer only on a POSITIVE active-turn signal (deliver-on-doubt), so a
-# misread of a calm pane can't strand its mail. (A strict positive-idle gate did exactly that.)
+# active-work detector exists + is precise (used by the idle check / flush, not as an inject gate)
 if declare -F fleet_pane_is_working >/dev/null 2>&1; then ok "defined: fleet_pane_is_working"; else no "fleet_pane_is_working missing"; fi
-if declare -f fleet_inject | grep -q 'fleet_pane_is_working'; then ok "fleet_inject defers on active-work (not strict idle)"; else no "fleet_inject missing active-work gate"; fi
-# the active-work detector must NOT key on the always-present permission glyph / spinner glyphs
+# it must NOT key on the always-present permission glyph / spinner glyphs (those read busy forever)
 if declare -f fleet_pane_is_working | grep -qE '⏵⏵|✻|✶|✽'; then no "active-work detector keys on always-present glyph → strands all mail"; else ok "active-work detector ignores always-present glyphs (⏵⏵/spinners)"; fi
 # fleet_pane_is_idle must recognise the current Claude Code prompt box (❯) — not just old styles
 if declare -f fleet_pane_is_idle | grep -q '❯'; then ok "fleet_pane_is_idle recognises the ❯ prompt box"; else no "fleet_pane_is_idle blind to ❯ box → every pane reads busy"; fi
+# GROUND-TRUTH: Enter-while-busy is QUEUED by Claude Code, not swallowed — so the inject must
+# NOT gate the submit on idle (doing so skipped the Enter and stranded the message as box text).
+if declare -f fleet_inject | grep -qE 'if .*fleet_pane_is_working.*; then.*return 2'; then no "fleet_inject still gates delivery on working → strands queued messages"; else ok "fleet_inject does not idle-gate the submit (Enter-while-busy queues fine)"; fi
 # atomic bracketed-paste insertion replaces chunked typing (no truncation, multi-line safe)
 if declare -f fleet_inject | grep -q 'paste-buffer -d -p'; then ok "fleet_inject inserts via atomic bracketed paste"; else no "fleet_inject not using bracketed paste"; fi
 if declare -f fleet_inject | grep -q 'FLEET_INJECT_PASTE'; then ok "paste path is toggleable (FLEET_INJECT_PASTE=off → legacy typing)"; else no "no FLEET_INJECT_PASTE toggle"; fi
-# TOCTOU: re-check active work right before the submit Enter, so a pane that started a turn
-# mid-inject gets a clean defer (C-u back-out) instead of a queued-then-stuck message.
-if declare -f fleet_inject | grep -c 'fleet_pane_is_working' | grep -qE '^[2-9]'; then ok "fleet_inject re-checks active work before submit (closes idle→working TOCTOU)"; else no "fleet_inject doesn't re-check work before submit → queued-stuck risk"; fi
 # confirm-landed: before Enter, fleet_inject requires its content to actually be in the box,
 # else an empty box (paste silently dropped) would be marked submitted = SILENT LOSS.
 if declare -f fleet_inject | grep -q 'landed'; then ok "fleet_inject confirms the insert landed before submitting (anti silent-loss)"; else no "fleet_inject doesn't confirm landing → silent-loss risk"; fi
