@@ -282,19 +282,35 @@ fleet_inject() {
   return 0
 }
 
-# Stop-hook backstop: when a MANAGED worker returns to its prompt, an earlier inject may
-# have left a COMPLETE message sitting unsubmitted in its input box (it started a turn in
-# the paste→Enter window, and an Enter/C-u during that turn was swallowed). Worker panes are
-# never typed into by a human, so leftover box content = a stuck inject. Now that the pane is
-# idle, press Enter to submit it — automating the manual Enter. Returns 0 if it flushed one.
+# Does <to>'s input box hold a STUCK FLEET INJECT specifically (not arbitrary text)? Every
+# inject begins with a literal "[fleet msg from …]" / "[fleet ask from …]" tag that we control,
+# so matching it identifies our own un-submitted message — and, crucially, NEVER matches a
+# human's typing. This is the gate for the auto-Enter mechanisms (Stop-hook flush + unblock
+# janitor): the fleet tmux session is often ATTACHED with a human typing into a worker window
+# (e.g. the supervisor), so "leftover box content" is NOT safe to auto-submit — only content
+# that is provably one of our injects is. Provider-neutral: the tag is the same on Codex panes.
+# (A long inject that Claude Code collapsed to a "[Pasted text #N]" placeholder won't match;
+# those are submitted in-band at delivery, not left for this gate.)
+fleet_box_has_stuck_inject() {
+  local to="$1" line
+  line="$(fleet_tmux capture-pane -e -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | grep -aF '❯' | tail -1)" || return 1
+  [[ -n "$line" ]] || return 1
+  printf '%s' "$line" | sed -E 's/\x1b\[[0-9;]*m//g' | grep -qE '\[fleet (msg|ask) from '
+}
+
+# Stop-hook backstop: when a MANAGED worker returns to its prompt, an earlier inject may have
+# left a COMPLETE message sitting unsubmitted in its input box (it started a turn in the
+# paste→Enter window, and the Enter was queued/raced). Submit it — but ONLY if the box holds a
+# recognisable fleet inject, never arbitrary text, because a human may be typing into this
+# window (the fleet session is often attached). Returns 0 if it flushed one.
 fleet_flush_stuck_box() {
   local to="$1"
   [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1
   fleet_tmux_has_window "$to" || return 1
   fleet_pane_is_working "$to" && return 1            # only act at idle
-  fleet_input_busy "$to" || return 1                 # nothing stuck in the box
+  fleet_box_has_stuck_inject "$to" || return 1       # only submit OUR inject, never human text
   fleet_tmux send-keys -t "$FLEET_TMUX_SESSION:$to" Enter 2>/dev/null || return 1
-  fleet_log unstick-box "$to" "submitted a stuck-in-box inject at idle" 2>/dev/null || true
+  fleet_log unstick-box "$to" "submitted a stuck fleet inject at idle" 2>/dev/null || true
   return 0
 }
 

@@ -211,6 +211,8 @@ if declare -f fleet_inject | grep -cE 'send-keys -t "\$tgt" Enter' | grep -qE '^
 # submit only when idle (never fight a working pane with Enter), with a Stop-hook flush backstop
 if declare -F fleet_flush_stuck_box >/dev/null 2>&1; then ok "defined: fleet_flush_stuck_box (Stop-hook backstop submits a stuck-in-box inject)"; else no "fleet_flush_stuck_box missing"; fi
 if grep -q 'fleet_flush_stuck_box' hooks/on-stop.sh; then ok "on-stop hook flushes a stuck box at idle"; else no "on-stop doesn't flush stuck box"; fi
+if declare -F fleet_box_has_stuck_inject >/dev/null 2>&1; then ok "tag-gate fleet_box_has_stuck_inject defined (auto-Enter only on injects, not human text)"; else no "no tag-gate → auto-Enter could submit human typing"; fi
+if declare -f fleet_flush_stuck_box | grep -q "fleet_box_has_stuck_inject"; then ok "flush is tag-gated (never submits human typing)"; else no "flush not tag-gated"; fi
 if declare -f fleet_inject | grep -q 'marker='; then no "old tail-text marker verify still present"; else ok "old tail-text marker verify removed"; fi
 
 # --- 5. honest unimplemented verbs ------------------------------------------
