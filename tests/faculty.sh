@@ -204,7 +204,10 @@ if declare -f fleet_drain_inbox | grep -q 'dead_count'; then ok "drain records d
 # submit-verify is the dim-aware empty-box test (multi-line / placeholder safe), not a tail grep:
 # the re-Enter loop now exits on `fleet_input_busy ... || return 0`, and the old tail-text
 # marker grep is gone (it broke on wrapped lines / paste placeholders).
-if declare -f fleet_inject | grep -qE 'fleet_input_busy "\$to" \|\|'; then ok "submit-verify uses dim-aware empty-box test"; else no "submit-verify not empty-box based"; fi
+if declare -f fleet_inject | grep -qE 'fleet_input_busy "\$to"'; then ok "submit-verify uses dim-aware empty-box test"; else no "submit-verify not empty-box based"; fi
+# never skip the Enter: a pre-submit check must not be able to bail before pressing Enter
+# (the overnight stuck was exactly that). And an extra Enter follows each message (Roy's trick).
+if declare -f fleet_inject | grep -cE 'send-keys -t "\$tgt" Enter' | grep -qE '^[2-9]'; then ok "fleet_inject always sends Enter + an extra one (never skips the submit)"; else no "fleet_inject can skip the Enter → stuck-in-box risk"; fi
 # submit only when idle (never fight a working pane with Enter), with a Stop-hook flush backstop
 if declare -F fleet_flush_stuck_box >/dev/null 2>&1; then ok "defined: fleet_flush_stuck_box (Stop-hook backstop submits a stuck-in-box inject)"; else no "fleet_flush_stuck_box missing"; fi
 if grep -q 'fleet_flush_stuck_box' hooks/on-stop.sh; then ok "on-stop hook flushes a stuck box at idle"; else no "on-stop doesn't flush stuck box"; fi

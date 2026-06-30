@@ -163,13 +163,19 @@ _fleet_line_has_real_input() {
 # Is <to>'s Claude Code input box occupied by REAL input we must NOT type onto (a human
 # mid-typing, or a prior un-submitted inject)? Typing onto it concatenates + can't
 # cleanly submit (the "stuck + truncated in the current prompt" bug). Capture WITH
-# escapes (-e) so dim ghost text isn't mistaken for content; take the LAST ❯ line
-# (history lines also have ❯). Conservative: no window / capture failure → "not busy",
-# so a missed read errs toward delivering, never toward never-delivering.
+# escapes (-e) so dim ghost text isn't mistaken for content; grep the LAST ❯ line.
+#
+# IMPORTANT: grep ❯ from the FULL capture, NOT a fixed `tail -n N` slice. A long message
+# in the box WRAPS across many rows, and the ❯ sits at the TOP of that wrapped block — a
+# `tail -6` (the old code) would slice the ❯ line off the bottom and report the box CLEAR
+# even though it's full. That false-clear made confirm-landed bail before pressing Enter,
+# leaving long messages stranded in the box (the overnight fleet-wide stuck). The last ❯
+# in the whole pane is always the live input prompt (history is above it).
+# Conservative: no window / capture failure → "not busy", so a missed read errs toward
+# delivering, never toward never-delivering.
 fleet_input_busy() {
-  local to="$1" region line
-  region="$(fleet_tmux capture-pane -e -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | tail -n 6)" || return 1
-  line="$(printf '%s\n' "$region" | grep -aF '❯' | tail -n1)"
+  local to="$1" line
+  line="$(fleet_tmux capture-pane -e -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | grep -aF '❯' | tail -n1)" || return 1
   [[ -z "$line" ]] && return 1
   _fleet_line_has_real_input "$line"
 }
@@ -233,51 +239,45 @@ fleet_inject() {
     done
   fi
   _fleet_inject_trace "$to" pasted
-  # --- CONFIRM LANDED (before we submit). A paste/type the TUI silently dropped (a
-  # transient non-input state that slipped past the idle gate, a swallowed buffer)
-  # leaves an EMPTY box — and an empty box is INDISTINGUISHABLE from a clean submit
-  # afterwards. Without this check we would Enter into nothing and the post-submit
-  # verify would read "box clear → submitted" → the message is marked delivered =
-  # SILENT LOSS. So require our content to actually be present (dim-aware busy) before
-  # Enter; if nothing landed, requeue (rc 1) for an at-least-once retry. The placeholder
-  # Claude Code shows for a long paste ([Pasted text #N]) is non-dim, so it reads as
-  # landed. Gated by FLEET_INJECT_VERIFY (the master verify switch).
-  if [[ "${FLEET_INJECT_VERIFY:-on}" != "off" ]]; then
-    local landed=1 lt
-    for lt in 1 2 3; do
-      if fleet_input_busy "$to"; then landed=0; break; fi
-      sleep 0.15
-    done
-    if (( landed != 0 )); then
-      [[ "${FLEET_INJECT_PASTE:-on}" != "off" ]] && fleet_tmux delete-buffer -b "fleet-inj-${to}" 2>/dev/null || true
-      return 1
-    fi
-  fi
   sleep "$FLEET_INJECT_DELAY"
 
-  # --- SUBMIT — ALWAYS press Enter (the only submit). Ground truth from the live trace:
-  # an Enter is handled whether the pane is idle (submits as a turn) or busy (Claude Code
-  # QUEUES it — "Press up to edit queued messages" — and runs it when the current turn
-  # ends). It is NOT swallowed. So we always Enter; no idle-gating, which previously
-  # SKIPPED the Enter and stranded the message as box text.
+  # Advisory landed-check (does NOT block the Enter). The overnight fleet-wide stuck was a
+  # pre-submit check that read the box as empty and SKIPPED the Enter, stranding the message.
+  # We never skip the Enter again. We only note whether our content is visibly present, to
+  # decide requeue-vs-delivered at the end (so a paste the TUI genuinely dropped isn't marked
+  # delivered = silent loss). Uses the full-capture fleet_input_busy.
+  local seen_landed=0
+  fleet_input_busy "$to" && seen_landed=1
+
+  # --- SUBMIT — ALWAYS press Enter, then an EXTRA Enter (Roy's belt-and-suspenders). On a
+  # landed paste the first Enter submits; if it raced the paste render and didn't take, the
+  # second submits; if the first already landed, the second is a harmless no-op at a clear/
+  # queued prompt. Enter is handled whether the pane is idle (submits as a turn) or busy
+  # (Claude Code QUEUES it — "Press up to edit queued messages" — and runs it at turn end).
   fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
+  sleep "${FLEET_INJECT_ENTER_GAP:-0.2}"
+  fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || true
   _fleet_inject_trace "$to" entered
 
-  # --- VERIFY: our message text should be GONE from the box now — either submitted
-  # (processing) or queued (the dim "Press up to edit queued messages" hint, which reads as
-  # a clear box). If our content still lingers, the Enter raced the paste render — re-send
-  # it (a spurious Enter at a clear/queued prompt is a harmless no-op). Disable with
-  # FLEET_INJECT_VERIFY=off.
   [[ "${FLEET_INJECT_VERIFY:-on}" == "off" ]] && return 0
+  # --- VERIFY: our message should be GONE from the box (submitted, or queued behind a turn).
+  # If it lingers, re-Enter (a spurious Enter at a clear/queued prompt is a no-op).
   local try
   for try in $(seq 1 "${FLEET_INJECT_SUBMIT_TRIES:-6}"); do
     sleep 0.3
-    fleet_input_busy "$to" || { _fleet_inject_trace "$to" submitted; return 0; }   # box clear/queued → delivered
+    if ! fleet_input_busy "$to"; then
+      # Box clear. If we saw our content land, it submitted → delivered. If we NEVER saw it
+      # land and it's still clear, the paste didn't take (the box was empty all along) →
+      # requeue rather than silently mark delivered.
+      if (( seen_landed )); then _fleet_inject_trace "$to" submitted; return 0; fi
+      _fleet_inject_trace "$to" never-landed; return 1
+    fi
+    seen_landed=1                                      # it's in the box now → it did land
     fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
   done
-  # Still our content after repeated Enters (rare). Leave it intact in the box — the Stop-hook
-  # flush submits it at the worker's next idle — and count it delivered to avoid a duplicate
-  # re-paste. (Do NOT C-u: it would drop a valid message, and is ineffective mid-turn anyway.)
+  # Still in the box after repeated Enters (rare). It's intact; the Stop-hook flush and the
+  # unblock janitor will submit it at the worker's next idle. Count delivered to avoid a
+  # duplicate re-paste. (Never C-u: it would drop a valid message and is a no-op mid-turn.)
   _fleet_inject_trace "$to" left-for-flush
   return 0
 }
