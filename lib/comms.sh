@@ -51,49 +51,48 @@ fleet_next_hop() {
   printf '%s\n' "$hop"
 }
 
-# Is <to>'s pane sitting at its idle prompt (NOT mid-task)? Conservative by
-# construction: returns 0 (idle) ONLY when the pane tail shows the empty input
-# box AND shows no "working" signature; on any doubt (no window, capture failed,
-# any active-work marker) it returns non-zero so a mid-task worker is NEVER
-# injected into / unstuck. Reused by the .ready TTL unstick (fleet_reconcile) and
-# fleet doctor. Disable the whole idle-gate with FLEET_PANE_IDLE_CHECK=off (then
-# treats every live pane as idle — only for tests/degraded hosts).
+# Is <to>'s pane ACTIVELY mid-turn (a turn in flight RIGHT NOW)? Keys ONLY on positive
+# active-work signals Claude Code shows DURING a turn — primarily the "esc to interrupt"
+# footer, plus "still thinking" / "Compacting". It deliberately does NOT key on:
+#   • the permission-mode glyph ⏵⏵ — shown in EVERY footer, idle or busy;
+#   • spinner GLYPHS ✻ ✶ ✽ — whose timing summary ("Brewed for 10m 50s") PERSISTS after
+#     the turn ends;
+#   • a token count or bare "shift+tab to cycle" — present at an idle prompt too.
+# Keying on those (as the old detector did) marked a calm pane "working" forever, which —
+# once the inject path depended on it — stranded ALL mail to ALL workers. On doubt (no
+# window / capture fail / nothing recognisable) it returns NON-zero = NOT working, so
+# callers err toward DELIVERING, never toward never-delivering. FLEET_PANE_IDLE_CHECK=off
+# forces "not working".
+#   fleet_pane_is_working <to>
+fleet_pane_is_working() {
+  local to="$1"
+  [[ "${FLEET_PANE_IDLE_CHECK:-on}" == "off" ]] && return 1
+  fleet_tmux_has_window "$to" 2>/dev/null || return 1
+  local tgt="$FLEET_TMUX_SESSION:$to" tail
+  tail="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null | grep -vE '^[[:space:]]*$' | tail -n 6)" || return 1
+  [[ -n "$tail" ]] || return 1
+  local working='esc to interrupt|to interrupt\)|still thinking|[Cc]ompacting…|[Cc]ompacting conversation'
+  printf '%s\n' "$tail" | grep -qE "$working"
+}
+
+# Is <to>'s pane sitting at its idle prompt (NOT mid-turn)? Idle = NOT actively working
+# AND a recognised prompt box is present (so a garbled/unknown pane is treated as busy,
+# never idle). Recognises the current Claude Code prompt (the ❯ box + "shift+tab to cycle"
+# footer) as well as older box styles. Used by the .ready TTL unstick (fleet_reconcile)
+# and fleet doctor. FLEET_PANE_IDLE_CHECK=off → every live pane reads idle.
 #   fleet_pane_is_idle <to>
 fleet_pane_is_idle() {
   local to="$1"
   [[ "${FLEET_PANE_IDLE_CHECK:-on}" == "off" ]] && return 0
   fleet_tmux_has_window "$to" 2>/dev/null || return 1
-  local tgt="$FLEET_TMUX_SESSION:$to" pane
-  pane="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null)" || return 1
-  [[ -n "$pane" ]] || return 1
-  local tail; tail="$(printf '%s\n' "$pane" | grep -vE '^[[:space:]]*$' | tail -n 12)"
-  # WORKING signatures Claude Code surfaces while a turn is in flight — if ANY of
-  # these are present we are NOT idle (err toward "busy").
-  local working='esc to interrupt|to interrupt\)|[Ee]sc to|✶|✻|✽|·\s*[0-9]+\s*tokens|Running…|Thinking…|Working…|[Ww]aiting…|tool use|⏵⏵|Compacting'
-  printf '%s\n' "$tail" | grep -qE "$working" && return 1
-  # IDLE signatures: the empty Claude Code input box / prompt. Require a positive
-  # match so an unknown/garbled pane is treated as busy, never idle. (`?` escaped
-  # and POSIX classes used so the pattern is portable across grep variants.)
-  local promptbox='│ >|^[[:space:]]*>[[:space:]]*$|Try "|\? for shortcuts|╰─|╭─'
+  fleet_pane_is_working "$to" && return 1
+  local tgt="$FLEET_TMUX_SESSION:$to" tail
+  tail="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null | grep -vE '^[[:space:]]*$' | tail -n 12)" || return 1
+  [[ -n "$tail" ]] || return 1
+  # Positive prompt-box signatures (so an unknown/garbled pane is treated as busy, never
+  # idle). ❯ + "shift+tab to cycle" = current Claude Code; the rest cover older styles.
+  local promptbox='❯|│ >|^[[:space:]]*>[[:space:]]*$|Try "|\? for shortcuts|shift\+tab to cycle|╰─|╭─'
   printf '%s\n' "$tail" | grep -qE "$promptbox" && return 0
-  return 1
-}
-
-# Wait briefly for <to>'s pane to be genuinely idle (at an empty prompt, not
-# mid-turn), polling fleet_pane_is_idle up to <budget> times (~0.2s each). Returns
-# 0 as soon as it is idle, 1 if still busy after the budget. This absorbs the brief
-# render race right after a turn ends (the Stop-hook drain fires the instant the turn
-# completes, a beat before the input box has fully redrawn) WITHOUT typing into a
-# pane that is still working. Honours FLEET_PANE_IDLE_CHECK=off via fleet_pane_is_idle
-# (which then reports every live pane idle, returning 0 on the first poll).
-#   fleet_wait_idle <to> [budget]
-fleet_wait_idle() {
-  local to="$1" budget="${2:-3}" i
-  [[ "$budget" =~ ^[0-9]+$ ]] || budget=3
-  for (( i=0; i<budget; i++ )); do
-    fleet_pane_is_idle "$to" && return 0
-    sleep "${FLEET_INJECT_IDLE_POLL:-0.2}"
-  done
   return 1
 }
 
@@ -181,19 +180,18 @@ fleet_inject() {
   # not a TUI; delivery there goes through the controller's programmatic turns.
   [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1
 
-  # --- DEFER GATE (rc 2 = backpressure, NOT failure — leaves the message queued
-  # for the next drain). Two independent reasons never to type right now:
-  #
-  #  (a) MID-TURN pane (empty box, Claude still working). Enter sent into a working
-  #      pane is silently SWALLOWED — the text lands in the box but never submits
-  #      until the turn ends, so it sits at the prompt waiting for a manual Enter
-  #      (the "messages stuck waiting for enter" bug). The .ready state flag the
-  #      drain trusts goes stale the instant the worker picks up new work, so we
-  #      must check the LIVE pane, not the flag. fleet_wait_idle waits out the brief
-  #      post-turn render race so the Stop-hook drain still delivers immediately.
-  #  (b) BUSY box — real, non-dim input already present (a human mid-typing or a
-  #      prior un-submitted inject). Typing onto it concatenates + garbles.
-  if ! fleet_wait_idle "$to" "${FLEET_INJECT_IDLE_WAIT:-3}"; then return 2; fi
+  # --- DEFER GATE (rc 2 = backpressure, NOT failure — leaves the message queued for the
+  # next drain). Defer ONLY on a POSITIVE reason not to type right now; on any doubt,
+  # DELIVER. This is deliberate: a strict positive-IDLE gate strands mail forever the
+  # moment the idle detector misreads a calm pane, whereas the confirm-landed +
+  # submit-verify + dead-letter net below makes a mistimed inject SAFE (it requeues,
+  # never stuck/lost). So we err toward delivering, never toward never-delivering.
+  #  (a) ACTIVELY mid-turn — Enter would be silently swallowed and the text would sit
+  #      unsubmitted at the prompt (the "messages stuck waiting for enter" bug). Checks
+  #      the LIVE pane (fleet_pane_is_working), not the stale .ready flag.
+  #  (b) BUSY box — real, non-dim input already present (a human mid-typing or a prior
+  #      un-submitted inject). Typing onto it concatenates + garbles.
+  if fleet_pane_is_working "$to"; then return 2; fi
   if [[ "${FLEET_INJECT_DEFER:-on}" != "off" ]] && fleet_input_busy "$to"; then return 2; fi
 
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
