@@ -224,6 +224,26 @@ fleet_inject() {
       (( i < n )) && sleep "$FLEET_INJECT_CHUNK_DELAY"
     done
   fi
+  # --- CONFIRM LANDED (before we submit). A paste/type the TUI silently dropped (a
+  # transient non-input state that slipped past the idle gate, a swallowed buffer)
+  # leaves an EMPTY box — and an empty box is INDISTINGUISHABLE from a clean submit
+  # afterwards. Without this check we would Enter into nothing and the post-submit
+  # verify would read "box clear → submitted" → the message is marked delivered =
+  # SILENT LOSS. So require our content to actually be present (dim-aware busy) before
+  # Enter; if nothing landed, requeue (rc 1) for an at-least-once retry. The placeholder
+  # Claude Code shows for a long paste ([Pasted text #N]) is non-dim, so it reads as
+  # landed. Gated by FLEET_INJECT_VERIFY (the master verify switch).
+  if [[ "${FLEET_INJECT_VERIFY:-on}" != "off" ]]; then
+    local landed=1 lt
+    for lt in 1 2 3; do
+      if fleet_input_busy "$to"; then landed=0; break; fi
+      sleep 0.15
+    done
+    if (( landed != 0 )); then
+      [[ "${FLEET_INJECT_PASTE:-on}" != "off" ]] && fleet_tmux delete-buffer -b "fleet-inj-${to}" 2>/dev/null || true
+      return 1
+    fi
+  fi
   sleep "$FLEET_INJECT_DELAY"
   fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
 
@@ -299,7 +319,7 @@ fleet_drain_inbox() {
     # by line position so a re-drain can't double-deliver a line already consumed.
     local -a lines=(); local line
     while IFS= read -r line; do lines+=("$line"); done <"$f"
-    local idx delivered from text hops kind maxhop=0 ok_count=0 fail_count=0 deferred_count=0
+    local idx delivered from text hops kind maxhop=0 ok_count=0 fail_count=0 deferred_count=0 dead_count=0
     : >"$f.tmp"
     for idx in "${!lines[@]}"; do
       line="${lines[$idx]}"
@@ -323,14 +343,37 @@ fleet_drain_inbox() {
         (( hops > maxhop )) && maxhop="$hops"
         ok_count=$(( ok_count + 1 ))
         printf '%s\n' "$(jq -c '.delivered=true' <<<"$line")" >>"$f.tmp"
-      else
-        # Not delivered. rc==2 = DEFERRED (box has real input — a human typing or a
-        # stuck inject): normal backpressure, NOT a failure — leave queued, copy the
-        # rest, bail WITHOUT bumping the failure counter (doctor stays quiet; the next
-        # drain retries once the box clears). Any other rc = a genuine inject failure.
-        if (( _rc == 2 )); then deferred_count=$(( deferred_count + 1 ))
-        else fail_count=$(( fail_count + 1 )); fi
+      elif (( _rc == 2 )); then
+        # DEFERRED — the pane is mid-turn or the box holds real input (a human typing,
+        # a prior un-submitted inject). Normal backpressure, NOT a failure: leave this
+        # message queued, copy the rest unchanged, and bail WITHOUT bumping any failure
+        # counter. The next drain retries the whole queue once the pane is idle/clear.
+        deferred_count=$(( deferred_count + 1 ))
         printf '%s\n' "$line" >>"$f.tmp"
+        local j
+        for (( j=idx+1; j<${#lines[@]}; j++ )); do
+          [[ -n "${lines[$j]}" ]] && printf '%s\n' "${lines[$j]}" >>"$f.tmp"
+        done
+        break
+      else
+        # GENUINE inject failure (rc 1). A message that can NEVER be injected (a poison
+        # pill) must not block every message queued behind it forever — head-of-line
+        # blocking is exactly what makes peers think mail was "lost" (observed: one long
+        # message blocked 39 behind it for 8.7h). Track per-message attempts; after
+        # FLEET_INJECT_MAX_ATTEMPTS genuine failures, DEAD-LETTER it (quarantine: mark
+        # delivered+dead so it stops retrying, logged loudly) and CONTINUE past it so the
+        # rest of the queue flows. Under the budget, keep it queued with a bumped attempt
+        # count and break to retry the head next drain (transient failures recover first).
+        local _att; _att="$(jq -r '.attempts // 0' <<<"$line" 2>/dev/null)"; [[ "$_att" =~ ^[0-9]+$ ]] || _att=0
+        _att=$(( _att + 1 ))
+        if (( _att >= ${FLEET_INJECT_MAX_ATTEMPTS:-5} )); then
+          dead_count=$(( dead_count + 1 ))
+          printf '%s\n' "$(jq -c --argjson a "$_att" '.attempts=$a | .delivered=true | .dead=true' <<<"$line")" >>"$f.tmp"
+          fleet_log deadletter "$to" "quarantined undeliverable msg from $from after $_att attempts (kind=$kind len=${#text})" 2>/dev/null || true
+          continue
+        fi
+        fail_count=$(( fail_count + 1 ))
+        printf '%s\n' "$(jq -c --argjson a "$_att" '.attempts=$a' <<<"$line")" >>"$f.tmp"
         local j
         for (( j=idx+1; j<${#lines[@]}; j++ )); do
           [[ -n "${lines[$j]}" ]] && printf '%s\n' "${lines[$j]}" >>"$f.tmp"
@@ -343,6 +386,13 @@ fleet_drain_inbox() {
       # record the deepest hop delivered so this agent's reply inherits hop+1
       fleet_state_jq "$to" --argjson h "$maxhop" '.last_inbound_hops=$h' >/dev/null 2>&1 || true
       fleet_log deliver "$to" "$ok_count message(s)"
+    fi
+    # A dead-letter unblocked the queue: record it on the recipient's state so it is
+    # visible (fleet doctor / status), not just buried in the event log.
+    if (( dead_count > 0 )); then
+      local now2; now2="$(date +%s)"
+      fleet_state_jq "$to" --argjson n "$dead_count" --argjson t "$now2" \
+        '.dead_letters = ((.dead_letters // 0) + $n) | .last_dead_letter = $t' >/dev/null 2>&1 || true
     fi
     # Self-heal: a fully-clean drain (something delivered, nothing failed) clears
     # the failure counter so fleet doctor goes quiet once mail flows again.

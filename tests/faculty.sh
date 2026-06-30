@@ -186,6 +186,14 @@ if declare -f fleet_wait_idle | grep -q 'fleet_pane_is_idle'; then ok "idle wait
 # atomic bracketed-paste insertion replaces chunked typing (no truncation, multi-line safe)
 if declare -f fleet_inject | grep -q 'paste-buffer -d -p'; then ok "fleet_inject inserts via atomic bracketed paste"; else no "fleet_inject not using bracketed paste"; fi
 if declare -f fleet_inject | grep -q 'FLEET_INJECT_PASTE'; then ok "paste path is toggleable (FLEET_INJECT_PASTE=off → legacy typing)"; else no "no FLEET_INJECT_PASTE toggle"; fi
+# confirm-landed: before Enter, fleet_inject requires its content to actually be in the box,
+# else an empty box (paste silently dropped) would be marked submitted = SILENT LOSS.
+if declare -f fleet_inject | grep -q 'landed'; then ok "fleet_inject confirms the insert landed before submitting (anti silent-loss)"; else no "fleet_inject doesn't confirm landing → silent-loss risk"; fi
+# head-of-line: a poison message is dead-lettered after a budget instead of blocking the queue
+if declare -f fleet_drain_inbox | grep -q 'FLEET_INJECT_MAX_ATTEMPTS'; then ok "drain bounds per-message attempts (FLEET_INJECT_MAX_ATTEMPTS)"; else no "drain has no attempt budget → head-of-line block"; fi
+if declare -f fleet_drain_inbox | grep -q 'dead=true'; then ok "drain dead-letters an undeliverable message (quarantine, not silent block)"; else no "drain doesn't dead-letter poison messages"; fi
+if declare -f fleet_drain_inbox | grep -q 'dead_count'; then ok "drain records dead-letters to state (visible)"; else no "dead-letters not recorded"; fi
+
 # submit-verify is the dim-aware empty-box test (multi-line / placeholder safe), not a tail grep:
 # the re-Enter loop now exits on `fleet_input_busy ... || return 0`, and the old tail-text
 # marker grep is gone (it broke on wrapped lines / paste placeholders).
