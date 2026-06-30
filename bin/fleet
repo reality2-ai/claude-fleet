@@ -1714,6 +1714,7 @@ cmd_doctor() {
   # fleet-wide: both watchdogs must be running.
   if ! pgrep -f 'fleet-watchdog\.sh' >/dev/null 2>&1; then problems+=("idle-watchdog (fleet-watchdog.sh) not running"); fi
   if ! pgrep -f 'fleet-api-watchdog\.sh' >/dev/null 2>&1; then problems+=("api-watchdog (fleet-api-watchdog.sh) not running"); fi
+  if ! pgrep -f 'fleet-unblock\.sh' >/dev/null 2>&1; then problems+=("unblock-janitor (fleet-unblock.sh) not running"); fi
 
   # enumerate the same id set status uses (ground-truth union).
   local -A seen=(); local -a ids=(); local id
