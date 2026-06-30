@@ -141,8 +141,10 @@ if declare -f fleet_compact | grep -q '/compact'; then ok "fleet_compact sends /
 if declare -f fleet_compact | grep -q 'fleet_tmux_has_window'; then ok "fleet_compact guards on window present"; else no "fleet_compact no window guard"; fi
 # behavioural: no tmux window (unused socket) → returns non-zero, never crashes
 isfalse "fleet_compact with no window returns non-zero" fleet_compact ghostC
-# the on-stop hook carries the turn-counter trigger gated by FLEET_COMPACT_EVERY
-if grep -q 'FLEET_COMPACT_EVERY' "$ROOT/hooks/on-stop.sh"; then ok "on-stop hook has FLEET_COMPACT_EVERY trigger"; else no "on-stop hook missing compaction trigger"; fi
+# the on-stop hook compacts by CONTEXT SIZE (primary, adaptive) with a turn-count backstop
+if grep -q 'FLEET_COMPACT_AT_PCT' "$ROOT/hooks/on-stop.sh"; then ok "on-stop hook has size trigger (FLEET_COMPACT_AT_PCT)"; else no "on-stop hook missing size trigger"; fi
+if grep -q 'fleet_ctx_tokens' "$ROOT/hooks/on-stop.sh"; then ok "on-stop hook reads ctx size for the trigger"; else no "on-stop hook does not read ctx size"; fi
+if grep -q 'FLEET_COMPACT_EVERY' "$ROOT/hooks/on-stop.sh"; then ok "on-stop hook has FLEET_COMPACT_EVERY backstop"; else no "on-stop hook missing turn backstop"; fi
 if grep -q 'turns_since_compact' "$ROOT/hooks/on-stop.sh" && declare -f fleet_compact >/dev/null; then ok "on-stop hook tracks turns_since_compact"; else no "on-stop hook no turn counter"; fi
 # the counter mechanism the hook relies on: state round-trips an integer
 fleet_state_ensure cmpw "$TMP" true

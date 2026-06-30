@@ -19,6 +19,8 @@ Run these via Bash (the `fleet` binary is on PATH, or at
   status / what needs me?".
 - `fleet status` — the fuller table: who is live/idle/dead, current task, file claims, conflicts.
 - `fleet conflicts` — files being edited by more than one live session right now.
+- `fleet tokens` — per-worker CONTEXT size (the per-turn token cost), as % of the context ceiling, with a `heavy→compact` flag for any worker near it. Fleet token spend is dominated by per-turn context, which grows with session age — check this each sweep.
+- `fleet compact <id> | --all [--force]` — inject `/compact` into a worker to bound its context (idle-guarded). Use it on a worker `fleet tokens` shows pinned heavy that isn't dropping on its own.
 - `fleet logs [id]` — recent fleet events, or a one-child summary.
 - `fleet up [--no-pairs] [id]` — start the suite (or one child) — this is the **post-reboot recovery** command. By default it also starts the opposite-provider companion for each worker when the opposite CLI is available; use `--no-pairs` for single-agent recovery.
 - `fleet down [id]` — stop the suite (or one child).
@@ -48,6 +50,14 @@ Run these via Bash (the `fleet` binary is on PATH, or at
 - When a child is `failed` (restart-intensity breaker tripped), do **not** blindly
   restart it — report it and ask, or investigate `fleet logs <id>` first. A
   crash-loop usually means a real problem, not a transient blip.
+- **Token health is part of every sweep.** Glance at `fleet tokens` (or `fleet doctor`'s
+  `heavy-context` advisory) alongside `fleet brief`. Workers compact themselves
+  automatically (size-triggered at ~70% of the context ceiling), so usually no action is
+  needed — but if a worker is pinned heavy (≥90%) across sweeps and not dropping,
+  `fleet compact <id>` it. If the whole fleet trends heavy or rate-limit blips recur,
+  that's load — surface it to the human and ease off dispatching new work rather than
+  pushing more. Per-turn context size is the dominant token cost; keeping it bounded is
+  how the fleet stays within rate limits and doesn't run out.
 - When Claude Code shows `/usage-credits` or "request more usage from your admin",
   treat it as hard provider exhaustion, not a transient throttle. Do not keep
   nudging it. Ask for/administer more Claude usage, or move the repo to Codex with

@@ -37,30 +37,39 @@ if [[ "${FLEET_IDLE_NOTIFY:-on}" != "off" && "$MANAGED" == true ]]; then
   fi
 fi
 
-# Proactive context compaction (default OFF; enable per-workspace via FLEET_COMPACT_EVERY=N).
-# A long-lived --resume session re-processes its whole, ever-growing transcript every turn,
-# so token cost climbs with session age — the dominant fleet token sink. Count turns and, at
-# the first idle opportunity once N have passed since the last compaction, inject /compact so
-# the next turns run on a bounded, summarized context. Counting EVERY turn but injecting only
-# when idle means a continuously-busy worker (the one whose context grows fastest) still
-# compacts the moment it next comes to rest. RESUME.md + entity memory anchor real state.
-#   FLEET_COMPACT_EVERY=0  off (default) · =40  compact ~every 40 turns at the next idle
-#   FLEET_COMPACT_SKIP="supervisor other"  space-separated lanes to never auto-compact
-_compact_every="${FLEET_COMPACT_EVERY:-0}"
+# Proactive context compaction. A long-lived --resume session re-processes its whole,
+# ever-growing transcript every turn, so token cost climbs with session age — the dominant
+# fleet token sink. When a MANAGED worker returns to its prompt IDLE, compact it if EITHER:
+#   • SIZE (primary, adaptive): last-turn context ≥ FLEET_COMPACT_AT_PCT% of FLEET_CTX_CEILING
+#     — fires BEFORE Claude's ~95% auto-compact, and adapts per-worker (a fast grower like the
+#     supervisor compacts sooner than a slow one), keeping the AVERAGE per-turn cost lower; or
+#   • TURNS (fallback/backstop): FLEET_COMPACT_EVERY turns since the last compaction — covers
+#     the rare case the context size can't be read.
+# RESUME.md + entity memory anchor real state, so a compaction never loses working context.
+#   FLEET_COMPACT_AT_PCT=70 (0 disables size trigger) · FLEET_COMPACT_EVERY=40 (0 disables)
+#   FLEET_CTX_CEILING=1000000 · FLEET_COMPACT_SKIP="supervisor other" exempts lanes
+_compact_pct="${FLEET_COMPACT_AT_PCT:-70}"; _compact_every="${FLEET_COMPACT_EVERY:-0}"
+[[ "$_compact_pct"   =~ ^[0-9]+$ ]] || _compact_pct=0
 [[ "$_compact_every" =~ ^[0-9]+$ ]] || _compact_every=0
-case " ${FLEET_COMPACT_SKIP:-} " in *" $CHILD_ID "*) _compact_every=0 ;; esac
-if [[ "$MANAGED" == true && "$_compact_every" -gt 0 ]]; then
+case " ${FLEET_COMPACT_SKIP:-} " in *" $CHILD_ID "*) _compact_pct=0; _compact_every=0 ;; esac
+if [[ "$MANAGED" == true && "${_pending:-0}" -eq 0 ]] && (( _compact_pct > 0 || _compact_every > 0 )); then
   _turns="$(fleet_state_get "$CHILD_ID" '.turns_since_compact' 0 2>/dev/null)"
   [[ "$_turns" =~ ^[0-9]+$ ]] || _turns=0
   _turns=$(( _turns + 1 ))
-  if [[ "${_pending:-0}" -eq 0 && "$_turns" -ge "$_compact_every" ]]; then
-    # Idle and over threshold: compact now, reset the counter. Background it so a busy
-    # pane during the send can never stall hook completion (same rule as idle-notify).
+  _do=0
+  if (( _compact_pct > 0 )); then
+    _ctx="$(fleet_ctx_tokens "$CHILD_ID" 2>/dev/null || echo 0)"; [[ "$_ctx" =~ ^[0-9]+$ ]] || _ctx=0
+    _ceil="${FLEET_CTX_CEILING:-1000000}"
+    (( _ctx > 0 && _ctx * 100 >= _ceil * _compact_pct )) && _do=1
+  fi
+  (( _compact_every > 0 && _turns >= _compact_every )) && _do=1
+  if (( _do == 1 )); then
+    # Idle + over threshold: compact now, reset the counter. Background it so a busy pane
+    # during the send can never stall hook completion (same rule as idle-notify).
     fleet_state_jq "$CHILD_ID" '.turns_since_compact=0' >/dev/null 2>&1 || true
     ( fleet_compact "$CHILD_ID" >/dev/null 2>&1 || true ) >/dev/null 2>&1 &
     disown 2>/dev/null || true
   else
-    # Still busy, or not yet at threshold: just record the incremented count.
     fleet_state_jq "$CHILD_ID" --argjson t "$_turns" '.turns_since_compact=$t' >/dev/null 2>&1 || true
   fi
 fi
