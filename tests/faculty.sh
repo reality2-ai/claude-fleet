@@ -178,6 +178,20 @@ if declare -f fleet_drain_inbox | grep -q 'deferred_count'; then ok "drain count
 # on verify-exhaustion fleet_inject clears its partial text (C-u) so nothing stays stuck
 if declare -f fleet_inject | grep -q 'C-u'; then ok "fleet_inject clears partial text on failure (C-u)"; else no "fleet_inject leaves stuck fragment on failure"; fi
 
+# idle-gate: never type into a mid-turn pane (Enter is swallowed → stuck-at-prompt bug)
+if declare -F fleet_wait_idle >/dev/null 2>&1; then ok "defined: fleet_wait_idle"; else no "fleet_wait_idle missing"; fi
+if declare -f fleet_inject | grep -q 'fleet_wait_idle'; then ok "fleet_inject gates on genuine idle (not just empty box)"; else no "fleet_inject missing idle gate"; fi
+# fleet_wait_idle honours the existing FLEET_PANE_IDLE_CHECK kill-switch via fleet_pane_is_idle
+if declare -f fleet_wait_idle | grep -q 'fleet_pane_is_idle'; then ok "idle wait polls fleet_pane_is_idle"; else no "idle wait doesn't reuse fleet_pane_is_idle"; fi
+# atomic bracketed-paste insertion replaces chunked typing (no truncation, multi-line safe)
+if declare -f fleet_inject | grep -q 'paste-buffer -d -p'; then ok "fleet_inject inserts via atomic bracketed paste"; else no "fleet_inject not using bracketed paste"; fi
+if declare -f fleet_inject | grep -q 'FLEET_INJECT_PASTE'; then ok "paste path is toggleable (FLEET_INJECT_PASTE=off → legacy typing)"; else no "no FLEET_INJECT_PASTE toggle"; fi
+# submit-verify is the dim-aware empty-box test (multi-line / placeholder safe), not a tail grep:
+# the re-Enter loop now exits on `fleet_input_busy ... || return 0`, and the old tail-text
+# marker grep is gone (it broke on wrapped lines / paste placeholders).
+if declare -f fleet_inject | grep -q 'fleet_input_busy "$to" || return 0'; then ok "submit-verify uses dim-aware empty-box test"; else no "submit-verify not empty-box based"; fi
+if declare -f fleet_inject | grep -q 'marker='; then no "old tail-text marker verify still present"; else ok "old tail-text marker verify removed"; fi
+
 # --- 5. honest unimplemented verbs ------------------------------------------
 section "5. unimplemented verbs fail honestly"
 isfalse "spawn_tool returns non-zero (unimplemented)" faculty_spawn_tool x "task"

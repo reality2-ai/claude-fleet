@@ -79,6 +79,24 @@ fleet_pane_is_idle() {
   return 1
 }
 
+# Wait briefly for <to>'s pane to be genuinely idle (at an empty prompt, not
+# mid-turn), polling fleet_pane_is_idle up to <budget> times (~0.2s each). Returns
+# 0 as soon as it is idle, 1 if still busy after the budget. This absorbs the brief
+# render race right after a turn ends (the Stop-hook drain fires the instant the turn
+# completes, a beat before the input box has fully redrawn) WITHOUT typing into a
+# pane that is still working. Honours FLEET_PANE_IDLE_CHECK=off via fleet_pane_is_idle
+# (which then reports every live pane idle, returning 0 on the first poll).
+#   fleet_wait_idle <to> [budget]
+fleet_wait_idle() {
+  local to="$1" budget="${2:-3}" i
+  [[ "$budget" =~ ^[0-9]+$ ]] || budget=3
+  for (( i=0; i<budget; i++ )); do
+    fleet_pane_is_idle "$to" && return 0
+    sleep "${FLEET_INJECT_IDLE_POLL:-0.2}"
+  done
+  return 1
+}
+
 # Is <to>'s pane blocked on a hard provider quota/credits exhaustion? This is
 # distinct from a transient throttle: retry nudges will not fix it. The operator
 # should request usage/admin credits or hand off to another provider.
@@ -162,44 +180,70 @@ fleet_inject() {
   # never keystroke-inject a claude-bg worker — its window hosts a bash controller,
   # not a TUI; delivery there goes through the controller's programmatic turns.
   [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1
-  # Don't type onto existing prompt content (a human mid-typing, or a prior
-  # un-submitted inject) — that concatenates + garbles + can't cleanly submit (the
-  # "stuck + truncated in the current prompt" bug). Defer: leave the message queued;
-  # the next drain delivers it once the box is clear. FLEET_INJECT_DEFER=off restores
-  # the old always-type behaviour.
-  # Occupied box (real, non-dim input) → DEFER with a distinct code (2) so the drain
-  # treats it as backpressure, not an inject failure. Leaves the message queued.
+
+  # --- DEFER GATE (rc 2 = backpressure, NOT failure — leaves the message queued
+  # for the next drain). Two independent reasons never to type right now:
+  #
+  #  (a) MID-TURN pane (empty box, Claude still working). Enter sent into a working
+  #      pane is silently SWALLOWED — the text lands in the box but never submits
+  #      until the turn ends, so it sits at the prompt waiting for a manual Enter
+  #      (the "messages stuck waiting for enter" bug). The .ready state flag the
+  #      drain trusts goes stale the instant the worker picks up new work, so we
+  #      must check the LIVE pane, not the flag. fleet_wait_idle waits out the brief
+  #      post-turn render race so the Stop-hook drain still delivers immediately.
+  #  (b) BUSY box — real, non-dim input already present (a human mid-typing or a
+  #      prior un-submitted inject). Typing onto it concatenates + garbles.
+  if ! fleet_wait_idle "$to" "${FLEET_INJECT_IDLE_WAIT:-3}"; then return 2; fi
   if [[ "${FLEET_INJECT_DEFER:-on}" != "off" ]] && fleet_input_busy "$to"; then return 2; fi
+
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
   local tag="fleet msg"; [[ "$kind" == "ask" ]] && tag="fleet ask"
   local full
   full="[$tag from $from · hop $hops/$(fleet_max_hops)] $text"
-  local tgt="$FLEET_TMUX_SESSION:$to" i=0 n=${#full}
-  while (( i < n )); do
-    fleet_tmux send-keys -t "$tgt" -l "${full:i:FLEET_INJECT_CHUNK}" 2>/dev/null || return 1
-    i=$(( i + FLEET_INJECT_CHUNK ))
-    (( i < n )) && sleep "$FLEET_INJECT_CHUNK_DELAY"
-  done
+  local tgt="$FLEET_TMUX_SESSION:$to"
+
+  # --- INSERT. Default: ATOMIC bracketed paste via a tmux buffer (FLEET_INJECT_PASTE
+  # on). The whole message is loaded into a per-target buffer and pasted in ONE
+  # operation wrapped in bracketed-paste control codes (-p), so the TUI inserts it
+  # atomically and NEVER auto-submits it — no char-stream reflow race can truncate it
+  # the way chunked `send-keys -l` could (the "message truncated too" bug), and any
+  # special chars / future multi-line content survive intact. The Enter below is the
+  # only submit. FLEET_INJECT_PASTE=off restores the legacy chunked-typing path.
+  if [[ "${FLEET_INJECT_PASTE:-on}" != "off" ]]; then
+    local buf="fleet-inj-${to}"
+    if ! printf '%s' "$full" | fleet_tmux load-buffer -b "$buf" - 2>/dev/null \
+       || ! fleet_tmux paste-buffer -d -p -b "$buf" -t "$tgt" 2>/dev/null; then
+      fleet_tmux delete-buffer -b "$buf" 2>/dev/null || true
+      return 1
+    fi
+  else
+    local i=0 n=${#full}
+    while (( i < n )); do
+      fleet_tmux send-keys -t "$tgt" -l "${full:i:FLEET_INJECT_CHUNK}" 2>/dev/null || return 1
+      i=$(( i + FLEET_INJECT_CHUNK ))
+      (( i < n )) && sleep "$FLEET_INJECT_CHUNK_DELAY"
+    done
+  fi
   sleep "$FLEET_INJECT_DELAY"
   fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
-  # A flaky Enter can leave the message sitting UNSUBMITTED in the TUI input box
-  # (Roy observed messages waiting at the prompt for a manual Enter) — the single
-  # Enter raced the TUI's render or the pane was briefly busy. Verify: if the
-  # message's tail is still in the bottom input area, the Enter didn't land —
-  # re-send it. A spurious extra Enter at an empty prompt is a harmless no-op in
-  # Claude Code, so erring toward re-sending is safe. Disable with FLEET_INJECT_VERIFY=off.
+
+  # --- SUBMIT VERIFY (multi-line / paste-placeholder safe). After a successful
+  # submit the input box is EMPTY again, so reuse the dim-aware reader: if real,
+  # non-dim input still SURVIVES, the Enter didn't land (raced the render, or the
+  # pane briefly busied) — re-send it. A spurious Enter at an empty prompt is a
+  # harmless no-op. (The old tail-grep for the message's tail text broke on
+  # multi-line wrap and on paste placeholders; the empty-box test handles both.)
+  # Disable with FLEET_INJECT_VERIFY=off.
   [[ "${FLEET_INJECT_VERIFY:-on}" == "off" ]] && return 0
-  local marker="${full: -32}" try pane
+  local try
   for try in 1 2 3 4; do
     sleep 0.3
-    pane="$(fleet_tmux capture-pane -p -t "$tgt" 2>/dev/null | tail -n 2)"
-    case "$pane" in *"$marker"*) ;; *) return 0 ;; esac   # tail gone from input → submitted
+    fleet_input_busy "$to" || return 0          # box clear → submitted
     fleet_tmux send-keys -t "$tgt" Enter 2>/dev/null || return 1
   done
-  # Verify loop exhausted: the message's tail is STILL in the input box after 4
-  # re-Enters — the inject did NOT land (or landed truncated). Clear our partial
-  # text (C-u kills the input line) so we never leave a stuck/garbled fragment in
-  # the prompt, then report failure → the line stays queued for a clean at-least-once
+  # Verify exhausted: real input still in the box after 4 re-Enters — the inject did
+  # not land cleanly. Clear it (C-u kills the line) so we never leave a stuck/garbled
+  # fragment, then report failure → the line stays queued for a clean at-least-once
   # retry on the next drain (when the box is empty again).
   fleet_tmux send-keys -t "$tgt" C-u 2>/dev/null || true
   return 1
