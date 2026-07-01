@@ -39,6 +39,21 @@ fleet_load_paths
 
 export FLEET_NO_REPORT=1   # the ephemeral fork must never self-report
 
+# #27 isolation: run the fork in a throw-away git worktree so any accidental
+# git staging/committing lands in a discarded tree, not the live checkout.
+# The worktree is at HEAD so the fork can still read repo files at relative paths.
+# Falls back silently if CWD is not a git repo or git is unavailable.
+_ask_wt=""
+if _ask_wt="$(mktemp -d /tmp/fleet-ask-XXXXXX 2>/dev/null)"; then
+  rmdir "$_ask_wt"   # worktree add requires the target path to not exist yet
+  if git worktree add --detach "$_ask_wt" HEAD 2>/dev/null; then
+    trap 'git worktree remove --force "$_ask_wt" 2>/dev/null; rm -rf "$_ask_wt" 2>/dev/null' EXIT
+    cd "$_ask_wt" || true
+  else
+    rm -rf "$_ask_wt" 2>/dev/null; _ask_wt=""
+  fi
+fi
+
 # A short, single-line form of the question for the notes.
 qshort="$q"; [ "${#qshort}" -gt 60 ] && qshort="${qshort:0:60}…"
 
