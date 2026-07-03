@@ -1975,7 +1975,12 @@ cmd_inbox() {
   [[ -z "$id" ]] && die "usage: fleet inbox <id>  (or set FLEET_CHILD_ID)"
   local f; f="$(fleet_inbox_file "$id")"
   [[ -f "$f" ]] || { info "(no messages for $id)"; return; }
+  # Read under a SHARED flock (same fd/lock-file convention the writers use in
+  # comms.sh) so we never dump a half-written line while an enqueue/drain holds
+  # the exclusive lock. Degrades gracefully if flock is unavailable.
+  exec 9>"$f.lock"; flock -s 9 2>/dev/null || true
   jq -r '"\(.ts|strftime("%H:%M:%S"))  \(if .delivered then "✓" else "•" end) [\(.kind // "msg") from \(.from)] \(.text)"' "$f"
+  flock -u 9 2>/dev/null || true; exec 9>&-
 }
 
 # --- remote control (Claude Code's /remote-control slash command) -----------

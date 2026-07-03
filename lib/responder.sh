@@ -67,6 +67,15 @@ provider="$(fleet_state_get "$to" '.provider' "")"
 
 primer="You are \"$to\", answering a question from a peer agent \"$from\" in the same fleet. You have been resumed from a fork of your own working session, so you carry your current context. Answer ONLY the question — concisely and specifically, citing file paths where useful. Do NOT start new work, make edits, or message other agents; just answer. If it's outside your repo or expertise, say so in one line and name who might know."
 
+# F3: this fork's context may LAG the live thread — hedge against stale rulings.
+primer="$primer NOTE: your forked context may LAG the live thread. For any recent decision, verify against COMMITTED canon (git log / RESUME.md) rather than trusting recollection, and prefer committed state; if you cannot confirm currency, EXPLICITLY FLAG that your answer may be stale instead of asserting it."
+
+# F5: the fork runs in an intentional read-only worktree mirror of the repo at HEAD.
+[[ -n "$_ask_wt" ]] && primer="$primer You are running in an intentional READ-ONLY worktree mirror of the real repo, checked out at HEAD (for isolation). Answer ABOUT that repo; uncommitted working-tree changes are NOT visible here (say so if it's relevant). Do NOT try to cd elsewhere or complain about the working directory — just answer the question."
+
+# F4: a context-free fork (no resolvable session) must not answer with false confidence.
+[[ -z "$sid" ]] && primer="(answering WITHOUT live session context — from the primer only) $primer"
+
 ans=""
 ans="$(faculty_headless_answer "$provider" "$sid" "$primer" "$q" 2>/dev/null)"
 
