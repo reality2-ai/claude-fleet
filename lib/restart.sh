@@ -26,6 +26,9 @@ fleet_restart_policy_allows() {
 # Returns 0 if a restart is still within budget, 1 if intensity exceeded.
 fleet_intensity_ok() {
   local id="$1" now; now="$(date +%s)"
+  # Defaults so a direct `fleet restart` (outside the daemon env) doesn't trip
+  # `set -u` on these intensity-breaker knobs (window seconds / max restarts).
+  : "${SUP_MAX_SECONDS:=3600}" "${SUP_MAX_RESTARTS:=5}"
   local window=$(( now - SUP_MAX_SECONDS ))
   fleet_state_jq "$id" --argjson now "$now" --argjson win "$window" \
     '.restarts = ((.restarts // []) + [$now] | map(select(. >= $win)))' >/dev/null

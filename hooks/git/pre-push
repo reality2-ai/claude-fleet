@@ -17,8 +17,13 @@ findings=""
 
 scan_range() {  # $1 = git rev range or single sha
   local range="$1" added names
-  # added lines (+ lines) in the range, capped so a huge push can't hang the hook
-  added="$(git diff "$range" 2>/dev/null | grep '^+' | grep -v '^+++' | head -50000 || true)"
+  # added lines (+ lines) in the range, capped so a huge push can't hang the hook.
+  # Vendored synthetic KAT vectors carry test-only 0xAA "secrets" (device_master_secret
+  # etc.) that trip the value-pattern scan on every drift-sync — exclude them from the
+  # CONTENT scan (they are drift-checked test data, not real secrets). The filename scan
+  # below is deliberately NOT excluded, so a real .env/.key/.pem added under a vectors/
+  # dir still blocks. Allowlist: **/vectors/**.json + testing/test-vectors/**.json.
+  added="$(git diff "$range" -- . ':(exclude,glob)**/vectors/**.json' ':(exclude,glob)testing/test-vectors/**.json' 2>/dev/null | grep '^+' | grep -v '^+++' | head -50000 || true)"
   names="$(git diff --name-only --diff-filter=AM "$range" 2>/dev/null || true)"
 
   # 1) secret-bearing filenames being added/modified

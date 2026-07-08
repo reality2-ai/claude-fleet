@@ -174,7 +174,15 @@ fleet_write_agent_argv_file() {
 fleet_tmux_new_agent_window() {
   local id="$1" cwd="$2" exitfile="$3" provider="$4" arr_name="$5"
   local -n argv="$arr_name"
-  local max="${FLEET_TMUX_ARG_MAX:-20000}" size argvfile
+  # Over this argv size, spill to a NUL-delimited file (run-argv-file.sh) instead of
+  # passing argv inline — tmux ferries a command to its server over imsg, whose
+  # MAX_IMSGSIZE ceiling is 16384 bytes; an inline argv above that dies with tmux's
+  # "command too long" (hit live 2026-07-01: a codex companion prompt at 17429 bytes
+  # slipped the old 20000 gate — which sat ABOVE tmux's real ceiling — and failed to
+  # launch). Keep the default comfortably under 16384 to leave room for the
+  # new-window wrapper (run-child.sh path, -e env, --). The file path is proven and
+  # cheap, so erring low only costs a small temp file.
+  local max="${FLEET_TMUX_ARG_MAX:-12000}" size argvfile
   size="$(fleet_agent_argv_size "$arr_name")"
   if [[ "$size" =~ ^[0-9]+$ && "$max" =~ ^[0-9]+$ && "$size" -gt "$max" ]]; then
     argvfile="$(fleet_write_agent_argv_file "$id" "$arr_name")"

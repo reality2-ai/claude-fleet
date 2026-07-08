@@ -1152,6 +1152,7 @@ _fleet_start_companion() {
   fi
 
   local base_provider target_provider cid cwd pm primer prompt exitfile summary sid had_skip=0 old_skip=""
+  local had_capprove=0 old_capprove="" had_csandbox=0 old_csandbox=""
   base_provider="$(_fleet_id_provider "$base")"
   target_provider="${provider:-$(_fleet_opposite_provider "$base_provider")}"
   _fleet_validate_provider "$target_provider"
@@ -1180,7 +1181,23 @@ _fleet_start_companion() {
   local -a cargs=()
   [[ -n "${FLEET_SKIP_PERMISSIONS+x}" ]] && { had_skip=1; old_skip="$FLEET_SKIP_PERMISSIONS"; }
   FLEET_SKIP_PERMISSIONS=off; export FLEET_SKIP_PERMISSIONS
+  # A codex companion is a READ-ONLY adversarial reviewer/standby. Plan mode's codex
+  # default (--ask-for-approval untrusted) stops to ask "yes?" on nearly every command
+  # and strands the pane (the "codex asks many questions" bug Roy hit with refuters).
+  # Force the non-interactive read-only combo — same fix as cmd_refute — so it reviews
+  # autonomously and never writes. A per-child manifest sandbox/approval_policy still
+  # wins (fleet_codex_add_common_flags reads it via fleet_child_get, ahead of these env
+  # defaults). Claude companions ignore these knobs.
+  if [[ "$target_provider" == codex ]]; then
+    [[ -n "${FLEET_CODEX_APPROVAL+x}" ]] && { had_capprove=1; old_capprove="$FLEET_CODEX_APPROVAL"; }
+    [[ -n "${FLEET_CODEX_SANDBOX+x}"  ]] && { had_csandbox=1; old_csandbox="$FLEET_CODEX_SANDBOX"; }
+    FLEET_CODEX_APPROVAL=never FLEET_CODEX_SANDBOX=read-only; export FLEET_CODEX_APPROVAL FLEET_CODEX_SANDBOX
+  fi
   fleet_agent_build_args cargs "$target_provider" "$cid" "$cid" "$cwd" "$primer" "$prompt" "$sid" "$pm"
+  if [[ "$target_provider" == codex ]]; then
+    if [[ "$had_capprove" == 1 ]]; then FLEET_CODEX_APPROVAL="$old_capprove"; export FLEET_CODEX_APPROVAL; else unset FLEET_CODEX_APPROVAL; fi
+    if [[ "$had_csandbox" == 1 ]]; then FLEET_CODEX_SANDBOX="$old_csandbox"; export FLEET_CODEX_SANDBOX; else unset FLEET_CODEX_SANDBOX; fi
+  fi
   _fleet_restore_skip_permissions "$had_skip" "$old_skip"
   fleet_tmux_new_agent_window "$cid" "$cwd" "$exitfile" "$target_provider" cargs
   fleet_state_ensure "$cid" "$cwd" true
