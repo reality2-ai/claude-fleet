@@ -151,23 +151,53 @@ fleet_agent_build_args() {
   return 0
 }
 
+# One-shot forked answer for `fleet ask`. The fork carries the target's context
+# but MUST NOT be able to mutate ANY checkout — its own throw-away worktree or,
+# worse, the writer's live checkout that a resumed session may restore as cwd.
+#
+# Isolation is enforced STRUCTURALLY (real CLI capability flags), never by prompt
+# text, on BOTH providers:
+#   • the caller passes an isolated <cwd> (a detached worktree at HEAD or a bare
+#     temp dir) which we bind explicitly — codex via --cd, claude via a cd'd
+#     subshell — so file reads resolve inside the isolate, never the live tree;
+#   • claude runs with NO mutation surface: a read-only tool allowlist plus a
+#     hard deny of every edit/exec tool, so even if a resumed session restores the
+#     original cwd it has no Edit/Write/Bash to write with;
+#   • codex runs --sandbox read-only --ask-for-approval never, so model-generated
+#     shell commands cannot escape to write and nothing blocks on an approval.
+#
+# fleet_agent_headless_answer <provider> <sid> <primer> <prompt> [cwd]
 fleet_agent_headless_answer() {
-  local provider="$1" sid="$2" primer="$3" prompt="$4"
+  local provider="$1" sid="$2" primer="$3" prompt="$4" cwd="${5:-}"
   local bin; bin="$(fleet_provider_bin "$provider")"
   case "$provider" in
     claude)
-      if [[ -n "$sid" ]]; then
-        "$bin" -p --resume "$sid" --fork-session --append-system-prompt "$primer" "$prompt"
-      else
-        "$bin" -p --append-system-prompt "$primer" "$prompt"
-      fi
+      # Read-only posture: allow ONLY read tools (deny-by-default), and additionally
+      # hard-deny the mutation/exec tools so no write surface can slip through.
+      local -a ro=(
+        --allowedTools Read Grep Glob
+        --disallowedTools Edit Write MultiEdit NotebookEdit Bash
+      )
+      # Bind the isolated cwd in a subshell (claude has no --cd); if the resumed
+      # session ignores it, the read-only tool posture above is the real guard.
+      (
+        [[ -n "$cwd" ]] && { cd "$cwd" || exit 3; }
+        if [[ -n "$sid" ]]; then
+          exec "$bin" -p --resume "$sid" --fork-session "${ro[@]}" --append-system-prompt "$primer" "$prompt"
+        else
+          exec "$bin" -p "${ro[@]}" --append-system-prompt "$primer" "$prompt"
+        fi
+      )
       ;;
     codex)
       local combined; combined="$(fleet_prompt_join "$primer" "$prompt")"
+      # Global flags precede the subcommand: pin cwd, sandbox to read-only, never ask.
+      local -a ro=(--sandbox read-only --ask-for-approval never)
+      [[ -n "$cwd" ]] && ro=(--cd "$cwd" "${ro[@]}")
       if [[ -n "$sid" ]]; then
-        "$bin" exec resume "$sid" "$combined"
+        "$bin" "${ro[@]}" exec resume "$sid" "$combined"
       else
-        "$bin" exec "$combined"
+        "$bin" "${ro[@]}" exec "$combined"
       fi
       ;;
     *) die "unknown agent provider '$provider' (expected claude or codex)" ;;

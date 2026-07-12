@@ -80,9 +80,18 @@ Every adapter implements these. Signatures are conceptual (the bash seam realize
 - `deliver(entity, msg)` — hand one message to the leaf. **Native delivery** (API) where available; the tmux
   baseline is `fleet_inject` with its at-least-once / verified-submit guarantees. Returns delivered/queued.
 - `headless_answer(entity, question) → text` — a one-shot **forked** answer that does **not** disturb the
-  entity's live body (the `fleet ask` responder). Must run **isolated** (worktree) so a fork can never write
-  the entity's live checkout — this requirement is what structurally fixes
-  `fleet-ask-fork-writes-live-checkout-hazard`.
+  entity's live body (the `fleet ask` responder). Must run **isolated** so a fork can never write the entity's
+  live checkout — this requirement is what structurally fixes `fleet-ask-fork-writes-live-checkout-hazard`.
+  Isolation is enforced on **two structural layers** (never prompt text), because a resumed Claude/Codex session
+  can restore the *original* session cwd and ignore the caller's:
+  1. **Isolated cwd, passed explicitly** — `responder.sh` creates a detached worktree at `HEAD` (or, for a
+     non-git target, a bare temp dir), `cd`s in, and threads that cwd into the adapter (`--cd` for codex; a
+     `cd`'d subshell for claude). It **fails closed**: if it cannot create/enter an isolated cwd it aborts with
+     an error answer rather than launch from the live checkout.
+  2. **No write capability at the provider** — claude runs `--allowedTools Read Grep Glob --disallowedTools
+     Edit Write MultiEdit NotebookEdit Bash` (read-only allowlist + hard-deny of every mutation/exec tool);
+     codex runs `--sandbox read-only --ask-for-approval never`. So even a fork that restores the original cwd
+     has no Edit/Write/Bash surface to write with. See `tests/ask-isolation.sh`.
 - `spawn_tool(entity, task) → result` — run a bounded sub-task as an ephemeral leaf (a subagent), returning a
   result. The brain's *tools*, one level down (research / verify / refute).
 - `recall(entity, query) → text` — **lazy retrieval** from shared memory: the entity-memory head, the decision
