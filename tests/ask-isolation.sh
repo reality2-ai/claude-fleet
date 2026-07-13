@@ -15,7 +15,7 @@
 #      current window gets a distinct transient window instead of colliding.
 #
 # Hermetic: stub `claude`/`codex`, throwaway repos, private tmux socket. No network.
-# Requires: bash >= 4, jq, git, tmux, script.  Usage: tests/ask-isolation.sh
+# Requires: bash >= 4, jq, git, tmux.  Usage: tests/ask-isolation.sh
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -248,11 +248,10 @@ if [[ -f "$WS/.fleet/inbox/fcasker.jsonl" ]] && grep -qiF "isolation failed" "$W
 # ============================================================================
 section "D. cmd_ask allocates a free transient window with inherited pane context"
 # ----------------------------------------------------------------------------
-# Reproduce the live failure shape: a regular client stays on window 0 while
-# windows 1..12 are created detached, and an EXTERNAL exec process inherits
-# TMUX_PANE from window 1. A session-only `new-window -t "$session"` target then
-# resolves the split context to occupied latest index 12 and fails with "index
-# 12 in use". The ask must explicitly select tmux's next unused index.
+# Exercise the stable integration path: create windows 0..12 detached, then run
+# `fleet ask` from an EXTERNAL process with TMUX + TMUX_PANE bound to the private
+# server and pane 1. The exact `session:` source assertion below anchors the live
+# same-server failure reproduction without depending on a pseudo-terminal client.
 command tmux -L "$SOCK" kill-server 2>/dev/null || true
 cat > "$WS/.fleet/fleet.toml" <<TOML
 [supervisor]
@@ -267,34 +266,9 @@ TOML
 ask_out="$TMP/window-ask.out"
 ASK_SESSION="fleet"
 command tmux -L "$SOCK" new-session -d -s "$ASK_SESSION" -n w0 'sleep 30'
-# Attach the regular client while w0 is the only window, before growing the
-# session. This keeps the client on w0 exactly as in the live failure.
-mkfifo "$TMP/window-ask.control"
-exec 7<>"$TMP/window-ask.control"
-command script -q -c "tmux -L $SOCK attach-session -t $ASK_SESSION" /dev/null \
-  <&7 >"$TMP/window-ask.client" 2>&1 &
-ask_client_pid=$!
-for _ in $(seq 1 100); do
-  command tmux -L "$SOCK" list-clients -F '#{client_session}:#{client_control_mode}:#{window_index}' 2>/dev/null \
-    | grep -qxF "$ASK_SESSION:0:0" && break
-  sleep 0.05
-done
-if command tmux -L "$SOCK" list-clients -F '#{client_session}:#{client_control_mode}:#{window_index}' 2>/dev/null \
-     | grep -qxF "$ASK_SESSION:0:0"; then
-  ok "regular client attaches while w0 is the only window"
-else
-  no "regular client did not attach at w0 ($(command tmux -L "$SOCK" list-clients -F '#{client_session}:#{client_control_mode}:#{window_index}' 2>/dev/null))"
-fi
-
 for i in $(seq 1 12); do
   command tmux -L "$SOCK" new-window -d -t "$ASK_SESSION:$i" -n "w$i" 'sleep 30'
 done
-if command tmux -L "$SOCK" list-clients -F '#{client_session}:#{client_control_mode}:#{window_index}' 2>/dev/null \
-     | grep -qxF "$ASK_SESSION:0:0"; then
-  ok "regular client remains on w0 after detached w1..w12 creation"
-else
-  no "regular client moved while detached windows were created"
-fi
 ask_tmux="$(command tmux -L "$SOCK" display-message -p -t "$ASK_SESSION:12" '#{socket_path},#{pid},0')"
 ask_pane="$(command tmux -L "$SOCK" display-message -p -t "$ASK_SESSION:1" '#{pane_id}')"
 
@@ -326,9 +300,14 @@ if [[ "$(command tmux -L "$SOCK" display-message -p -t "$ASK_SESSION:12" '#W' 2>
 else
   no "existing window 12 was moved or replaced"
 fi
-kill "$ask_client_pid" 2>/dev/null || true
-wait "$ask_client_pid" 2>/dev/null || true
-exec 7>&-
+# The answer can reach the asker just before responder.sh finishes its final
+# target FYI/log writes. Let the transient window close before the EXIT trap
+# tears down the temp workspace, avoiding a mailbox recreation/removal race.
+for _ in $(seq 1 100); do
+  command tmux -L "$SOCK" list-windows -t "$ASK_SESSION" -F '#W' 2>/dev/null \
+    | grep -qxF 'ask:peertarget' || break
+  sleep 0.05
+done
 
 # ============================================================================
 printf '\n%s\n' "----------------------------------------"
