@@ -157,31 +157,44 @@ fleet_agent_build_args() {
 #
 # Isolation is enforced STRUCTURALLY (real CLI capability flags), never by prompt
 # text, on BOTH providers:
-#   • the caller passes an isolated <cwd> (a detached worktree at HEAD or a bare
-#     temp dir) which we bind explicitly — codex via --cd, claude via a cd'd
-#     subshell — so file reads resolve inside the isolate, never the live tree;
-#   • claude runs with NO mutation surface: a read-only tool allowlist plus a
-#     hard deny of every edit/exec tool, so even if a resumed session restores the
-#     original cwd it has no Edit/Write/Bash to write with;
+#   • BOUNDARY: cwd is REQUIRED and must be an existing dir. We refuse to launch
+#     EITHER provider without an explicit isolate — a missing/nonexistent cwd would
+#     otherwise silently fall back to the caller's (live-checkout) cwd.
+#   • the caller passes the isolated <cwd> (a detached worktree at HEAD or a bare
+#     temp dir) which we bind explicitly — codex via --cd, claude via a cd'd subshell
+#     — so file reads resolve inside the isolate, never the live tree;
+#   • claude runs with NO mutation surface: --tools restricts to a read-only subset
+#     of the BUILT-IN tools (so plugins, MCP, project tools and unapproved tools are
+#     unavailable), --safe-mode disables every customization (CLAUDE.md/skills/plugins/
+#     hooks/MCP/agents), --permission-mode dontAsk makes headless permission decisions
+#     deterministic, and the mutation/exec tools are additionally hard-denied — so even
+#     a resumed session that restores the original cwd has no Edit/Write/Bash to write;
 #   • codex runs --sandbox read-only --ask-for-approval never, so model-generated
 #     shell commands cannot escape to write and nothing blocks on an approval.
 #
-# fleet_agent_headless_answer <provider> <sid> <primer> <prompt> [cwd]
+# fleet_agent_headless_answer <provider> <sid> <primer> <prompt> <cwd>
 fleet_agent_headless_answer() {
   local provider="$1" sid="$2" primer="$3" prompt="$4" cwd="${5:-}"
+  # Boundary guard: never run a provider without an explicit, existing isolate.
+  if [[ -z "$cwd" || ! -d "$cwd" ]]; then
+    warn "fleet_agent_headless_answer: refusing to run '$provider' without an isolated cwd (got '${cwd:-<empty>}')"
+    return 3
+  fi
   local bin; bin="$(fleet_provider_bin "$provider")"
   case "$provider" in
     claude)
-      # Read-only posture: allow ONLY read tools (deny-by-default), and additionally
-      # hard-deny the mutation/exec tools so no write surface can slip through.
+      # Read-only posture (see header). --tools makes ONLY these built-in tools
+      # available; --disallowedTools is the explicit belt to that suspenders.
       local -a ro=(
-        --allowedTools Read Grep Glob
-        --disallowedTools Edit Write MultiEdit NotebookEdit Bash
+        --safe-mode
+        --permission-mode dontAsk
+        --tools Read,Grep,Glob
+        --disallowedTools Edit,Write,NotebookEdit,Bash
       )
-      # Bind the isolated cwd in a subshell (claude has no --cd); if the resumed
-      # session ignores it, the read-only tool posture above is the real guard.
+      # Bind the isolated cwd in a subshell (claude has no --cd); the read-only tool
+      # posture above is the real guard if a resumed session ignores it.
       (
-        [[ -n "$cwd" ]] && { cd "$cwd" || exit 3; }
+        cd "$cwd" || exit 3
         if [[ -n "$sid" ]]; then
           exec "$bin" -p --resume "$sid" --fork-session "${ro[@]}" --append-system-prompt "$primer" "$prompt"
         else
@@ -192,8 +205,7 @@ fleet_agent_headless_answer() {
     codex)
       local combined; combined="$(fleet_prompt_join "$primer" "$prompt")"
       # Global flags precede the subcommand: pin cwd, sandbox to read-only, never ask.
-      local -a ro=(--sandbox read-only --ask-for-approval never)
-      [[ -n "$cwd" ]] && ro=(--cd "$cwd" "${ro[@]}")
+      local -a ro=(--cd "$cwd" --sandbox read-only --ask-for-approval never)
       if [[ -n "$sid" ]]; then
         "$bin" "${ro[@]}" exec resume "$sid" "$combined"
       else

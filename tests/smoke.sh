@@ -27,6 +27,9 @@ section() { printf '\n%s\n' "$1"; }
 TMP="$(mktemp -d)"
 export HOME="$TMP/home"; mkdir -p "$HOME"
 export FLEET_TMUX_USER_SCOPE=off
+# The fixtures treat manifest children without an explicit provider as Claude and
+# assert against the Claude stub. Do not inherit a caller's Codex fleet default.
+export FLEET_AGENT_PROVIDER=claude
 SOCK="smoke$$"; export FLEET_TMUX_SOCKET="$SOCK" FLEET_TMUX_SESSION="$SOCK"
 cleanup() { command tmux -L "$SOCK" kill-server 2>/dev/null || true; rm -rf "$TMP"; }
 trap cleanup EXIT
