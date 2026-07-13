@@ -10,10 +10,12 @@
 #      and the isolated cwd is passed through explicitly;
 #   B. a resumed responder whose fork tries to write in its cwd CANNOT touch the
 #      writer's live checkout — the write lands in the throw-away isolate;
-#   C. isolation fails CLOSED — the fork never launches from the live checkout.
+#   C. isolation fails CLOSED — the fork never launches from the live checkout;
+#   D. an external ask with a caller pane different from the fleet session's
+#      current window gets a distinct transient window instead of colliding.
 #
 # Hermetic: stub `claude`/`codex`, throwaway repos, private tmux socket. No network.
-# Requires: bash >= 4, jq, git, tmux.  Usage: tests/ask-isolation.sh
+# Requires: bash >= 4, jq, git, tmux, script.  Usage: tests/ask-isolation.sh
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -242,6 +244,91 @@ if [[ ! -e "$WRITER2/PWNED" ]] && grep -qx canon2 "$WRITER2/sentinel.txt" 2>/dev
   ok "live checkout untouched on isolation failure"; else no "live checkout mutated on isolation failure"; fi
 if [[ -f "$WS/.fleet/inbox/fcasker.jsonl" ]] && grep -qiF "isolation failed" "$WS/.fleet/inbox/fcasker.jsonl"; then
   ok "asker got an isolation-failure answer (fail closed, not silent)"; else no "no isolation-failure answer delivered"; fi
+
+# ============================================================================
+section "D. cmd_ask allocates a free transient window with inherited pane context"
+# ----------------------------------------------------------------------------
+# Reproduce the live failure shape: a regular client stays on window 0 while
+# windows 1..12 are created detached, and an EXTERNAL exec process inherits
+# TMUX_PANE from window 1. A session-only `new-window -t "$session"` target then
+# resolves the split context to occupied latest index 12 and fails with "index
+# 12 in use". The ask must explicitly select tmux's next unused index.
+command tmux -L "$SOCK" kill-server 2>/dev/null || true
+cat > "$WS/.fleet/fleet.toml" <<TOML
+[supervisor]
+max_hops=6
+
+[[child]]
+id="peertarget"
+cwd="$WRITER"
+provider="claude"
+TOML
+
+ask_out="$TMP/window-ask.out"
+ASK_SESSION="fleet"
+command tmux -L "$SOCK" new-session -d -s "$ASK_SESSION" -n w0 'sleep 30'
+# Attach the regular client while w0 is the only window, before growing the
+# session. This keeps the client on w0 exactly as in the live failure.
+mkfifo "$TMP/window-ask.control"
+exec 7<>"$TMP/window-ask.control"
+command script -q -c "tmux -L $SOCK attach-session -t $ASK_SESSION" /dev/null \
+  <&7 >"$TMP/window-ask.client" 2>&1 &
+ask_client_pid=$!
+for _ in $(seq 1 100); do
+  command tmux -L "$SOCK" list-clients -F '#{client_session}:#{client_control_mode}:#{window_index}' 2>/dev/null \
+    | grep -qxF "$ASK_SESSION:0:0" && break
+  sleep 0.05
+done
+if command tmux -L "$SOCK" list-clients -F '#{client_session}:#{client_control_mode}:#{window_index}' 2>/dev/null \
+     | grep -qxF "$ASK_SESSION:0:0"; then
+  ok "regular client attaches while w0 is the only window"
+else
+  no "regular client did not attach at w0 ($(command tmux -L "$SOCK" list-clients -F '#{client_session}:#{client_control_mode}:#{window_index}' 2>/dev/null))"
+fi
+
+for i in $(seq 1 12); do
+  command tmux -L "$SOCK" new-window -d -t "$ASK_SESSION:$i" -n "w$i" 'sleep 30'
+done
+if command tmux -L "$SOCK" list-clients -F '#{client_session}:#{client_control_mode}:#{window_index}' 2>/dev/null \
+     | grep -qxF "$ASK_SESSION:0:0"; then
+  ok "regular client remains on w0 after detached w1..w12 creation"
+else
+  no "regular client moved while detached windows were created"
+fi
+ask_tmux="$(command tmux -L "$SOCK" display-message -p -t "$ASK_SESSION:12" '#{socket_path},#{pid},0')"
+ask_pane="$(command tmux -L "$SOCK" display-message -p -t "$ASK_SESSION:1" '#{pane_id}')"
+
+if TMUX="$ask_tmux" TMUX_PANE="$ask_pane" \
+   FLEET_WORKSPACE="$WS" FLEET_TMUX_SOCKET="$SOCK" FLEET_TMUX_SESSION="$ASK_SESSION" \
+   FLEET_TMUX_USER_SCOPE=off FLEET_AGENT_PROVIDER=claude FLEET_CLAUDE_BIN="$TMP/claude-mut" \
+   FLEET_CHILD_ID=windowasker \
+     "$ROOT/bin/fleet" ask peertarget "does the transient window collide?" \
+     >"$ask_out" 2>&1; then
+  ok "cmd_ask succeeds with occupied latest window 12"
+else
+  no "cmd_ask failed with occupied latest window 12 ($(tr '\n' ' ' < "$ask_out" 2>/dev/null))"
+fi
+lacks "cmd_ask avoids the caller-window index collision" "$ask_out" "index 12 in use"
+has "cmd_ask explicitly asks tmux for the next unused index" "$ROOT/bin/fleet" \
+  'fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "ask:$to"'
+
+for _ in $(seq 1 100); do
+  [[ -f "$WS/.fleet/inbox/windowasker.jsonl" ]] && grep -qF stub-answer-from-fork "$WS/.fleet/inbox/windowasker.jsonl" && break
+  sleep 0.05
+done
+if [[ -f "$WS/.fleet/inbox/windowasker.jsonl" ]] && grep -qF stub-answer-from-fork "$WS/.fleet/inbox/windowasker.jsonl"; then
+  ok "free transient window ran the isolated responder"
+else
+  no "transient responder did not answer"
+fi
+if [[ "$(command tmux -L "$SOCK" display-message -p -t "$ASK_SESSION:12" '#W' 2>/dev/null)" == "w12" ]]; then
+  ok "existing window 12 remains in place"
+else
+  no "existing window 12 was moved or replaced"
+fi
+kill "$ask_client_pid" 2>/dev/null || true
+wait "$ask_client_pid" 2>/dev/null || true
+exec 7>&-
 
 # ============================================================================
 printf '\n%s\n' "----------------------------------------"

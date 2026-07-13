@@ -1,30 +1,35 @@
-# RESUME — claude-fleet repo expert (fleet-fix lane)
+# RESUME — claude-fleet repo expert (fleet-fix2 lane)
 
 ## Current objective
-The follow-up hardening for the confirmed **`fleet ask` live-checkout isolation defect** is complete.
-The structural fix is in `14cb8d6`; the branch HEAD (see `git log -1`) is a narrow follow-up above
-independent commit `0ee94dc` correcting the provider boundary/flags, functional tests,
-adapter-contract documentation, and this handoff. Neither existing commit was rewritten; nothing
-was pushed.
+The narrow follow-up for the confirmed **`fleet ask` transient-window allocation collision** is
+complete. The commit containing this handoff is branch HEAD directly above unchanged `c4d94d4`
+(run `git log -1` for its exact hash). No history was rewritten and nothing was pushed.
 
 ## Last verified state (2026-07-13)
-- Branch: `fix/fleet-robustness-batch`; the follow-up containing this handoff is branch HEAD,
-  directly above unchanged `0ee94dc` (original isolation commit: `14cb8d6`).
-- Local installed CLI help confirms the requested flags exist: Claude `--safe-mode`,
-  `--permission-mode dontAsk`, `--tools`, `--disallowedTools`; Codex `--cd`,
-  `--sandbox read-only`, `--ask-for-approval never` before `exec`.
-- `bash -n`: clean across bash files under `bin/`, `lib/`, `hooks/`, and `tests/`.
-- `tests/ask-isolation.sh`: **54/54 passed** (exact provider argv; omitted/nonexistent cwd rejection;
-  isolated worktree; non-git isolate; functional forced-`mktemp` abort).
+- Branch: `fix/fleet-robustness-batch`; base commit `c4d94d4bb39ece994732a98f86a45bc677a37e7f`.
+- Live reproduction before the fix: with regular client on fleet window 0, external caller context
+  inherited from window 1, and windows through 12 occupied, `tmux new-window -t fleet ...` returned
+  `create window failed: index 12 in use`.
+- `tests/ask-isolation.sh`: **61/61 passed**, including the client-w0 / caller-pane-w1 / occupied-w12
+  integration path, exact `session:` target assertion, isolated responder answer, unchanged w12,
+  provider argv controls, cwd-boundary rejection, non-git isolation, and fail-closed isolation.
 - `bash tests/faculty.sh`: **99/99 passed**.
-- `bash tests/smoke.sh`: **93/93 passed**, including the forked responder.
-- The first responder/smoke attempts inherited ambient `FLEET_AGENT_PROVIDER=codex`, bypassed their
-  Claude stubs, and were terminated. Xtrace confirmed the wrong provider selection before the fixtures
-  were changed; both tests now pin their intended default and pass in this Codex takeover lane.
+- `bash tests/smoke.sh`: **93/93 passed** (direct invocation).
 - Pre-existing dirty `bin/fleet-watchdog.sh` and `lib/comms.sh` are unrelated user work. Preserve them
-  unstaged; they are not part of the follow-up commit.
+  unstaged; they were neither edited nor included in this follow-up.
 
-## Isolation fix and follow-up scope
+## Transient ask-window follow-up
+1. `bin/fleet` now targets `"$FLEET_TMUX_SESSION:"` for the transient responder. The explicit empty
+   window component tells tmux to allocate the next unused index instead of resolving a split inherited
+   `TMUX`/`TMUX_PANE` context to an occupied worker index.
+2. `tests/ask-isolation.sh` builds windows 0..12 on a private socket, attaches the regular client while
+   only w0 exists, creates w1..w12 detached so that client remains on w0, and invokes `fleet ask`
+   externally with `TMUX_PANE` from w1. It asserts successful answer delivery and preservation of w12.
+3. Provider isolation controls were not changed: `lib/provider.sh`, `lib/responder.sh`, `lib/faculty.sh`,
+   and `docs/FACULTY-ADAPTER-CONTRACT.md` are untouched by this follow-up.
+4. Changed files in the follow-up: `bin/fleet`, `tests/ask-isolation.sh`, and `RESUME.md`.
+
+## Prior isolation hardening retained from `c4d94d4`
 1. `lib/responder.sh` (`14cb8d6`) creates a detached worktree or empty temp-dir isolate, aborts with an
    error answer on unrecoverable `mktemp`/`cd` failures, and passes `$_ask_cwd` through
    `faculty_headless_answer`. Non-git targets skip the worktree retry loop. Review on 2026-07-13 found
@@ -57,16 +62,21 @@ was pushed.
 
 ## Next actions
 - Await explicit authorization before any push.
-- Optional availability check: a real-provider `fleet ask` once the fleet can be exercised safely.
-  It was deliberately not run here because the operator prohibited `fleet ask`/`fleet refute`.
+- No implementation work remains for this narrow follow-up.
 
 ## Do-not-assume / risks
+- Do not stage or overwrite the unrelated dirty `bin/fleet-watchdog.sh` and `lib/comms.sh` changes.
+- The private integration fixture is platform-context-sensitive, so the exact target syntax is also
+  asserted statically; the failure itself was independently reproduced against the live tmux server.
+- The focused regression now requires the standard `script` utility to hold a regular pseudo-terminal
+  client. The production change itself uses documented tmux target syntax supported by tmux >= 3.0.
 - Stub tests prove the exact flags and cwd passed, not the providers' internal enforcement. Local CLI
   help validates flag compatibility; the independent cwd-isolation layer remains the primary floor.
 - Denying `Bash` means a Claude responder cannot execute `git log` despite the stale-context primer;
   it can still use built-in `Read`/`Grep`/`Glob` on the committed isolated worktree.
 - An empty-dir Codex fallback may be limited by Codex's repo check; this is availability degradation,
   not a write-safety fallback. The adapter still binds the directory and stays read-only/non-interactive.
-- No independent refuter was used because the operator explicitly prohibited `fleet ask`/`fleet refute`.
-  Strongest open attack: an end-to-end real-provider resumed session that attempts to restore its
-  original cwd and mutate it; current coverage uses argv-recording/mutating stubs plus CLI-help validation.
+- No separate opposite-provider refuter was launched for this one-line allocation fix; the operator
+  repeatedly challenged and corrected the fixture against live `list-panes`/`list-clients` ground truth.
+  Strongest open attack: run the same regression on the oldest supported tmux (3.0) and macOS/BSD
+  `script`; the local verified host used tmux 3.7b on Linux.

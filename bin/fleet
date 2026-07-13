@@ -1965,7 +1965,10 @@ cmd_ask() {
   # off-thread from provider-native context, then routes the reply back
   # (full → asker's inbox, one-line summary → asker's thread, brief FYI → target's
   # thread). The window closes itself when done.
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "ask:$to" -c "$cwd" \
+  # Qualify the empty window component (`session:`): tmux then allocates the next
+  # unused index instead of reusing a caller/session-current index inherited via
+  # TMUX + TMUX_PANE (which can be occupied by a worker window).
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "ask:$to" -c "$cwd" \
     -e "TOOL_ROOT=$TOOL_ROOT" -e "FLEET_WORKSPACE=$WORKSPACE" \
     -e "FLEET_TMUX_SOCKET=$FLEET_TMUX_SOCKET" \
     -e "FLEET_CLAUDE_BIN=${FLEET_CLAUDE_BIN:-claude}" -e "FLEET_CODEX_BIN=${FLEET_CODEX_BIN:-codex}" \
