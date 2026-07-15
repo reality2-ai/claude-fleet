@@ -410,6 +410,52 @@ path_case "a REAL MAC under vectors/ STILL blocks (allowlist must not blind the 
 path_case "a secret-bearing FILENAME under vectors/ still blocks (filename scan not excluded)" \
           "vectors/id_rsa" "not-really-a-key" block
 
+# --- 12. git-hook installer + drift check ------------------------------------
+# The hooks drifted for weeks because NOTHING installed or checked them. These cover both:
+# the installer (idempotent, preserves a foreign hook as the chained pre-push.local) and the
+# drift state machine doctor reports from.
+section "12. git-hook installer + drift check"
+export TOOL_ROOT="$ROOT"                 # lib/githooks.sh resolves the source from TOOL_ROOT
+# shellcheck source=../lib/githooks.sh
+source "$ROOT/lib/githooks.sh"
+
+GH="$TMP/gh"; mkdir -p "$GH"
+newrepo() { local d="$GH/$1"; rm -rf "$d"; git init -q "$d"; printf '%s\n' "$d"; }
+# NB call the lib functions IN THIS shell — `assert bash -c …` would spawn a child bash that
+# has never sourced githooks.sh, so the function would be unbound and the test vacuously red.
+drift_is() { local st; st="$(fleet_hook_drift_state "$2")"; if [ "$st" = "$3" ]; then ok "$1"; else no "$1 (got '$st')"; fi; }
+did()      { local a; a="$(fleet_install_git_hook "$2" "${4:-}")"; if [ "$a" = "$3" ]; then ok "$1"; else no "$1 (got '$a')"; fi; }
+
+R1="$(newrepo r1)"
+drift_is "drift state of a hook-less repo is 'missing'"        "$R1" missing
+drift_is "a non-git dir reports 'notgit' (never a false FAIL)" "$GH" notgit
+
+# install → current → idempotent
+did      "installer reports 'installed' on a fresh repo"       "$R1" installed
+assert   "installed hook is executable"                        test -x "$R1/.git/hooks/pre-push"
+drift_is "installed hook matches source"                       "$R1" ok
+did      "re-run is idempotent (reports 'current')"            "$R1" current
+
+# ★ NEGATIVE CONTROL: the drift check must actually FAIL on drift, or it is theatre.
+printf '\n# tampered\n' >> "$R1/.git/hooks/pre-push"
+drift_is "a TAMPERED deployed hook is detected as 'drift'"     "$R1" drift
+did      "re-install heals drift (reports 'updated')"          "$R1" updated
+drift_is "healed hook matches source again"                    "$R1" ok
+
+# a FOREIGN pre-existing hook must be preserved as the chained pre-push.local, not clobbered
+R2="$(newrepo r2)"
+mkdir -p "$R2/.git/hooks"; printf '#!/usr/bin/env bash\necho mine\n' > "$R2/.git/hooks/pre-push"
+chmod +x "$R2/.git/hooks/pre-push"
+did      "foreign hook → 'preserved'"                          "$R2" preserved
+has      "the foreign hook survives as pre-push.local (our hook chains to it)" "$R2/.git/hooks/pre-push.local" "echo mine"
+assert   "pre-push.local is executable"                        test -x "$R2/.git/hooks/pre-push.local"
+drift_is "and the fleet hook is now installed"                 "$R2" ok
+
+# --dry-run must not touch anything
+R3="$(newrepo r3)"
+did      "--dry-run reports the action it WOULD take"          "$R3" installed dry
+assert   "--dry-run installed nothing"                         test ! -f "$R3/.git/hooks/pre-push"
+
 # --- summary ----------------------------------------------------------------
 printf '\n%s\n' "------------------------------------------"
 printf 'smoke: %d passed, %d failed\n' "$pass" "$fail"

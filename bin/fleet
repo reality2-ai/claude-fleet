@@ -26,6 +26,8 @@ export TOOL_ROOT
 source "$TOOL_ROOT/lib/common.sh"
 # shellcheck source=../lib/manifest.sh
 source "$TOOL_ROOT/lib/manifest.sh"
+# shellcheck source=../lib/githooks.sh
+source "$TOOL_ROOT/lib/githooks.sh"
 # shellcheck source=../lib/registry.sh
 source "$TOOL_ROOT/lib/registry.sh"
 # shellcheck source=../lib/provider.sh
@@ -57,6 +59,15 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet install-hooks --user            install hooks into ~/.claude/settings.json
                                           (covers hand-started sessions in sub-repos;
                                            no-ops outside a .fleet workspace)
+  fleet install-git-hooks [--dry-run] [repo...]
+                                        install the repo-level GIT pre-push hook
+                                        (secret + MAC-value scan) into managed repos'
+                                        .git/hooks/. Idempotent; a pre-existing hook is
+                                        preserved as pre-push.local and still chained.
+                                        NB installs from the RUNNING checkout's branch —
+                                        check out the branch you mean to deploy first
+                                        (the branch is printed on every run).
+                                        `fleet doctor` hash-checks this for drift.
   fleet install-commands [<ws>|--user]  install the /fleet slash command
                                           (--user makes /fleet work in every session)
   fleet install-service         install a per-user systemd unit so the fleet
@@ -747,6 +758,56 @@ cmd_down() {
 
 # Install a per-user systemd unit so the fleet auto-starts on boot and resumes
 # every agent. Renders templates/fleet.service.example for the current workspace.
+# --- git hooks: install hooks/git/pre-push into the managed repos -------------
+# Distinct from `install-hooks`, which installs the SELF-REPORTING hooks into
+# .claude/settings.json. This one installs the repo-level GIT hook (the pre-push
+# secret/MAC scan) into <repo>/.git/hooks/. Until now nothing installed it at all, which is
+# exactly why deployed drifted from source for weeks — see lib/githooks.sh.
+#
+# Idempotent + safe to re-run. A pre-existing FOREIGN hook is preserved as pre-push.local
+# (our hook chains to it), never clobbered.
+cmd_install_git_hooks() {
+  local dry=0
+  while [[ $# -gt 0 ]]; do case "$1" in --dry-run|-n) dry=1; shift ;; *) break ;; esac; done
+  local src; src="$(fleet_git_hook_src)"
+  [[ -f "$src" ]] || die "no hook at $src (is this a full checkout?)"
+
+  # ⚠ SEQUENCING TRAP, made visible rather than documented-and-forgotten: this installs from
+  # the RUNNING checkout, on whatever branch it is on — not origin/master. Print it every run.
+  printf '%sfleet install-git-hooks%s%s\n' "$c_bold" "$c_reset" "$([[ $dry == 1 ]] && printf ' (dry-run)')"
+  printf '  source: %s\n  branch: %s\n' "$src" "$(fleet_git_hook_provenance)"
+
+  local -a repos=()
+  if [[ $# -gt 0 ]]; then
+    repos=("$@")
+  else
+    fleet_load_paths
+    [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+    local id rcwd; local -A seen_repo=()
+    for id in "${CHILD_IDS[@]:-}"; do
+      [[ -n "$id" ]] || continue
+      rcwd="$(fleet_child_get "$id" cwd "")"; [[ -n "$rcwd" ]] || continue
+      [[ "$rcwd" != /* ]] && rcwd="$WORKSPACE/$rcwd"
+      rcwd="$(cd "$rcwd" 2>/dev/null && pwd -P)" || continue
+      [[ -n "${seen_repo[$rcwd]:-}" ]] && continue
+      seen_repo["$rcwd"]=1; repos+=("$rcwd")
+    done
+  fi
+  [[ ${#repos[@]} -gt 0 ]] || { printf '  (no managed repos found)\n'; return 0; }
+
+  local r act
+  for r in "${repos[@]}"; do
+    act="$(fleet_install_git_hook "$r" "$([[ $dry == 1 ]] && printf dry)")" || act=notgit
+    case "$act" in
+      notgit)    printf '  %s—%s    %s (not a git repo — skipped)\n' "$c_dim" "$c_reset" "$r" ;;
+      current)   printf '  %sok%s   %s (already current)\n' "$c_grn" "$c_reset" "$r" ;;
+      updated)   printf '  %sok%s   %s (updated from an older fleet hook)\n' "$c_grn" "$c_reset" "$r" ;;
+      installed) printf '  %sok%s   %s (installed)\n' "$c_grn" "$c_reset" "$r" ;;
+      preserved) printf '  %sok%s   %s (installed; pre-existing hook preserved as pre-push.local, still chained)\n' "$c_grn" "$c_reset" "$r" ;;
+    esac
+  done
+}
+
 cmd_install_service() {
   fleet_load_paths
   command -v systemctl >/dev/null 2>&1 || die "systemctl not found — boot auto-start needs systemd user services."
@@ -1753,6 +1814,35 @@ cmd_doctor() {
   local -A MAN=(); for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && MAN["$id"]=1; done
   local -A RESUME_CHECKED=()
 
+  # --- hook drift: deployed .git/hooks/pre-push vs source-of-truth -----------
+  # THE check that would have caught this class. The git hooks were hand-copied once and
+  # never synced, so source could gain a scan (the MAC-value check) while every repo kept
+  # running the old file — and every gate still reported CLEAN. An un-installed hook
+  # protects nothing, and nothing was watching. Hash-compare makes that impossible to miss.
+  # Advisory-shaped like the rest of doctor: reports, never installs. Toggle:
+  # FLEET_HOOK_DRIFT_CHECK=off
+  if [[ "${FLEET_HOOK_DRIFT_CHECK:-on}" != "off" ]]; then
+    local _hsrc; _hsrc="$(fleet_git_hook_src)"
+    if [[ -f "$_hsrc" ]]; then
+      local _rid _rcwd _st; local -A _repo_seen=()
+      for _rid in "${ids[@]}"; do
+        [[ -n "$_rid" ]] || continue
+        _rcwd="$(fleet_state_get "$_rid" '.cwd' "")"
+        [[ -z "$_rcwd" || "$_rcwd" == "null" ]] && _rcwd="$(fleet_child_get "$_rid" cwd "")"
+        [[ -n "$_rcwd" ]] || continue
+        [[ "$_rcwd" != /* ]] && _rcwd="$WORKSPACE/$_rcwd"
+        _rcwd="$(cd "$_rcwd" 2>/dev/null && pwd -P)" || continue
+        [[ -n "${_repo_seen[$_rcwd]:-}" ]] && continue
+        _repo_seen["$_rcwd"]=1
+        _st="$(fleet_hook_drift_state "$_rcwd" 2>/dev/null)" || _st=notgit
+        case "$_st" in
+          drift)   problems+=("$(basename "$_rcwd"): deployed pre-push hook DRIFTS from source-of-truth (run: fleet install-git-hooks)") ;;
+          missing) problems+=("$(basename "$_rcwd"): no pre-push hook installed — the secret/MAC scan is not protecting this repo (run: fleet install-git-hooks)") ;;
+        esac
+      done
+    fi
+  fi
+
   local total_inject_failures=0
   local -a throttled=() exhausted=() heavy=()
   for id in "${ids[@]}"; do
@@ -2090,6 +2180,7 @@ main() {
     install-commands)
       if [[ "${1:-}" == "--user" ]]; then fleet_install_user_commands
       else fleet_install_commands "${1:-$PWD}"; fi ;;
+    install-git-hooks) cmd_install_git_hooks "$@" ;;
     install-service) cmd_install_service "$@" ;;
     status|ls) cmd_status "$@" ;;
     tokens|load) cmd_tokens "$@" ;;
