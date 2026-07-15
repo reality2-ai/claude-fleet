@@ -30,8 +30,19 @@ fleet_enqueue() {
   # own; this WRITER cannot — it would mkdir/lock/append relative to $PWD. Fail closed.
   f="$(fleet_inbox_file "$to")" || { warn "refusing to enqueue mail for invalid member id '$to'"; return 1; }
   mkdir -p "$(dirname "$f")"
+  # A valid id still lets an attacker pre-plant a SYMLINK here. Confirmed 2026-07-15
+  # against 6d19957: a link at "$f.lock" was followed by the TRUNCATING `9>` open and an
+  # out-of-tree victim was TRUNCATED. Fix by HARM:
+  #  - lock: open with APPEND (`9>>`), which CANNOT truncate whatever the path resolves
+  #    to (structural — no check, no TOCTOU). flock works identically on an append fd, so
+  #    the mutual-exclusion protocol is unchanged and concurrent correctness is preserved.
+  #  - inbox: `>>"$f"` cannot truncate either, but could append mail to an out-of-tree
+  #    target, so we REFUSE a symlinked inbox. This is a best-effort check-then-open (NOT
+  #    atomic no-follow); the residual TOCTOU on this append is bounded to a pre-planted
+  #    link and recorded in RESUME.md.
+  fleet_path_regular_or_absent "$f" || { warn "refusing to enqueue: inbox '$f' is not a regular file"; return 1; }
   ts="$(date +%s)"
-  exec 9>"$f.lock"; flock 9 2>/dev/null || true
+  exec 9>>"$f.lock"; flock 9 2>/dev/null || true
   jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" --argjson hops "$hops" --arg kind "$kind" --argjson delivered "$delivered" \
     '{ts:$ts, from:$from, to:$to, text:$text, hops:$hops, kind:$kind, delivered:$delivered}' >>"$f"
   flock -u 9 2>/dev/null || true; exec 9>&-

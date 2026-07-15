@@ -156,6 +156,50 @@ fleet_require_member_id() {
     || die "invalid member id '${1:-}': ids must match [A-Za-z0-9._-]+, and cannot be empty, start with '-', or be '.'/'..'"
 }
 
+# --- symlink safety ----------------------------------------------------------
+# A validated id keeps a path INSIDE its dir, but a valid id is not enough: a
+# pre-planted SYMLINK at that in-tree path redirects the open to an out-of-tree
+# target. Verified 2026-07-15 against 6d19957: a symlink at inbox/<validid>.jsonl.lock
+# was FOLLOWED by `exec 9>"$f.lock"` and an out-of-tree file was TRUNCATED — with a
+# perfectly valid id 'core'. Same class hits every state read and journal/argv/inbox
+# write. Bash has no O_NOFOLLOW, so we split the defence by HARM:
+#
+#   * TRUNCATE / OVERWRITE (the sharp harm) is removed STRUCTURALLY, with no TOCTOU:
+#     fleet_atomic_write() writes a fresh temp and rename()s it over the destination —
+#     rename replaces a squatted symlink (its target is never opened for write) and is
+#     atomic, so there is no check-then-open window. The lock uses an APPEND open
+#     (`>>`), which cannot truncate regardless of what the path points at.
+#   * READS and APPENDS fall back to a best-effort check (fleet_path_regular_or_absent
+#     below). This is CHECK-THEN-OPEN, NOT atomic no-follow: a concurrent same-dir
+#     writer can replant a link between the check and the open. We therefore BOUND the
+#     threat model to a PRE-PLANTED link (not a live racer); the residual TOCTOU on the
+#     read/append paths is recorded in RESUME.md as a known limitation. Do not describe
+#     these two helpers as race-safe.
+
+# Atomically REPLACE <dest> with content read from stdin, WITHOUT following a symlink at
+# <dest>: write a fresh mktemp in the SAME directory, then rename() it into place. The
+# write only ever touches the private temp inode; rename swaps the directory entry, so a
+# symlink squatting <dest> is replaced (its target untouched) and there is NO TOCTOU
+# window. Returns non-zero if the temp create, the stdin copy, or the rename fails.
+fleet_atomic_write() {
+  local dest="${1:-}"; [[ -n "$dest" ]] || return 1
+  local dir tmp; dir="$(dirname "$dest")"
+  mkdir -p "$dir" 2>/dev/null || return 1
+  tmp="$(mktemp "$dir/.tmp.XXXXXX" 2>/dev/null)" || return 1
+  if cat >"$tmp"; then mv -f "$tmp" "$dest"; else rm -f "$tmp"; return 1; fi
+}
+
+# BEST-EFFORT (check-then-open, NOT atomic): true iff <path> is absent or a regular
+# file that is not a symlink. Used to REFUSE reads/appends on a PRE-PLANTED symlink;
+# it does not defend against a link replanted after this returns. See the note above.
+fleet_path_regular_or_absent() {
+  local p="${1:-}"
+  [[ -n "$p" ]] || return 1
+  [[ -L "$p" ]] && return 1          # a symlink is tampering: refuse to follow it
+  [[ -e "$p" ]] || return 0          # absent -> fine
+  [[ -f "$p" ]]                      # exists -> must be a regular file
+}
+
 # --- jq guard ----------------------------------------------------------------
 fleet_require_jq() {
   command -v jq >/dev/null 2>&1 || die "jq is required but not found on PATH."

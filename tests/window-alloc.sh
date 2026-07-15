@@ -332,6 +332,138 @@ else
   no "doctor was ABORTED by a phantom id (set -e + failing path helper): ${e11_out:-<no output>}"
 fi
 
+section "F. bg-controller reap matches by EXACT argv identity, not an id-interpolated regex"
+# CONFIRMED 2026-07-15 against 6d19957: fleet_bg_unmount built pkill -f 'bg-controller\.sh <id>$'.
+# The allowlist admits '.', which in that regex matches ANY char, so reaping the VALID id
+# 'a.b' matched a DIFFERENT controller running for 'aXb'. The fix compares the last argv
+# token byte-for-byte via /proc. These assertions are READ-ONLY — they never pkill/kill.
+# shellcheck source=../lib/faculty-bg.sh
+source "$ROOT/lib/faculty-bg.sh" 2>/dev/null || true
+# F0 — deterministic falsifier that goes RED against the unfixed source: the id-
+# interpolated `pkill -f "bg-controller...` regex must be GONE. (The read-only /proc
+# checks below can only verify the NEW matcher; against 6d19957 they simply SKIP, so
+# this source assertion is what fails there.)
+if grep -q 'pkill -f "bg-controller' "$ROOT/lib/faculty-bg.sh"; then
+  no "fleet_bg_unmount still interpolates the id into a pkill regex (collision defect present)"
+else
+  ok "fleet_bg_unmount no longer interpolates the id into a pkill regex"
+fi
+if declare -F _fleet_bg_controller_pids >/dev/null 2>&1 && [[ -r /proc/self/cmdline ]]; then
+  mkdir -p "$TMP/f"; F_SH="$TMP/f/bg-controller.sh"
+  printf '#!/bin/bash\nsleep 30\n' > "$F_SH"; chmod +x "$F_SH"
+  # a decoy controller for id 'aXb'; its cmdline retains '.../bg-controller.sh aXb'
+  "$F_SH" aXb & F_PID=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [[ -r "/proc/$F_PID/cmdline" ]] && tr '\0' ' ' < "/proc/$F_PID/cmdline" | grep -q 'bg-controller.sh aXb' && break
+    sleep 0.1
+  done
+  # (a) the collision is REAL: the old-style regex for 'a.b' matches the 'aXb' decoy
+  if pgrep -f "bg-controller\.sh a.b\$" >/dev/null 2>&1; then
+    ok "id-interpolated regex 'a.b' collides with the 'aXb' controller (this is the defect)"
+  else
+    no "expected the regex collision to reproduce but it did not (decoy not visible?)"
+  fi
+  # (b) the fix does NOT collide: exact identity for 'a.b' returns no pid
+  if [[ -z "$(_fleet_bg_controller_pids 'a.b')" ]]; then
+    ok "exact-identity reap for 'a.b' does NOT match the 'aXb' controller"
+  else
+    no "exact-identity reap for 'a.b' WRONGLY matched the 'aXb' controller"
+  fi
+  # (c) the fix still reaps the RIGHT controller: exact identity for 'aXb' -> the decoy pid
+  if [[ "$(_fleet_bg_controller_pids 'aXb')" == "$F_PID" ]]; then
+    ok "exact-identity reap for 'aXb' returns exactly its own controller pid"
+  else
+    no "exact-identity reap for 'aXb' did not return the decoy pid (got '$(_fleet_bg_controller_pids 'aXb')', want $F_PID)"
+  fi
+  kill "$F_PID" 2>/dev/null || true
+else
+  ok "SKIP section F — no _fleet_bg_controller_pids or no /proc on this host"
+fi
+
+section "G. a valid id + a pre-planted SYMLINK must not read or write out of tree"
+# CONFIRMED 2026-07-15 against 6d19957 (the id is VALID; the attack is the symlink):
+#   inbox/<id>.jsonl.lock -> `exec 9>` FOLLOWED it and TRUNCATED an out-of-tree victim.
+# Same class: inbox append, journal >>, argv :>, and state read/write via jq. G asserts on
+# the out-of-tree VICTIM (untouched) and on the in-tree path (link dropped / refused).
+G_TMP="$TMP/g"; mkdir -p "$G_TMP/outside"
+export STATE_DIR="$G_TMP/.fleet" CHILDSTATE_DIR="$G_TMP/.fleet/state" RUN_DIR="$G_TMP/run"
+mkdir -p "$CHILDSTATE_DIR" "$STATE_DIR/inbox" "$RUN_DIR"
+GID=core   # a perfectly valid id — validation cannot help here
+
+# G1 — inbox LOCK symlink must not be followed and truncated.
+printf 'PRECIOUS\n' > "$G_TMP/outside/lock_victim"
+ln -s "$G_TMP/outside/lock_victim" "$STATE_DIR/inbox/$GID.jsonl.lock"
+fleet_enqueue "$GID" attacker payload 1 msg true >/dev/null 2>&1 || true
+if [[ -s "$G_TMP/outside/lock_victim" ]] && grep -q PRECIOUS "$G_TMP/outside/lock_victim"; then
+  ok "fleet_enqueue lock does not follow a symlink to truncate an out-of-tree file"
+else
+  no "fleet_enqueue FOLLOWED the lock symlink and truncated an out-of-tree victim"
+fi
+
+# G2 — inbox APPEND through a symlinked mailbox must be refused.
+# Clear G1's side effects first: its enqueue created a regular inbox/<id>.jsonl, which
+# would make the `ln -s` below fail silently and never test the symlink case at all.
+printf 'ORIGINAL\n' > "$G_TMP/outside/inbox_victim"
+rm -f "$STATE_DIR/inbox/$GID.jsonl.lock" "$STATE_DIR/inbox/$GID.jsonl"
+ln -s "$G_TMP/outside/inbox_victim" "$STATE_DIR/inbox/$GID.jsonl" || no "G2 setup: could not plant inbox symlink"
+fleet_enqueue "$GID" attacker '{"pwn":1}' 1 msg true >/dev/null 2>&1 || true
+if grep -q ORIGINAL "$G_TMP/outside/inbox_victim" && ! grep -q pwn "$G_TMP/outside/inbox_victim"; then
+  ok "fleet_enqueue refuses to append through a symlinked inbox"
+else
+  no "fleet_enqueue appended through a symlinked inbox to an out-of-tree victim"
+fi
+rm -f "$STATE_DIR/inbox/$GID.jsonl"
+
+# G3 — journal must not append through a symlink.
+printf 'ORIGINAL\n' > "$G_TMP/outside/journal_victim"
+ln -s "$G_TMP/outside/journal_victim" "$CHILDSTATE_DIR/$GID.journal"
+FLEET_JOURNAL=on fleet_journal_append "$GID" "INJECT" 2>/dev/null || true
+if grep -q ORIGINAL "$G_TMP/outside/journal_victim" && ! grep -q INJECT "$G_TMP/outside/journal_victim"; then
+  ok "fleet_journal_append does not append through a symlink"
+else
+  no "fleet_journal_append appended through a symlink to an out-of-tree victim"
+fi
+rm -f "$CHILDSTATE_DIR/$GID.journal"
+
+# G4 — argv writer must drop a squatted link and write a real file in place.
+printf 'ORIGINAL\n' > "$G_TMP/outside/argv_victim"
+ln -s "$G_TMP/outside/argv_victim" "$RUN_DIR/$GID.argv"
+declare -a gargs=("$STUB" "--flag")
+fleet_write_agent_argv_file "$GID" gargs >/dev/null 2>&1 || true
+if grep -q ORIGINAL "$G_TMP/outside/argv_victim"; then
+  ok "fleet_write_agent_argv_file did not write through the symlink (victim intact)"
+else
+  no "fleet_write_agent_argv_file wrote through a symlink to an out-of-tree victim"
+fi
+if [[ -f "$RUN_DIR/$GID.argv" && ! -L "$RUN_DIR/$GID.argv" ]]; then
+  ok "argv path is a regular file after the squatted symlink was dropped"
+else
+  no "argv path is still a symlink (or missing) after write"
+fi
+rm -f "$RUN_DIR/$GID.argv"
+
+# G5 — state READ through a symlink must return the default, not the out-of-tree secret.
+printf '{"secret":"OUTOFTREE"}\n' > "$G_TMP/outside/state_victim"
+ln -s "$G_TMP/outside/state_victim" "$CHILDSTATE_DIR/$GID.json"
+got="$(fleet_state_get "$GID" '.secret' 'DEFAULT')"
+if [[ "$got" == "DEFAULT" ]]; then
+  ok "fleet_state_get refuses to read through a symlinked state doc"
+else
+  no "fleet_state_get READ an out-of-tree secret via a symlink (got '$got')"
+fi
+
+# G6 — state_jq must refuse the link, not read-through and replace it with a regular file
+# carrying the leaked secret (what 6d19957 does: jq reads the target, mv replaces the link).
+fleet_state_jq "$GID" '.mutated=true' >/dev/null 2>&1 || true
+if [[ -L "$CHILDSTATE_DIR/$GID.json" ]]; then
+  ok "fleet_state_jq refuses a symlinked doc (link intact, no read-through)"
+elif grep -q OUTOFTREE "$CHILDSTATE_DIR/$GID.json" 2>/dev/null; then
+  no "fleet_state_jq READ through the symlink and copied the out-of-tree secret in place"
+else
+  no "fleet_state_jq altered the symlinked doc path unexpectedly"
+fi
+rm -f "$CHILDSTATE_DIR/$GID.json"
+
 printf '\n----------------------------------------\n'
 printf 'window-alloc: %s%d passed%s, %s%d failed%s\n' "$_grn" "$pass" "$_rst" \
   "$([[ "$fail" -gt 0 ]] && printf '%s' "$_red" || printf '%s' "$_grn")" "$fail" "$_rst"

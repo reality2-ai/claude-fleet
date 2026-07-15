@@ -16,7 +16,9 @@ if [[ -n "$SESSION_ID" ]]; then
   # is not trusted to be a plain name. Validated path or no write at all.
   if _sf="$(fleet_run_path "$CHILD_ID" .session)"; then
     mkdir -p "$RUN_DIR" 2>/dev/null || true
-    printf '%s\n' "$SESSION_ID" >"$_sf" 2>/dev/null || true
+    # Atomic no-follow: write via temp+rename so a symlink squatting "$_sf" is replaced
+    # (its target never written) with no TOCTOU window.
+    printf '%s\n' "$SESSION_ID" | fleet_atomic_write "$_sf" 2>/dev/null || true
   fi
 fi
 fleet_log session-start "$CHILD_ID" "session=${SESSION_ID:0:8} pid=$PPID" 2>/dev/null || true

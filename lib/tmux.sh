@@ -165,11 +165,12 @@ fleet_write_agent_argv_file() {
   # outside RUN_DIR (verified against 0ab4a0e).
   f="$(fleet_run_path "$id" .argv)" || return 1
   mkdir -p "$RUN_DIR"
-  : >"$f"
+  # Atomic no-follow write: a symlink squatting the argv path would send an in-place
+  # `:>"$f"` through to an out-of-tree target. Instead build the NUL-delimited argv in a
+  # fresh temp and rename() it into place (fleet_atomic_write) — rename replaces a
+  # squatted link (target untouched) with no TOCTOU window. Confirmed against 6d19957.
   local a
-  for a in "${argv[@]}"; do
-    printf '%s\0' "$a"
-  done >"$f"
+  { for a in "${argv[@]}"; do printf '%s\0' "$a"; done; } | fleet_atomic_write "$f" || return 1
   printf '%s\n' "$f"
 }
 

@@ -62,11 +62,15 @@ fleet_state_ensure() {
   fleet_require_member_id "$id"
   local f; f="$(fleet_state_path "$id")" || return 1
   mkdir -p "$CHILDSTATE_DIR"
+  # A symlink here is refused so we neither read it as "present" nor create through it;
+  # the write itself also goes via temp+rename (fleet_atomic_write), so even a link
+  # replanted after this check is replaced rather than followed (no out-of-tree create).
+  [[ -L "$f" ]] && { warn "refusing state write: '$f' is a symlink"; return 1; }
   [[ -f "$f" ]] && return 0
   jq -n --arg id "$id" --arg cwd "$cwd" --argjson managed "$managed" '
     { id: $id, managed: $managed, provider: "claude", session_id: null, cwd: $cwd, pid: null,
       state: "unknown", current_task: null, claims: [],
-      started_at: null, heartbeat: null, reason: null, restarts: [] }' >"$f"
+      started_at: null, heartbeat: null, reason: null, restarts: [] }' | fleet_atomic_write "$f"
 }
 
 # Apply a jq program to the doc in place. The LAST argument is the jq program;
@@ -79,6 +83,12 @@ fleet_state_jq() {
   # '../victim' never reached the only validator and jq rewrote a doc outside
   # CHILDSTATE_DIR (reproduced against 0ab4a0e; tests/window-alloc.sh section E).
   local f tmp; f="$(fleet_state_path "$id")" || return 1
+  # The tmp+mv WRITE below is already atomic-no-follow (mv replaces a squatted link, its
+  # target never opened for write). The remaining exposure is the `jq ... "$f"` READ,
+  # which would follow a link and leak an out-of-tree file. Refuse a symlinked doc here —
+  # best-effort check-then-open (NOT atomic; a link replanted after this check could still
+  # be read; bounded to pre-planted links, residual recorded in RESUME.md).
+  fleet_path_regular_or_absent "$f" || { warn "refusing state read/write: '$f' is not a regular file"; return 1; }
   [[ -f "$f" ]] || fleet_state_ensure "$id" "$PWD" false
   local -a a=( "$@" ); local n=${#a[@]}
   (( n >= 1 )) || return 1
@@ -98,6 +108,10 @@ fleet_state_get() {
   # default rather than `die` — a bad id in the registry must not take `fleet status`
   # down with it. Fail closed, stay honest, keep the caller alive.
   local f; f="$(fleet_state_path "$id")" || { printf '%s\n' "$def"; return; }
+  # Best-effort symlink refusal (check-then-open, NOT atomic): never `jq` through a link
+  # (it would read an out-of-tree file the id was never allowed to name). A link here is
+  # treated as absent -> default. Residual TOCTOU on this read is recorded in RESUME.md.
+  [[ -L "$f" ]] && { printf '%s\n' "$def"; return; }
   [[ -f "$f" ]] || { printf '%s\n' "$def"; return; }
   local v; v="$(jq -r "$path // empty" "$f" 2>/dev/null)"
   printf '%s\n' "${v:-$def}"
@@ -202,6 +216,10 @@ fleet_journal_append() {
   local id="$1"; shift || true
   local j; j="$(fleet_journal_path "$id")" || return 0   # invalid id: write nothing
   mkdir -p "$CHILDSTATE_DIR" 2>/dev/null || true
+  # `>>"$j"` through a symlink would append to an out-of-tree target (cannot truncate).
+  # Best-effort refusal (check-then-open, NOT atomic): a squatted link just disables the
+  # journal (no-op). Journal is best-effort; residual TOCTOU recorded in RESUME.md.
+  fleet_path_regular_or_absent "$j" || return 0
   printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$j" 2>/dev/null || return 0
   local max="${FLEET_JOURNAL_LINES:-200}"
   local n; n="$(wc -l <"$j" 2>/dev/null || echo 0)"

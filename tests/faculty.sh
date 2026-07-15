@@ -100,8 +100,16 @@ if declare -f faculty_deliver | grep -q 'claude-bg'; then ok "faculty_deliver ha
 if declare -f fleet_bg_drain | grep -q 'fleet_bg_deliver_turn' && ! declare -f fleet_bg_drain | grep -q 'fleet_codex_deliver_turn'; then ok "fleet_bg_drain is claude-only (no codex dispatch)"; else no "drain still dispatches codex"; fi
 # fleet_bg_mount diverts a codex worker to the cli-tmux path (refuter-only on bg)
 if declare -f fleet_bg_mount | grep -q 'fleet_tmux_start_child'; then ok "fleet_bg_mount diverts codex → cli-tmux"; else no "mount has no codex divert"; fi
-# unmount reaps the controller (orphaned/duplicate-controller fix)
-if declare -F fleet_bg_unmount >/dev/null 2>&1 && declare -f fleet_bg_unmount | grep -q 'pkill'; then ok "fleet_bg_unmount reaps controller"; else no "no controller-reaping unmount"; fi
+# unmount reaps the controller (orphaned/duplicate-controller fix) — by EXACT argv
+# identity, NOT an id-interpolated `pkill` regex (that regex let a dotted id like 'a.b'
+# collide with a different controller 'aXb'; see tests/window-alloc.sh section F).
+if declare -F fleet_bg_unmount >/dev/null 2>&1 \
+   && declare -f fleet_bg_unmount | grep -q '_fleet_bg_controller_pids' \
+   && ! declare -f fleet_bg_unmount | grep -q 'pkill'; then
+  ok "fleet_bg_unmount reaps controller by exact identity (no pkill regex)"
+else
+  no "fleet_bg_unmount does not reap by exact identity (or still uses a pkill regex)"
+fi
 if declare -f faculty_unmount | grep -q '_faculty_adapter_for'; then ok "faculty_unmount resolves adapter per-worker"; else no "faculty_unmount uses global adapter"; fi
 for v in fleet_bg_start_session fleet_bg_mount fleet_bg_unmount fleet_bg_has_mail; do
   if declare -F "$v" >/dev/null 2>&1; then ok "claude-bg lifecycle fn: $v"; else no "missing: $v"; fi

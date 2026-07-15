@@ -157,13 +157,40 @@ fleet_bg_mount() {
 # fully died could leave a duplicate controller — so we explicitly pkill the loop by its
 # exact argv (anchored so 'specs' never matches 'specs2'). Idempotent.
 #   fleet_bg_unmount <id>
+# PIDs of running bg-controllers whose argv is EXACTLY [... , <*bg-controller.sh>, <id>].
+# We match by argv IDENTITY via /proc, not by a `pkill -f` regex the id is spliced into.
+# That splice was a real defect (confirmed 2026-07-15 against 6d19957): the allowlist
+# admits '.', and in a `pkill` regex '.' matches ANY char, so the "anchored" pattern
+# `bg-controller\.sh a.b$` reaped a DIFFERENT controller running for id 'aXb'. An exact
+# byte-for-byte compare of the last argv token cannot collide. The pgrep prefilter uses
+# the fixed string 'bg-controller' (no metacharacters), so the id never touches a regex.
+# Linux-only (needs /proc): on a host without it this yields no pids and the window kill
+# in fleet_tmux_stop_child remains the teardown — safer to under-reap than mis-reap.
+_fleet_bg_controller_pids() {
+  local id="$1" pid
+  command -v pgrep >/dev/null 2>&1 || return 0
+  while IFS= read -r pid; do
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [[ -r "/proc/$pid/cmdline" ]] || continue
+    local -a argv=()
+    mapfile -d '' -t argv < "/proc/$pid/cmdline" 2>/dev/null || continue
+    local n=${#argv[@]}
+    (( n >= 2 )) || continue
+    [[ "${argv[n-1]}" == "$id" ]] || continue            # last token == id, byte-for-byte
+    [[ "${argv[n-2]}" == *bg-controller.sh ]] || continue # launched as `bg-controller.sh <id>`
+    printf '%s\n' "$pid"
+  done < <(pgrep -f 'bg-controller' 2>/dev/null)
+}
+
 fleet_bg_unmount() {
   local id="$1"
-  # The id is interpolated into a pkill -f REGEX below, so it must be a plain name
-  # BEFORE it gets there: '.*' would make the "anchored" pattern match every
-  # bg-controller and reap the whole fleet. fleet_valid_member_id's allowlist is what
-  # makes the anchoring claim above actually true (no regex metacharacters survive it).
+  # Still reject a junk id up front — but note the allowlist is NOT what makes the reap
+  # safe (it admits '.'); the exact argv match in _fleet_bg_controller_pids is.
   fleet_valid_member_id "$id" || { warn "refusing to unmount invalid member id '$id'"; return 1; }
   declare -F fleet_tmux_stop_child >/dev/null 2>&1 && fleet_tmux_stop_child "$id" 2>/dev/null || true
-  pkill -f "bg-controller\.sh ${id}\$" 2>/dev/null || true
+  local _pid
+  while IFS= read -r _pid; do
+    [[ -n "$_pid" ]] || continue
+    kill "$_pid" 2>/dev/null || true
+  done < <(_fleet_bg_controller_pids "$id")
 }
