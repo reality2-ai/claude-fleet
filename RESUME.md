@@ -1,8 +1,37 @@
 # RESUME — claude-fleet repo expert (id-hardening lane)
 
-## Current objective — member-id path-hardening LANDED (2026-07-15), local commit only
+## HOLD on 6d19957 (2026-07-15) — opposite-provider review found 2 CONFIRMED defects
+supervisor-codex's exact review put `6d19957` on HOLD. Both findings reproduced read-only
+against ground truth THIS session; a scoped local FOLLOW-UP (new commit on top, not amend) is
+required. Instruction: **wait for reviewer-final** before committing, keep `bin/fleet-watchdog.sh`
++ `_fleet_inject_trace` excluded, **no push**. Currently WAITING for reviewer-final.
+
+**Finding 1 — dotted-id `pkill` regex collision (in id-hardening scope; refutes my own claim).**
+The allowlist admits `.`, but `fleet_bg_unmount` (lib/faculty-bg.sh:168) interpolates the id into
+`pkill -f "bg-controller\.sh ${id}\$"`. `.` is a regex metachar. Repro: a decoy whose cmdline is
+`bg-controller.sh aXb`; the pattern for VALID id `a.b` MATCHED it → `fleet_bg_unmount a.b` would
+`pkill` the wrong controller. This falsifies the E9 comment "no regex metacharacters survive it".
+Fix: match by EXACT argv identity (iterate `pgrep 'bg-controller\.sh'` pids, compare
+`/proc/PID/cmdline` last token == id) rather than an id-interpolated regex; delete the false claim.
+
+**Finding 2 — symlink follow/truncate, INDEPENDENT of id validity (broader TOCTOU class).**
+A pre-planted symlink at `inbox/<validid>.jsonl.lock` is followed by `exec 9>"$f.lock"` and the
+out-of-tree target is TRUNCATED (reproduced: `outside/victim.lock` went to 0 bytes with valid id
+`core`). Same class: journal `>>`, argv `:>`, inbox `>>`, and state reads all follow symlinks.
+Fix: no-follow (`-L` refusal/unlink) + regular-file check + safer create/append across
+state/journal/argv/inbox/lock. NB: requires an attacker with state-dir write to plant the symlink,
+so it is a distinct capability from crafting an id — real, but a separate class from id→path.
+
+**Falsifiers to add**: (F1) a controller-collision test — spawn a decoy `bg-controller.sh <idA>`,
+assert `fleet_bg_unmount <idB>` where idB's regex could match idA does NOT reap the decoy; (F2) a
+symlink-lock/journal/argv/inbox test — plant a symlink to an out-of-tree victim, call the writer,
+assert the victim is untouched. Both must FAIL against 6d19957 and pass fixed.
+
+## Current objective — member-id path-hardening LANDED (2026-07-15), local commit only [ON HOLD]
 **Committed `6d19957` `fix(registry): fail closed on member-id -> path derivation everywhere`.**
 Branch `fix/fleet-robustness-batch`, parent `0ab4a0e`. NOT pushed (origin +8 ahead).
+6d19957 remains a NET IMPROVEMENT (closes the traversal/phantom class) but is INCOMPLETE per the
+two findings above — do not push until the follow-up lands.
 
 ### What landed (scope)
 A member id is interpolated into paths (`state/<id>.json`, `run/<id>.{session,exit,argv}`,
