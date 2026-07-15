@@ -388,8 +388,16 @@ path_case() {
 mac_case() { path_case "$1" f.txt "$2" "$3" "${4:-}"; }
 
 mac_case "a real-looking MAC value BLOCKS the push"        "device = $REALMAC" block
-mac_case "placeholder MACs do NOT block (02/aa:bb:cc/dead:beef/00:00/ff:ff)" \
+mac_case "narrow allowlist passes (02/aa:bb:cc/dead:beef prefixes + EXACT all-zero/broadcast)" \
          "$(printf 'a=02:11:22:33:44:55\nb=aa:bb:cc:dd:ee:ff\nc=de:ad:be:ef:00:01\nd=00:00:00:00:00:00\ne=ff:ff:ff:ff:ff:ff\n')" pass
+# finding-1 regression (2026-07-15, refutation of the sibling CI gate): 00:00 and ff:ff must
+# be allowlisted as EXACT tokens only, never as PREFIXES — real OUIs under them (00:00:0c
+# Cisco, 00:00:5e IANA, ff:ff:11) must BLOCK. MACs assembled at runtime from 3-octet halves
+# so no 6-octet literal sits in this file (else the fixed hook blocks claude-fleet's own push).
+_cisco='00:00:0c'; _iana='00:00:5e'; _ffp='ff:ff:11'
+mac_case "real OUI under old 00:00 PREFIX (Cisco) now BLOCKS"  "dev = $_cisco:$_n" block
+mac_case "real OUI under old 00:00 PREFIX (IANA) now BLOCKS"   "dev = $_iana:$_n" block
+mac_case "real-looking MAC under old ff:ff PREFIX now BLOCKS"  "dev = $_ffp:$_o" block
 mac_case "FLEET_MAC_SCAN=off lets a real MAC through"      "device = $REALMAC" pass FLEET_MAC_SCAN=off
 
 # --- vectors/**.json allowlist: narrow by design -----------------------------

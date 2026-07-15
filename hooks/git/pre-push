@@ -71,14 +71,20 @@ scan_range() {  # $1 = git rev range or single sha
   if [[ "${FLEET_MAC_SCAN:-on}" != "off" ]]; then
     macs="$(printf '%s\n' "$added_all" \
       | grep -oiE '\b([0-9a-f]{2}:){5}[0-9a-f]{2}\b' \
-      | grep -viE '^(02:|aa:bb:cc:|de:ad:be:ef|00:00|ff:ff)' \
+      | grep -viE '^(02:|aa:bb:cc:|de:ad:be:ef)' \
+      | grep -vxiE '00:00:00:00:00:00|ff:ff:ff:ff:ff:ff' \
       | sort -u || true)"
+      # allowlist discipline (fail-CLOSED): 02:/aa:bb:cc:/de:ad:be:ef are PREFIXES
+      # (locally-administered + synthetic OUI classes, never a burned-in device).
+      # all-zero + broadcast are EXACT-token literals, NOT prefixes — a 00:00/ff:ff
+      # *prefix* allowlist waved through real OUIs (00:00:0c Cisco, 00:00:5e IANA,
+      # ff:ff:11…). Fixed 2026-07-15 after a refutation pass on the sibling CI gate.
     if [[ -n "$macs" ]]; then
       mac_n="$(printf '%s\n' "$macs" | grep -c . || true)"
       mac_oui="$(printf '%s\n' "$macs" | head -1 | cut -d: -f1-3)"
       # Report the OUI (vendor prefix) only — enough to locate the line, without echoing a
       # device-unique identifier into a terminal/CI log.
-      findings+="  • ${mac_n} real-looking MAC-address value(s) in added lines (first OUI ${mac_oui}:…) — allowed placeholders: 02:/aa:bb:cc:/de:ad:be:ef/00:00../ff:ff..; FLEET_MAC_SCAN=off to skip\n"
+      findings+="  • ${mac_n} real-looking MAC-address value(s) in added lines (first OUI ${mac_oui}:…) — allowed: 02:/aa:bb:cc:/de:ad:be:ef prefixes + exact 00:00:00:00:00:00 / ff:ff:ff:ff:ff:ff; FLEET_MAC_SCAN=off to skip\n"
     fi
   fi
 }
