@@ -1,5 +1,77 @@
 # RESUME — claude-fleet repo expert (id-hardening lane)
 
+## LANDED (2026-07-15, local commits only) — fd-bound no-follow + pidfd hardening (atomic-writer)
+Final correction for the residual TOCTOU that f9f2947 disclosed. **Code commit
+`562dcee3681c10aa72bdb56f592b35401c01d755`** `fix(comms,registry,faculty-bg): fd-bound
+no-follow safe-IO for mailbox/state + pidfd reap`, on `fix/fleet-robustness-batch` (parent
+`a4cab7d`); this RESUME update is a SEPARATE commit on top. **NOT pushed.** watchdog +
+`_fleet_inject_trace` hunk excluded (unstaged). **Requires a fresh exact adversarial review —
+do NOT self-declare clean.**
+
+### Design (what closes the residual)
+bash cannot express O_NOFOLLOW / pidfd, so a tiny helper **`lib/fleet-safeio.py`** (python3,
+Linux+macOS) provides the fd-bound primitives; the shell routes through it and **fails closed**
+when it is absent (python3 is now a documented prerequisite for mailbox/state hardening — the
+overwrite/rename class stays safe via rename(), but no-follow read/append/lock/pidfd require it).
+Helper subcommands + exit codes (0 ok, 2 usage, 3 refused-symlink/non-regular/foreign, 4 absent,
+5 primitive-unavailable, 6 rotate identity-mismatch):
+- `read/append/write` — O_NOFOLLOW open (+fstat regular). `write` = O_EXCL temp → fsync →
+  rename() (never descends → a dir dest fails atomically; a symlink dest is replaced; foreign
+  regular refused). **No shell `mv` fallback** (a `[[ -d ]]`+`mv` is itself TOCTOU).
+- `enqueue <inbox> <lock>` — ONE locked transaction: flock(lock,O_NOFOLLOW) → append(inbox,
+  O_NOFOLLOW) → release. Replaces the shell `exec 9>>lock` + `>>inbox`.
+- `hold-lock <lock>` — flock(O_NOFOLLOW), print LOCKED, hold until stdin EOF. A bash **coproc**
+  (`fleet_safe_lock`/`unlock`) owns it so the drain's whole read-modify-write runs under a
+  no-follow lock without opening the lock in shell.
+- `rotate <src> <dst>` — the drain's **identity-checked snapshot**: O_NOFOLLOW-open+fstat src,
+  rename→dst, reopen dst and require SAME (dev,ino,regular,owner), then emit that verified
+  inode's content. Immune to a same-owner regular-file swap in the open→rename window (rc 6).
+- `rename <src> <dst>` — plain atomic rename, used ONLY to RESTORE a snapshot on abort.
+- `signal <sig> <id>` — pidfd_open + cmdline re-validation + pidfd_send_signal reap; closes the
+  discovery→signal pid-reuse window. **No discover-then-kill fallback** — pidfd or under-reap.
+
+### Drain invariant (data-loss preservation — enforced)
+`$snap` is the SOLE copy of the mail from a successful rotate until confirmed safe at `$f`. It is
+removed ONLY after a confirmed-safe commit or a successful restore; on ANY restore/commit/parse
+failure it is KEPT on disk (`.snap.*`) and logged loudly (`_fleet_drain_restore`). A failed
+read/parse is NEVER treated as an empty queue (fail closed + preserve). A symlinked inbox is NOT
+unlinked by name (racer could swap it) — left in place, fail closed.
+
+### Files (all dirty, uncommitted)
+`lib/fleet-safeio.py` (new), `lib/common.sh` (safeio wrappers + coproc lock, atomic_write→helper),
+`lib/comms.sh` (enqueue transaction, drain rotate/coproc/preserve), `lib/registry.sh`
+(state_get/state_jq/journal → no-follow), `lib/faculty-bg.sh` (pidfd-only reap),
+`tests/window-alloc.sh` (new section H, 18 checks), `tests/faculty.sh` (reap assertion updated),
+`.gitignore` (`__pycache__/`,`*.pyc`). **Preserve & EXCLUDE from the commit**:
+`bin/fleet-watchdog.sh` (unrelated) and the `_fleet_inject_trace` hunk in `lib/comms.sh`
+(unrelated — needs `git add -p` to stage only the mailbox hunks).
+
+### Verified so far (this session)
+- `bash -n` clean; `py_compile` clean; `lib/__pycache__` removed + gitignored.
+- Helper unit tests: read/append/write no-follow + symlink refusal; write self-heals a symlink,
+  refuses dir/fifo/foreign; enqueue transaction + mutual exclusion (blocks while lock held);
+  rotate identity-check catches an open→rename swap (rc 6); pidfd signal exact-identity reap.
+- Drain: normal delivery, idempotent, malformed-JSON PRESERVED + fail-closed, restore-into-dir
+  KEEPS snapshot, restore-with-safeio-down KEEPS snapshot, symlinked inbox not unlinked.
+- `tests/window-alloc.sh` **93/93**, stable across 3 runs (section H = 18 new checks).
+
+### Verification at commit (2026-07-15, all green)
+- Full suite: smoke 93/93, faculty 99/99, robustness 39/39, config 5/5, liveness 12/12,
+  ask-isolation 59/59 (harness needs ambient TOOL_ROOT), window-alloc 93/93 (section H = 18 new).
+- Deterministic 60-way concurrent enqueue+drain race: PASS 3/3 — 60 delivered exactly once, no
+  loss/tear/double, no leftover temps, mutual exclusion holds under the coproc lock.
+- New H checks RED against exact base f9f2947 (isolated worktree, base libs + new test): 12 RED
+  in section H, F/G 0 fails (no regression).
+
+### NOT done (next owner / fresh reviewer)
+- A fresh EXACT opposite-provider adversarial review has NOT run yet — REQUIRED before any push.
+- No push/hooks/deploy/history rewrite performed (per instruction).
+### Do-not-assume
+- python3 is now REQUIRED for mailbox/state hardening; document in README Prerequisites before commit.
+- `_fleet_bg_controller_pids` is now test/diagnostic-only (live reap uses the pidfd helper).
+- Leftover `.snap.*` files after a failure are DELIBERATE (mail preservation), not litter.
+
+
 ## Follow-up LANDED (2026-07-15) — `f9f2947` fixes both review findings, local commit only
 supervisor-codex GO'd the repairs (initial reviewer died on a safety-policy block; a fresh
 exact reviewer will attack the follow-up). **Committed `f9f2947`
