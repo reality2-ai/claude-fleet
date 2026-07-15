@@ -1,6 +1,49 @@
-# RESUME — claude-fleet repo expert (fleet-fix2 lane)
+# RESUME — claude-fleet repo expert (id-hardening lane)
 
-## Current objective
+## Current objective — member-id path-hardening LANDED (2026-07-15), local commit only
+**Committed `6d19957` `fix(registry): fail closed on member-id -> path derivation everywhere`.**
+Branch `fix/fleet-robustness-batch`, parent `0ab4a0e`. NOT pushed (origin +8 ahead).
+
+### What landed (scope)
+A member id is interpolated into paths (`state/<id>.json`, `run/<id>.{session,exit,argv}`,
+`inbox/<id>.jsonl`, `memory/<id>.md`), a tmux window name, and a `pkill -f` regex. Validation
+used to live ONLY in `fleet_state_ensure`, which an existing file short-circuits and which the
+launch path reached only AFTER creating/destroying artifacts. Central choke point now in
+`lib/common.sh`: `fleet_valid_member_id` (ALLOWLIST `[A-Za-z0-9._-]+`), `fleet_member_path` /
+`fleet_run_path` (print nothing + return 1 → callers fail CLOSED on status), `fleet_require_member_id`
+(`die` at argv boundaries). All state/run/inbox/journal/memory builders route through it; every
+call site handles the non-zero status so `set -euo pipefail` does not turn hardening into a
+fail-FATAL regression (doctor must survive a live `--help` phantom).
+
+### Verified state (all re-run 2026-07-15, this session)
+- **Falsifier proof**: new `tests/window-alloc.sh` section E run against unfixed `0ab4a0e` in a
+  throw-away detached worktree → **27 checks FAIL** (state_jq MUTATED an out-of-tree doc; state_path
+  traversal; journal escape; state_get out-of-tree read; argv-file RUN_DIR escape; start_child
+  DELETED an out-of-tree file; window created for invalid id; enqueue wrote inbox outside; the whole
+  `.*`/`$(id)`/`a|b`/backtick charset-mutation class accepted by the old denylist). Fixed → **65/65**.
+  NOT a placebo suite.
+- **Staged-tree proof**: stashed the unstaged remainder with `--keep-index` and ran suites against the
+  index alone — smoke **93**, window-alloc **65**, faculty **99**, robustness **39**, config **5**,
+  liveness **12**, ask-isolation **59** (ambient `TOOL_ROOT`). Equal baseline. Restored cleanly.
+- `bash -n` clean on all 12 modified files. Completeness scan: no raw id→path interpolation remains
+  outside a comment; no `local x="$(helper)"` status-discarding call site.
+
+### Deliberately EXCLUDED from the commit (still dirty in working tree — do not assume abandoned)
+- `bin/fleet-watchdog.sh`: **wholly unrelated** — doctor edge-trigger normalization (strips volatile
+  `Ns old` / `stale by Ns` / inject-failure counts before the change-compare). Separate concern.
+- `lib/comms.sh` `_fleet_inject_trace` hunk (guards a stale `FLEET_INJECT_TRACE` dir): unrelated;
+  left unstaged. Only the 3 MAILBOX hunks (`fleet_inbox_file`, `fleet_enqueue`, `fleet_drain_inbox`)
+  were committed, because E8/E11 direct-primitive safety depends on them.
+
+### Next actions
+- Get an opposite-provider twin (codex) to challenge `6d19957`: strongest open attack is a
+  concurrent-writer race on `fleet_enqueue`'s fail-closed path, and the allowlist against any
+  legitimate non-ASCII id shape a real deployment might use.
+- Decide the fate of the two excluded hunks (own commits or drop) before any push.
+- Await explicit authorization before pushing.
+
+---
+## (Prior objective, retained) #66 window allocator
 **#66 (window allocator) is FIXED and verified live** — this was the blocker on specs' twin-reviews.
 The `fleet ask` live-checkout isolation defect was already fixed earlier (see re-verification below).
 No history was rewritten and nothing was pushed.
