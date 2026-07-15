@@ -381,6 +381,9 @@ fleet brief                  # triage: what needs you, who's waiting at their pr
 fleet conflicts              # files claimed by more than one live session
 fleet logs [id]              # aggregate event log, or one member's summary
 fleet inbox [id]             # a member's message mailbox (audit trail)
+fleet decisions [--all] [--json] [--watch]
+                             # decisions waiting on YOU — open, oldest-first
+                             #   (--all: history; --watch: self-refreshing pane)
 fleet remote [id]            # remote-control status of member(s)
 fleet doctor [--quiet]       # self-check the oversight wire from ground truth
                              #   (state docs, mailboxes, watchdogs, throttling)
@@ -411,6 +414,11 @@ fleet ask <to> "<question>"  # consult a peer off-thread (forked context); reply
 fleet send <to> "<msg>"      # brief FYI into a member's thread (no reply)
 fleet broadcast "<msg>"      # brief FYI to every member
 fleet supervise              # start (or point you to) the supervisor session
+
+# decision ledger — durable home for decisions waiting on the human
+fleet decision add "<question>" [--for <agent>] [--options "a|b|c"] [--raised-by <who>]
+                             # record an open decision; prints its id (no tmux needed)
+fleet decide <id> "<answer>" # answer it + route the answer back to the waiting agent
 
 # remote control (tmux + Claude login)
 fleet remote-control [on|off] [id]   # enable/disable Claude /remote-control on member(s)
@@ -505,6 +513,40 @@ whom).
 **Hop cap.** To stop chains running away, every message carries a hop depth (a
 reply inherits hop+1; a fresh thread resets to 1). Messages past `[supervisor]
 max_hops` are refused.
+
+### Decision ledger — decisions waiting on you
+
+Gates the fleet raises for you otherwise live only in the supervisor's scrollback
+and get lost on scroll/compaction/reboot. The **decision ledger** is a durable,
+queryable, answerable home for them, and the first concrete slice of the fleet's
+knowledge layer — every decision is a provenance-bearing record.
+
+```sh
+fleet decision add "Ship simple USB pairing now, or wait for key rotation?" \
+      --for specs --options "ship|wait"      # → prints an id, e.g. d001
+fleet decisions                              # open decisions, oldest-first
+fleet decide d001 "ship it"                  # answer + route it back to 'specs'
+```
+
+- **Storage** is durable under `<workspace>/.fleet/decisions/`: one
+  `<id>.json` per decision plus an append-only `log.jsonl` recording every state
+  change. Ids are short and sortable (`d001`, `d002`, …).
+- **`fleet decision add`** creates an open decision. `--for <agent>` is who's
+  blocked waiting on the answer; `--raised-by` defaults to the caller. Prints the id.
+- **`fleet decisions`** lists OPEN decisions, oldest-first, one per line
+  (`#<id> · <age> · [waiting: <agent>] · <question>  (<options>)`). Add `--all`
+  for history, `--json` for machine output, `--watch` for a self-refreshing pane.
+  Works with just `bash` + `jq` — no tmux.
+- **`fleet decide <id> "<answer>"`** marks it answered and routes the answer back
+  to the waiting agent over the normal `fleet send` path, so it unblocks. If no
+  agent is waiting (or tmux is absent), the answer is simply recorded.
+
+**`decisions` tmux window.** `fleet up` also spawns a persistent **`decisions`**
+window running `fleet decisions --watch`, so the open gate list is always in
+view. It's gated by `FLEET_DECISIONS_WINDOW` (default **on**; set `off` to skip)
+and made strictly non-fatal — if it can't spawn, `fleet up` continues normally.
+`FLEET_DECISIONS_WATCH_SECS` sets the refresh interval; `FLEET_DECISIONS_WINDOW_ALL=on`
+makes the pane show history too.
 
 ### Shared context — `primer.md`
 

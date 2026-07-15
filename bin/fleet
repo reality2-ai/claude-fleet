@@ -42,6 +42,8 @@ source "$TOOL_ROOT/lib/transport.sh"
 source "$TOOL_ROOT/lib/faculty.sh"
 # shellcheck source=../lib/faculty-bg.sh
 source "$TOOL_ROOT/lib/faculty-bg.sh"
+# shellcheck source=../lib/decisions.sh
+source "$TOOL_ROOT/lib/decisions.sh"
 
 FLEET_VERSION="0.1.0"
 
@@ -101,6 +103,13 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet send <to> "<msg>"       brief FYI into a peer's live thread (no reply)
   fleet broadcast "<msg>"       brief FYI to all peer agents
   fleet inbox [id]              read a mailbox (full answers + audit trail)
+
+  fleet decision add "<question>" [--for <agent>] [--options "a|b|c"] [--raised-by <who>]
+                                  record a decision waiting on you; prints its id
+  fleet decisions [--all] [--json] [--watch]
+                                  list OPEN decisions oldest-first (--all: history;
+                                  --watch: self-refreshing pane view). No tmux needed.
+  fleet decide <id> "<answer>"  answer a decision + route it back to the waiting agent
 
   fleet help | version
 EOF
@@ -696,6 +705,15 @@ cmd_up() {
     fleet_start_supervisor && info "up: started 'supervisor'"
     if [[ "${FLEET_SUPERVISOR_PAIR:-on}" != "off" && "${FLEET_PAIR_ON_UP:-on}" != "off" && "$no_pairs" == 0 ]]; then
       fleet_start_supervisor_companion
+    fi
+  fi
+  # Persistent decision-ledger pane. Gated by FLEET_DECISIONS_WINDOW (default on)
+  # and made strictly non-fatal: wrapped so a failure here can never break startup.
+  if [[ "${FLEET_DECISIONS_WINDOW:-on}" != "off" ]]; then
+    if ( fleet_start_decisions_window ) 2>/dev/null; then
+      fleet_tmux_has_window decisions 2>/dev/null && info "up: started 'decisions' window"
+    else
+      warn "up: 'decisions' window not started (non-fatal) — 'fleet decisions' still works"
     fi
   fi
   fleet_reorder_windows
@@ -2102,6 +2120,13 @@ main() {
     pair-ask|pask) cmd_pair_ask "$@" ;;
     broadcast) cmd_broadcast "$@" ;;
     inbox)     cmd_inbox "$@" ;;
+    decision)
+      case "${1:-}" in
+        add|"") shift || true; cmd_decision_add "$@" ;;
+        *) die "usage: fleet decision add \"<question>\" [--for <agent>] [--options \"a|b|c\"] [--raised-by <who>]" ;;
+      esac ;;
+    decisions) cmd_decisions "$@" ;;
+    decide)    cmd_decide "$@" ;;
     version|-v|--version) echo "fleet $FLEET_VERSION" ;;
     help|-h|--help) usage ;;
     *) usage; die "unknown command: $cmd" ;;

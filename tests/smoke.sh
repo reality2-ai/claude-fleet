@@ -299,6 +299,48 @@ ap_prompt "FLEET_AUTOCONFIRM_EDITS=off keeps edit prompts" "$(mkp Edit '' "$WS2/
 # outside any .fleet workspace → never acts
 ap_prompt "outside a fleet workspace it stays silent" "$(jq -nc '{tool_name:"Read",cwd:"/tmp",tool_input:{file_path:"/tmp/x"}}')"
 
+# --- 11. decision ledger ----------------------------------------------------
+section "11. decision ledger"
+# add/list/decide must work with just bash+jq (no tmux dependency for the core).
+DID="$("$FLEET" decision add "Ship simple USB pairing or wait?" --for alpha --options "ship|wait" --raised-by supervisor 2>/dev/null)"
+case "$DID" in d0*) ok "decision add prints a short sortable id ($DID)";; *) no "decision add prints a short sortable id (got '$DID')";; esac
+assert "decision record persisted as <id>.json" test -f "$WS2/.fleet/decisions/$DID.json"
+has  "record carries provenance (raised_by)" "$WS2/.fleet/decisions/$DID.json" "\"raised_by\": \"supervisor\""
+has  "record carries waiting agent"          "$WS2/.fleet/decisions/$DID.json" "\"waiting\": \"alpha\""
+has  "record starts open"                    "$WS2/.fleet/decisions/$DID.json" "\"status\": \"open\""
+has  "state change appended to log.jsonl"    "$WS2/.fleet/decisions/log.jsonl" "\"event\":\"add\""
+"$FLEET" decisions > "$TMP/dec_open.out" 2>&1
+has  "decisions lists the open decision"     "$TMP/dec_open.out" "#$DID"
+has  "open line shows the waiting agent"      "$TMP/dec_open.out" "waiting: alpha"
+"$FLEET" decisions --json > "$TMP/dec_json.out" 2>&1
+assert "decisions --json is valid JSON array" jq -e 'type=="array"' "$TMP/dec_json.out"
+# a second open decision, then answer the first
+DID2="$("$FLEET" decision add "Second open gate" 2>/dev/null)"
+: > "$WS2/.fleet/inbox/alpha.jsonl" 2>/dev/null || true
+"$FLEET" decide "$DID" "ship it" > "$TMP/dec_decide.out" 2>&1
+has  "decide confirms the answer"            "$TMP/dec_decide.out" "answered"
+has  "answered record stores the answer"     "$WS2/.fleet/decisions/$DID.json" "\"answer\": \"ship it\""
+has  "answered record sets answered_ts"      "$WS2/.fleet/decisions/$DID.json" "\"answered_ts\":"
+has  "answer routed to waiting agent's inbox" "$WS2/.fleet/inbox/alpha.jsonl" "ship it"
+has  "answer state change logged"            "$WS2/.fleet/decisions/log.jsonl" "\"event\":\"answer\""
+"$FLEET" decisions > "$TMP/dec_open2.out" 2>&1
+lacks "answered decision no longer in open list" "$TMP/dec_open2.out" "#$DID "
+has   "other open decision still listed"         "$TMP/dec_open2.out" "#$DID2"
+"$FLEET" decisions --all > "$TMP/dec_all.out" 2>&1
+has  "--all includes the answered decision"  "$TMP/dec_all.out" "#$DID"
+# the --watch view renders (bounded to one iteration so it terminates)
+FLEET_DECISIONS_WATCH_ITERS=1 FLEET_DECISIONS_WATCH_SECS=1 "$FLEET" decisions --watch > "$TMP/dec_watch.out" 2>&1
+has  "decisions --watch renders the ledger"  "$TMP/dec_watch.out" "fleet decisions"
+# the persistent tmux window is spawned by 'up' and is non-fatal / toggleable
+"$FLEET" up --no-supervisor --no-pairs alpha >/dev/null 2>&1; sleep 0.5
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/dec_wins.out" 2>/dev/null
+hasline "fleet up spawns the decisions window (default on)" "$TMP/dec_wins.out" "decisions"
+"$FLEET" down >/dev/null 2>&1; sleep 0.3
+FLEET_DECISIONS_WINDOW=off "$FLEET" up --no-supervisor --no-pairs alpha >/dev/null 2>&1; sleep 0.5
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/dec_wins_off.out" 2>/dev/null
+lacks "FLEET_DECISIONS_WINDOW=off skips the window" "$TMP/dec_wins_off.out" "decisions"
+"$FLEET" down >/dev/null 2>&1; sleep 0.3
+
 # --- summary ----------------------------------------------------------------
 printf '\n%s\n' "------------------------------------------"
 printf 'smoke: %d passed, %d failed\n' "$pass" "$fail"
