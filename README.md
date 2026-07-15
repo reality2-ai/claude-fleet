@@ -382,6 +382,9 @@ fleet conflicts              # files claimed by more than one live session
 fleet logs [id]              # aggregate event log, or one member's summary
 fleet inbox [id]             # a member's message mailbox (audit trail)
 fleet remote [id]            # remote-control status of member(s)
+fleet doctor [--quiet]       # self-check the oversight wire from ground truth
+                             #   (state docs, mailboxes, watchdogs, throttling)
+fleet tokens                 # per-member live context size vs the ceiling (needs a live window)
 
 # lifecycle (tmux)
 fleet up [--no-supervisor] [--no-pairs] [id]
@@ -389,6 +392,7 @@ fleet up [--no-supervisor] [--no-pairs] [id]
 fleet down [id]                   # stop the suite / one member
 fleet restart <id>                # restart one member
 fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]
+fleet compact [--force] <id> | --all  # inject /compact to bound a heavy member's context
 fleet init-resume [--force] [id]  # scaffold repo-local RESUME.md handoff file(s)
 fleet pair [--provider claude|codex] [--id companion-id] [id]
 fleet pairs [id]                    # logical pair view: base + provider lanes
@@ -726,6 +730,41 @@ Two principles worth stating outright:
 > change **one toggle from off** (hooks are read per-invocation, so a bad one is
 > instantly disable-able); do invasive surgery (bus changes) only in a **calm,
 > paused** window, never mid-flight.
+
+## Design notes & deeper reading
+
+The shipped tool is the bash/tmux CLI documented above. Alongside it the repo keeps
+its *thinking* — the doctrine it operates under and the design directions it has
+explored. These are reading material, not shipped features (the ADRs are explicitly
+recorded as explored directions, *not* commitments to build):
+
+**Working doctrine** (project-agnostic, drop-in prompts):
+
+- [`docs/FLEET-WORKING-PRINCIPLES.md`](docs/FLEET-WORKING-PRINCIPLES.md) — the operating
+  principles: spec-first, secure-over-calm, GitHub-as-failsafe, the permission model, roles.
+- [`docs/THURISAZ-WORKING-MODE.md`](docs/THURISAZ-WORKING-MODE.md) — the self-improving
+  conjecture → cross-agent refutation → memory loop.
+- [`docs/REFUTATION-WORKING-PROCESS.md`](docs/REFUTATION-WORKING-PROCESS.md) — the same
+  discipline distilled into copy-pasteable prompt layers for any project's agents.
+- [`docs/grow-strong-ideas.md`](docs/grow-strong-ideas.md) — the conjecture-and-refutation
+  method itself: how a claim earns confidence by surviving non-trivial attacks (the tool's refuter stance).
+
+**Design explorations** (recorded directions — not commitments to build):
+
+- [`docs/ADR-001-r2-native-fleet.md`](docs/ADR-001-r2-native-fleet.md) — the north-star of a
+  fully self-hosting fleet, and the one concrete near-term move it endorses.
+- [`docs/ADR-002-multibrained-entity-fleet.md`](docs/ADR-002-multibrained-entity-fleet.md) — reframing
+  a member as an *entity* that can mount multiple provider "brains" behind one identity.
+- [`docs/ADR-003-claude-bg-adapter.md`](docs/ADR-003-claude-bg-adapter.md) — delivering turns
+  programmatically (background sessions) while keeping the unified tmux view.
+- [`docs/FACULTY-ADAPTER-CONTRACT.md`](docs/FACULTY-ADAPTER-CONTRACT.md) — the single interface a
+  provider implements to be mountable as a brain, collapsing `claude|codex` branches into one contract.
+- [`docs/ENTITY-MEMORY.md`](docs/ENTITY-MEMORY.md) — how an entity's brains share what they
+  know accurately *and* cheaply (the accuracy-vs-token-cost tension).
+- [`docs/R2-FLEET-CONTROL-HIVE.md`](docs/R2-FLEET-CONTROL-HIVE.md) — the intended provider-neutral
+  mobile/web control shape for mixed Claude/Codex fleets.
+- [`docs/R2-FLEET-RUNTIME-SCOPE.md`](docs/R2-FLEET-RUNTIME-SCOPE.md) — a scoped fleet-native
+  runtime (`r2-fleetd`) built around agent semantics rather than terminal panes.
 
 ## Direction (roadmap, not shipped)
 
