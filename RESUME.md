@@ -1,10 +1,28 @@
 # RESUME — claude-fleet repo expert (fleet-fix2 lane)
 
 ## Current objective
-The independent-verification follow-up for the **`fleet ask` transient-window allocation collision**
-is complete. The commit containing this handoff is branch HEAD directly above unchanged `8ac37cc`
-(run `git log -1` for its exact hash); the production allocation fix remains in `8ac37cc`. No history
-was rewritten and nothing was pushed.
+No implementation work is outstanding. The **`fleet ask` live-checkout isolation defect** and the
+**transient-window allocation collision** are both fixed and committed. No history was rewritten and
+nothing was pushed.
+
+## Re-verification (2026-07-15) — isolation defect already fixed; NO new fix was warranted
+A tasking arrived on 2026-07-15 to "fix the confirmed `fleet ask` live-checkout isolation defect".
+Ground-truth check found the defect **already fixed in committed code**; the tasking premise was
+stale. No code change was made — a fix commit would have been fabricated work. Evidence:
+- `lib/responder.sh` establishes an isolated cwd (detached worktree at HEAD, else empty temp dir) and
+  routes every unrecoverable `mktemp`/`cd` failure to `_isolation_abort` — no live-checkout fallthrough.
+- `lib/provider.sh:179` fails closed: `fleet_agent_headless_answer` returns 3 unless `cwd` names an
+  existing dir, so neither provider can launch onto the caller's live cwd. Claude gets
+  `--safe-mode --permission-mode dontAsk --tools Read,Grep,Glob --disallowedTools Edit,Write,NotebookEdit,Bash`;
+  Codex gets `--cd <isolate> --sandbox read-only --ask-for-approval never`.
+- Regression coverage already exists in `tests/ask-isolation.sh` (sections A/A2/B/C/C2/D).
+- **New check not previously recorded**: `tests/ask-isolation.sh` was run in a throw-away detached
+  worktree at clean `HEAD` (`204cf97`) — **59/59 passed**, proving the fix holds in committed state
+  alone and is not masked by the dirty `bin/fleet-watchdog.sh` / `lib/comms.sh` work.
+- Bypass hunt found none: `lib/faculty.sh:99` routes *all* adapters (`cli-tmux|*`) through
+  `fleet_agent_headless_answer`, and `lib/faculty-bg.sh` — which launches provider bins directly —
+  is not reachable from the ask path (`bin/fleet:1975` → `responder.sh` only).
+- Re-run at working HEAD: `tests/ask-isolation.sh` 59/59, `tests/smoke.sh` 93/93, `tests/faculty.sh` 99/99.
 
 ## Last verified state (2026-07-13)
 - Branch: `fix/fleet-robustness-batch`; follow-up parent
@@ -71,7 +89,9 @@ was rewritten and nothing was pushed.
 
 ## Next actions
 - Await explicit authorization before any push.
-- No implementation work remains for this narrow follow-up.
+- No implementation work remains. **Do not re-open the isolation defect without new falsifying
+  evidence** — a 2026-07-15 tasking asserted it was still open; ground truth refuted that. If tasked
+  again, re-run `tests/ask-isolation.sh` at clean HEAD first and challenge the premise before editing.
 
 ## Do-not-assume / risks
 - Do not stage or overwrite the unrelated dirty `bin/fleet-watchdog.sh` and `lib/comms.sh` changes.
