@@ -365,29 +365,50 @@ git -C "$MACREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1
 # otherwise adding this test would make claude-fleet itself unpushable.
 _o='12:34:56'; _n='78:9a:bc'; REALMAC="$_o:$_n"
 
-# $1=desc $2=file content $3=block|pass $4=optional env assignment (VAR=val)
-mac_case() {
+# $1=desc $2=relpath $3=content $4=block|pass $5=optional env assignment (VAR=val)
+path_case() {
   local rc=0
-  printf '%s\n' "$2" > "$MACREPO/f.txt"
+  mkdir -p "$MACREPO/$(dirname "$2")"
+  printf '%s\n' "$3" > "$MACREPO/$2"
   git -C "$MACREPO" add -A >/dev/null 2>&1
   git -C "$MACREPO" commit -qm case >/dev/null 2>&1
-  if [ -n "${4:-}" ]; then
-    env "$4" git -C "$MACREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || rc=$?
+  if [ -n "${5:-}" ]; then
+    env "$5" git -C "$MACREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || rc=$?
   else
     git -C "$MACREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || rc=$?
   fi
-  if [ "$3" = block ]; then
+  if [ "$4" = block ]; then
     if [ "$rc" -ne 0 ]; then ok "$1"; else no "$1"; fi
     git -C "$MACREPO" reset -q --hard HEAD~1    # drop it so the next case starts clean
+    git -C "$MACREPO" clean -qfd                # and drop any file it introduced
   else
     if [ "$rc" -eq 0 ]; then ok "$1"; else no "$1"; fi
   fi
 }
+mac_case() { path_case "$1" f.txt "$2" "$3" "${4:-}"; }
 
 mac_case "a real-looking MAC value BLOCKS the push"        "device = $REALMAC" block
 mac_case "placeholder MACs do NOT block (02/aa:bb:cc/dead:beef/00:00/ff:ff)" \
          "$(printf 'a=02:11:22:33:44:55\nb=aa:bb:cc:dd:ee:ff\nc=de:ad:be:ef:00:01\nd=00:00:00:00:00:00\ne=ff:ff:ff:ff:ff:ff\n')" pass
 mac_case "FLEET_MAC_SCAN=off lets a real MAC through"      "device = $REALMAC" pass FLEET_MAC_SCAN=off
+
+# --- vectors/**.json allowlist: narrow by design -----------------------------
+# The allowlist exempts synthetic KAT vectors from the secret-VALUE scan ONLY. It must NOT
+# blind the filename scan or the MAC scan — otherwise vectors/ becomes a blind spot, which
+# is precisely where a real MAC could hide while looking like test data.
+#
+# The fake KAT secret is assembled at RUNTIME: a literal `<word>": "<16+ chars>` in this file
+# would trip the hook's own secret-assignment pattern and make claude-fleet unpushable.
+# (`_katk` alone is inert — the pattern needs the word followed by :/= and 16+ chars.)
+_katk='device_master_secret'; _katv="$(printf 'a%.0s' $(seq 1 40))"
+FAKEKAT="{\"$_katk\": \"$_katv\"}"
+
+path_case "synthetic KAT secret under vectors/ does NOT block (allowlist works)" \
+          "vectors/kat.json" "$FAKEKAT" pass
+path_case "a REAL MAC under vectors/ STILL blocks (allowlist must not blind the MAC scan)" \
+          "vectors/kat.json" "{\"dev\": \"$REALMAC\"}" block
+path_case "a secret-bearing FILENAME under vectors/ still blocks (filename scan not excluded)" \
+          "vectors/id_rsa" "not-really-a-key" block
 
 # --- summary ----------------------------------------------------------------
 printf '\n%s\n' "------------------------------------------"
