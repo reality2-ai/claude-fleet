@@ -16,7 +16,7 @@ zero='0000000000000000000000000000000000000000'
 findings=""
 
 scan_range() {  # $1 = git rev range or single sha
-  local range="$1" added names
+  local range="$1" added names macs mac_n mac_oui
   # added lines (+ lines) in the range, capped so a huge push can't hang the hook
   added="$(git diff "$range" 2>/dev/null | grep '^+' | grep -v '^+++' | head -50000 || true)"
   names="$(git diff --name-only --diff-filter=AM "$range" 2>/dev/null || true)"
@@ -32,6 +32,35 @@ scan_range() {  # $1 = git rev range or single sha
   printf '%s\n' "$added" | grep -qE 'sk-(ant-)?[A-Za-z0-9_-]{20,}'      && findings+="  • an sk-/sk-ant- API key\n"
   printf '%s\n' "$added" | grep -qiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_\-]{16,}' \
     && findings+="  • a hardcoded secret/token/password assignment\n"
+
+  # 3) MAC-shaped VALUES in added content.
+  #
+  # LESSON (2026-07-15, r2-composer board→MAC inventory). Everything above scans secret
+  # FILENAMES and a handful of token VALUE shapes; the per-repo CI hygiene gates scan
+  # scrubbed TERMS and a codename WORDLIST. None of them matched a MAC-shaped VALUE — which
+  # is exactly how a tracked board→MAC inventory sat on a PUBLIC repo while every gate
+  # reported CLEAN. A wordlist only catches names someone already thought of; a value SHAPE
+  # catches the whole class. Hence this check, and hence it lives HERE: the per-repo CI gate
+  # closes one repo, the pre-push hook closes every repo in the fleet — including the ones
+  # with no CI at all.
+  #
+  # Scope: colon-form MACs only — the observed leak shape. Dash/dotted forms are deliberately
+  # out of scope: they collide with ordinary hex-ish prose and would cost false positives for
+  # no evidence of a real vector. Placeholder/synthetic prefixes are allowed (below), so docs
+  # and tests can still show an example MAC. Toggle the whole check off with FLEET_MAC_SCAN=off.
+  if [[ "${FLEET_MAC_SCAN:-on}" != "off" ]]; then
+    macs="$(printf '%s\n' "$added" \
+      | grep -oiE '\b([0-9a-f]{2}:){5}[0-9a-f]{2}\b' \
+      | grep -viE '^(02:|aa:bb:cc:|de:ad:be:ef|00:00|ff:ff)' \
+      | sort -u || true)"
+    if [[ -n "$macs" ]]; then
+      mac_n="$(printf '%s\n' "$macs" | grep -c . || true)"
+      mac_oui="$(printf '%s\n' "$macs" | head -1 | cut -d: -f1-3)"
+      # Report the OUI (vendor prefix) only — enough to locate the line, without echoing a
+      # device-unique identifier into a terminal/CI log.
+      findings+="  • ${mac_n} real-looking MAC-address value(s) in added lines (first OUI ${mac_oui}:…) — allowed placeholders: 02:/aa:bb:cc:/de:ad:be:ef/00:00../ff:ff..; FLEET_MAC_SCAN=off to skip\n"
+    fi
+  fi
 }
 
 while read -r local_ref local_sha remote_ref remote_sha; do

@@ -341,6 +341,54 @@ command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/dec_wins_off.out
 lacks "FLEET_DECISIONS_WINDOW=off skips the window" "$TMP/dec_wins_off.out" "decisions"
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 
+# --- 11. pre-push MAC-value scan --------------------------------------------
+# Guards the fleet-wide leak class the old scanner missed: a MAC-shaped VALUE.
+# Exercised end-to-end through a real `git push` against a throwaway bare remote,
+# so it tests the hook exactly as git invokes it (stdin refs, not a hand-built range).
+section "11. pre-push MAC-value scan"
+PPHOOK="$ROOT/hooks/git/pre-push"
+assert "pre-push hook parses (bash -n)" bash -n "$PPHOOK"
+
+MACREMOTE="$TMP/macremote.git"; MACREPO="$TMP/macrepo"
+git init -q --bare "$MACREMOTE"
+git init -q "$MACREPO"
+git -C "$MACREPO" config user.email smoke@test; git -C "$MACREPO" config user.name smoke
+git -C "$MACREPO" config commit.gpgsign false
+install -m 755 "$PPHOOK" "$MACREPO/.git/hooks/pre-push"
+git -C "$MACREPO" remote add origin "$MACREMOTE"
+printf 'base\n' > "$MACREPO/f.txt"
+git -C "$MACREPO" add -A >/dev/null 2>&1; git -C "$MACREPO" commit -qm base >/dev/null 2>&1
+git -C "$MACREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1
+
+# A real-looking MAC, assembled at RUNTIME from two halves. Neither half is a
+# 6-octet literal, so THIS FILE never trips the very scanner it is testing —
+# otherwise adding this test would make claude-fleet itself unpushable.
+_o='12:34:56'; _n='78:9a:bc'; REALMAC="$_o:$_n"
+
+# $1=desc $2=file content $3=block|pass $4=optional env assignment (VAR=val)
+mac_case() {
+  local rc=0
+  printf '%s\n' "$2" > "$MACREPO/f.txt"
+  git -C "$MACREPO" add -A >/dev/null 2>&1
+  git -C "$MACREPO" commit -qm case >/dev/null 2>&1
+  if [ -n "${4:-}" ]; then
+    env "$4" git -C "$MACREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || rc=$?
+  else
+    git -C "$MACREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || rc=$?
+  fi
+  if [ "$3" = block ]; then
+    if [ "$rc" -ne 0 ]; then ok "$1"; else no "$1"; fi
+    git -C "$MACREPO" reset -q --hard HEAD~1    # drop it so the next case starts clean
+  else
+    if [ "$rc" -eq 0 ]; then ok "$1"; else no "$1"; fi
+  fi
+}
+
+mac_case "a real-looking MAC value BLOCKS the push"        "device = $REALMAC" block
+mac_case "placeholder MACs do NOT block (02/aa:bb:cc/dead:beef/00:00/ff:ff)" \
+         "$(printf 'a=02:11:22:33:44:55\nb=aa:bb:cc:dd:ee:ff\nc=de:ad:be:ef:00:01\nd=00:00:00:00:00:00\ne=ff:ff:ff:ff:ff:ff\n')" pass
+mac_case "FLEET_MAC_SCAN=off lets a real MAC through"      "device = $REALMAC" pass FLEET_MAC_SCAN=off
+
 # --- summary ----------------------------------------------------------------
 printf '\n%s\n' "------------------------------------------"
 printf 'smoke: %d passed, %d failed\n' "$pass" "$fail"
