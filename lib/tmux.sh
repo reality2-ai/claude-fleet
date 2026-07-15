@@ -184,13 +184,23 @@ fleet_tmux_new_agent_window() {
   # cheap, so erring low only costs a small temp file.
   local max="${FLEET_TMUX_ARG_MAX:-12000}" size argvfile
   size="$(fleet_agent_argv_size "$arr_name")"
+  # ALWAYS target "$FLEET_TMUX_SESSION:" — the trailing colon (an explicit EMPTY window
+  # component) is load-bearing, not cosmetic. A bare "$FLEET_TMUX_SESSION" is parsed by
+  # tmux as a target-WINDOW and resolved by window-NAME match, which PREFIX-matches any
+  # window named like the session — e.g. session `fleet` matches the window `fleet-fix`.
+  # new-window then tries to create AT that window's index and dies with
+  # "create window failed: index N in use", deterministically, for every spawn
+  # (up/dispatch/pair/refute). Live 2026-07-15: `fleet refute` failed with "index 11 in
+  # use" = the fleet-fix window's index; it tracked that window as it moved (12 → 11).
+  # With the empty component tmux resolves session-only and allocates the next unused
+  # index. Same fix as cmd_ask (8ac37cc). See tests/window-alloc.sh.
   if [[ "$size" =~ ^[0-9]+$ && "$max" =~ ^[0-9]+$ && "$size" -gt "$max" ]]; then
     argvfile="$(fleet_write_agent_argv_file "$id" "$arr_name")"
-    fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+    fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "$id" -c "$cwd" \
       -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
       "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "$TOOL_ROOT/lib/run-argv-file.sh" "$argvfile"
   else
-    fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+    fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "$id" -c "$cwd" \
       -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
       "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${argv[@]}"
   fi

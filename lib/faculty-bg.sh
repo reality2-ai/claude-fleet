@@ -136,7 +136,10 @@ fleet_bg_mount() {
   # SKIPS this worker — its controller is the sole, keystroke-free deliverer. Record
   # the real provider so the controller drives claude (-p --resume) or codex (exec resume).
   fleet_state_jq "$id" --arg p "$provider" '.state="running" | .reason=null | .provider=$p | .faculty="claude-bg"' >/dev/null
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+  # "$FLEET_TMUX_SESSION:" — the trailing colon is load-bearing; a bare session name is
+  # resolved by window-NAME match and collides with any window named like the session
+  # ("fleet" → "fleet-fix"). See fleet_tmux_new_agent_window / tests/window-alloc.sh.
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "$id" -c "$cwd" \
     -e "TOOL_ROOT=$TOOL_ROOT" -e "FLEET_WORKSPACE=$WORKSPACE" -e "FLEET_CHILD_ID=$id" \
     -e "FLEET_FACULTY_ADAPTER=claude-bg" -e "FLEET_SKIP_PERMISSIONS=${FLEET_SKIP_PERMISSIONS:-on}" \
     "$TOOL_ROOT/lib/bg-controller.sh" "$id"

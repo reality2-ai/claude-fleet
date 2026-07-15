@@ -49,8 +49,23 @@ fleet_state_ids() {
 }
 
 # Create the doc if absent. fleet_state_ensure <id> <cwd> <managed:true|false>
+# A member id must be a plain name. Rejecting at REGISTRATION is what stops the phantom
+# members observed live (.fleet/state/--help.json, --.json): a flag-like argv token that
+# slips an option parser gets treated as an id and registers a garbage member that then
+# shows up in status/doctor forever. A leading '-' is never a legitimate id (it is always
+# a misparsed flag), and '/' or '..' would escape CHILDSTATE_DIR via fleet_state_path.
+fleet_valid_member_id() {
+  local id="${1:-}"
+  [[ -n "$id" ]] || return 1
+  [[ "$id" != -* ]] || return 1
+  [[ "$id" != *[/$'\n']* ]] || return 1
+  [[ "$id" != "." && "$id" != ".." && "$id" != *..* ]] || return 1
+  return 0
+}
+
 fleet_state_ensure() {
   local id="$1" cwd="$2" managed="${3:-false}"
+  fleet_valid_member_id "$id" || die "invalid member id '$id' (ids cannot be empty, start with '-', or contain '/' or '..')"
   local f; f="$(fleet_state_path "$id")"
   mkdir -p "$CHILDSTATE_DIR"
   [[ -f "$f" ]] && return 0
