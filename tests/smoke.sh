@@ -249,6 +249,34 @@ hasline "refute uses read-only sandbox" "$FLEET_CODEX_STUB_LOG" "read-only"
 has "refute prompt is adversarial" "$FLEET_CODEX_STUB_LOG" "REFUTATION"
 has "refute state records target" "$WS2/.fleet/state/alpha-review.json" "\"refutes\": \"alpha\""
 
+# --- 8b. authority guard: a read-only companion/refuter may NOT run lifecycle
+# commands against its primary/logical pair. Regression for the 2026-07-16
+# incident: supervisor-codex ran `handoff --stop-source supervisor` and stopped
+# the PRIMARY supervisor. Only human root (no FLEET_CHILD_ID) or the primary may.
+section "8b. companion-cannot-kill-primary authority guard"
+printf '{"state":"running","role":"supervisor"}\n'                                  > "$WS2/.fleet/state/gc.json"
+printf '{"state":"running","role":"standby","writer":false,"companion_for":"gc"}\n' > "$WS2/.fleet/state/gc-codex.json"
+: > "$WS2/.fleet/log/fleet.log"
+
+# (1) companion handoff --stop-source against its OWN primary MUST be refused
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=gc-codex "$FLEET" handoff --stop-source gc > "$TMP/guard_handoff.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "companion handoff --stop-source primary EXITS non-zero" || no "companion handoff --stop-source primary EXITS non-zero"
+has  "companion handoff refusal names the reason"        "$TMP/guard_handoff.out" "read-only companion/refuter"
+has  "primary state UNCHANGED after refused handoff"     "$WS2/.fleet/state/gc.json" "\"state\":\"running\""
+lacks "primary was NOT stopped by the refused handoff"   "$WS2/.fleet/state/gc.json" "stopped"
+has  "denial is audited to the fleet log"                "$WS2/.fleet/log/fleet.log" "DENIED handoff"
+
+# (2) same guard on down + restart against the primary
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=gc-codex "$FLEET" down gc > "$TMP/guard_down.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "companion down primary EXITS non-zero" || no "companion down primary EXITS non-zero"
+has  "companion down refusal names the reason" "$TMP/guard_down.out" "read-only companion/refuter"
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=gc-codex "$FLEET" restart gc > "$TMP/guard_restart.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "companion restart primary EXITS non-zero" || no "companion restart primary EXITS non-zero"
+
+# (3) human root (no FLEET_CHILD_ID) is NEVER guard-blocked
+FLEET_WORKSPACE="$WS2" "$FLEET" down gc-codex > "$TMP/guard_human.out" 2>&1
+lacks "human-root lifecycle is not guard-blocked" "$TMP/guard_human.out" "read-only companion/refuter"
+
 # --- 9. forked responder (fleet ask plumbing) -------------------------------
 section "9. forked responder"
 # a stub claude that prints a fixed answer and logs its argv

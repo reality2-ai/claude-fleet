@@ -734,6 +734,7 @@ cmd_up() {
 cmd_down() {
   fleet_load_paths
   local only="${1:-}"
+  _fleet_guard_primary_lifecycle down "$only"
   if [[ -n "$only" ]]; then
     faculty_unmount "$only"
     fleet_state_jq "$only" '.state="stopped" | .reason="fleet down"' >/dev/null || true
@@ -834,6 +835,7 @@ cmd_install_service() {
 cmd_restart() {
   local id="${1:?usage: fleet restart <id>}"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  _fleet_guard_primary_lifecycle restart "$id"
   fleet_restart_child "$id" force
   info "restart: '$id'"
 }
@@ -901,6 +903,40 @@ _fleet_is_readonly_standby() {
   mode="$(fleet_state_get "$id" '.pair_mode' "")"
   writer="$(fleet_state_get "$id" '.writer' "")"
   [[ "$role" == "standby" || "$mode" == "read_only" || "$writer" == "false" ]]
+}
+
+# --- AUTHORITY GUARD: a read-only companion / refuter lane must NOT run
+# lifecycle commands (handoff/failover/down/restart) against its own primary or
+# logical pair. Only human root (no FLEET_CHILD_ID in env) or the authorized
+# primary/writer may. INCIDENT 2026-07-16: supervisor-codex ran
+# `handoff --stop-source supervisor` and stopped the PRIMARY supervisor. The
+# handoff was warranted, but the *mechanism* — a companion killing its primary —
+# must be human-gated, not a peer power. Denies + audits; every other
+# invocation is unchanged. A companion is identified by .companion_for being set
+# (e.g. supervisor-codex has role=supervisor, so the readonly-standby check is
+# NOT sufficient), OR readonly-standby state, OR a *-refute name.
+_fleet_actor_is_readonly_companion() {
+  local a="$1"
+  [[ -n "$a" ]] || return 1
+  [[ -n "$(fleet_state_get "$a" '.companion_for' "")" ]] && return 0
+  _fleet_is_readonly_standby "$a" 2>/dev/null && return 0
+  case "$a" in *-refute|*-codex-refute) return 0 ;; esac
+  return 1
+}
+_fleet_guard_primary_lifecycle() {
+  local cmd="$1" target="${2:-}" actor="${FLEET_CHILD_ID:-}"
+  [[ -z "$actor" ]] && return 0                            # human root — always allowed
+  _fleet_actor_is_readonly_companion "$actor" || return 0  # actor is a primary/writer — allowed
+  local primary base
+  primary="$(fleet_state_get "$actor" '.companion_for' "")"
+  base="${actor%-codex-refute}"; base="${base%-refute}"; base="${base%-codex}"
+  # deny when the target is the actor's primary/logical pair, or the whole suite
+  # (empty target = down/failover all, which includes the primary).
+  if [[ -z "$target" || "$target" == "$primary" || "$target" == "$base" ]]; then
+    fleet_log security "$actor" "DENIED $cmd target='${target:-<suite>}' — read-only companion/refuter may not run lifecycle on its primary/pair (primary='${primary:-$base}')"
+    die "refused: '$actor' is a read-only companion/refuter and may not '$cmd' its primary/logical pair ('${target:-<whole suite>}'). Only human root or the authorized primary can do this. (audit logged)"
+  fi
+  return 0
 }
 
 _fleet_takeover_permission_mode() {
@@ -1456,6 +1492,7 @@ cmd_handoff() {
   done
   [[ -n "$from" ]] || die "usage: fleet handoff [--provider claude|codex] [--stop-source] <from> [to-id]"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  _fleet_guard_primary_lifecycle handoff "$from"
   fleet_has_tmux || die "tmux required for handoff. Run: sudo apt install tmux"
 
   local source_provider; source_provider="$(_fleet_id_provider "$from")"
@@ -1555,6 +1592,12 @@ cmd_failover() {
   done
   _fleet_validate_provider "$provider"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  # failover is a fleet-wide provider-lane coordination action; a read-only
+  # companion/refuter may never initiate it (see _fleet_guard_primary_lifecycle).
+  if [[ -n "${FLEET_CHILD_ID:-}" ]] && _fleet_actor_is_readonly_companion "${FLEET_CHILD_ID}"; then
+    fleet_log security "${FLEET_CHILD_ID}" "DENIED failover — read-only companion/refuter may not run failover"
+    die "refused: read-only companion/refuter '${FLEET_CHILD_ID}' may not run 'failover'. Only human root or the authorized primary can. (audit logged)"
+  fi
   fleet_has_tmux || die "tmux required for failover. Run: sudo apt install tmux"
   fleet_ensure_managed_settings
   fleet_tmux_ensure_session
