@@ -37,7 +37,7 @@ fleet_bg_deliver_turn() {
 #   fleet_bg_drain <to>
 fleet_bg_drain() {
   local to="$1" f sid cwd
-  f="$(fleet_inbox_file "$to")"; [[ -f "$f" ]] || return 0
+  f="$(fleet_inbox_file "$to")" || return 0; [[ -f "$f" ]] || return 0
   sid="$(fleet_state_get "$to" '.session_id' "")"
   [[ -n "$sid" && "$sid" != "null" ]] || return 1            # no durable session yet → keep queued
   cwd="$(fleet_state_get "$to" '.cwd' "$PWD")"
@@ -95,7 +95,7 @@ fleet_codex_deliver_turn() {
 
 # Any undelivered mail queued for <to>?  (controller uses this to prioritise mail.)
 fleet_bg_has_mail() {
-  local f; f="$(fleet_inbox_file "$1")"; [[ -f "$f" ]] || return 1
+  local f; f="$(fleet_inbox_file "$1")" || return 1; [[ -f "$f" ]] || return 1
   local n; n="$(jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0)"
   [[ "${n:-0}" -gt 0 ]]
 }
@@ -119,6 +119,11 @@ fleet_bg_start_session() {
 #   fleet_bg_mount <id>
 fleet_bg_mount() {
   local id="$1"
+  # This path spawns its window with a DIRECT `fleet_tmux new-window` (below) rather
+  # than via fleet_tmux_new_agent_window, so it does not inherit that function's guard.
+  # Validate here explicitly instead of relying on fleet_state_ensure further down —
+  # ordering, not intent, is what kept this safe before.
+  fleet_require_member_id "$id"
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && { warn "child '$id' already has a window"; return 0; }
   local rel cwd; rel="$(fleet_child_get "$id" cwd ".")"
@@ -154,6 +159,11 @@ fleet_bg_mount() {
 #   fleet_bg_unmount <id>
 fleet_bg_unmount() {
   local id="$1"
+  # The id is interpolated into a pkill -f REGEX below, so it must be a plain name
+  # BEFORE it gets there: '.*' would make the "anchored" pattern match every
+  # bg-controller and reap the whole fleet. fleet_valid_member_id's allowlist is what
+  # makes the anchoring claim above actually true (no regex metacharacters survive it).
+  fleet_valid_member_id "$id" || { warn "refusing to unmount invalid member id '$id'"; return 1; }
   declare -F fleet_tmux_stop_child >/dev/null 2>&1 && fleet_tmux_stop_child "$id" 2>/dev/null || true
   pkill -f "bg-controller\.sh ${id}\$" 2>/dev/null || true
 }

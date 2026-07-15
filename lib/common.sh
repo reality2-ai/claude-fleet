@@ -98,6 +98,64 @@ fleet_realpath() {
   else printf '%s/%s\n' "$( cd "$(dirname "$p")" 2>/dev/null && pwd )" "$(basename "$p")"; fi
 }
 
+# --- member ids and the paths derived from them ------------------------------
+# A member id must be a PLAIN NAME. It is not just a label: it is interpolated
+# into filesystem paths (state/<id>.json, run/<id>.exit, inbox/<id>.jsonl,
+# memory/<id>.md) and used as a tmux window name. Anything that is not a plain
+# name is therefore a boundary violation, not a cosmetic one:
+#   * a leading '-' is never a legitimate id — it is always a misparsed flag, and
+#     it is what registered the phantom members seen live (.fleet/state/--help.json,
+#     .fleet/state/--.json), which then haunt status/doctor forever;
+#   * '/' or '..' ESCAPE the state dir. Verified 2026-07-15 against 0ab4a0e:
+#     `fleet_state_jq '../victim' '.state="pwned"'` rewrote a state doc OUTSIDE
+#     CHILDSTATE_DIR, and `rm -f "$RUN_DIR/../keepme.exit"` deleted an out-of-tree
+#     file — because validation lived ONLY in fleet_state_ensure, which an already
+#     existing file short-circuits and which the launch path reached only AFTER
+#     creating/destroying artifacts.
+# This is an ALLOWLIST on purpose. A denylist is the wrong shape here, because an id
+# is not only a path component: it is also interpolated into a tmux window name and
+# into a `pkill -f` REGEX (fleet_bg_unmount, lib/faculty-bg.sh). A denylist that only
+# bans '/' and '..' still admits '.*', which silently turns that "anchored" pattern
+# into a match-everything regex and reaps EVERY controller in the fleet — so the
+# charset, not the path, is the real boundary.
+# Verified 2026-07-15 against all 66 live member ids on this host: every one of them
+# ('core', 'android-codex', 'core-codex-claude-refute', 'a_b.c') fits this allowlist,
+# and the only id that does not is the phantom '--help' this guard exists to reject.
+fleet_valid_member_id() {
+  local id="${1:-}"
+  [[ -n "$id" ]] || return 1
+  [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  # '-' leads a misparsed flag, never a real id ('--help' was live in .fleet/state).
+  [[ "$id" != -* ]] || return 1
+  # '.'/'..' name a directory rather than a member. ('/' is already excluded above, so
+  # traversal is impossible by construction; these stay as belt-and-braces.)
+  [[ "$id" != "." && "$id" != ".." && "$id" != *..* ]] || return 1
+  return 0
+}
+
+# The SINGLE choke point for id -> path. Prints "<dir>/<id><suffix>"; for an id
+# that is not a plain name it prints NOTHING and returns 1, so every caller fails
+# CLOSED rather than operating on a caller-chosen path. Callers must check:
+#   f="$(fleet_member_path "$dir" "$id" .json)" || return 1
+# (`local f; f="$(...)"` preserves the status; `local f="$(...)"` does NOT.)
+#   fleet_member_path <dir> <id> <suffix>
+fleet_member_path() {
+  local dir="${1:-}" id="${2:-}" suffix="${3:-}"
+  fleet_valid_member_id "$id" || return 1
+  printf '%s/%s%s\n' "$dir" "$id" "$suffix"
+}
+
+# run/<id><suffix> — the .session / .exit / .argv run files. Validated.
+fleet_run_path() { fleet_member_path "${RUN_DIR:-}" "${1:-}" "${2:-}"; }
+
+# Refuse an invalid id AT A USER-FACING BOUNDARY, with one consistent diagnostic.
+# Use this where an id arrives from argv and a clear error beats a silent skip; the
+# path primitives above stay the last line of defence for everything else.
+fleet_require_member_id() {
+  fleet_valid_member_id "${1:-}" \
+    || die "invalid member id '${1:-}': ids must match [A-Za-z0-9._-]+, and cannot be empty, start with '-', or be '.'/'..'"
+}
+
 # --- jq guard ----------------------------------------------------------------
 fleet_require_jq() {
   command -v jq >/dev/null 2>&1 || die "jq is required but not found on PATH."

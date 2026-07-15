@@ -11,7 +11,10 @@
 FLEET_IDLE_SECS="${FLEET_IDLE_SECS:-300}"    # no transcript write in 5m → idle
 FLEET_DEAD_SECS="${FLEET_DEAD_SECS:-1800}"   # 30m → presumed dead
 
-fleet_state_path() { printf '%s/%s.json\n' "$CHILDSTATE_DIR" "$1"; }
+# state/<id>.json — validated via the central choke point (lib/common.sh), so an id
+# that is not a plain name yields NO path and a non-zero status instead of one that
+# escapes CHILDSTATE_DIR. Every caller below fails closed on that status.
+fleet_state_path() { fleet_member_path "${CHILDSTATE_DIR:-}" "${1:-}" .json; }
 
 fleet_state_ids() {
   # Ground-truth union: every id with a state doc on disk, UNIONED with every id
@@ -49,24 +52,15 @@ fleet_state_ids() {
 }
 
 # Create the doc if absent. fleet_state_ensure <id> <cwd> <managed:true|false>
-# A member id must be a plain name. Rejecting at REGISTRATION is what stops the phantom
-# members observed live (.fleet/state/--help.json, --.json): a flag-like argv token that
-# slips an option parser gets treated as an id and registers a garbage member that then
-# shows up in status/doctor forever. A leading '-' is never a legitimate id (it is always
-# a misparsed flag), and '/' or '..' would escape CHILDSTATE_DIR via fleet_state_path.
-fleet_valid_member_id() {
-  local id="${1:-}"
-  [[ -n "$id" ]] || return 1
-  [[ "$id" != -* ]] || return 1
-  [[ "$id" != *[/$'\n']* ]] || return 1
-  [[ "$id" != "." && "$id" != ".." && "$id" != *..* ]] || return 1
-  return 0
-}
-
+# Rejecting at REGISTRATION stops the phantom members observed live
+# (.fleet/state/--help.json, --.json). NB: this is no longer the ONLY guard —
+# registration is not a boundary an existing file has to cross, so the real
+# choke point is fleet_member_path (lib/common.sh). fleet_valid_member_id is
+# called here only to `die` with a helpful message on the registration path.
 fleet_state_ensure() {
   local id="$1" cwd="$2" managed="${3:-false}"
-  fleet_valid_member_id "$id" || die "invalid member id '$id' (ids cannot be empty, start with '-', or contain '/' or '..')"
-  local f; f="$(fleet_state_path "$id")"
+  fleet_require_member_id "$id"
+  local f; f="$(fleet_state_path "$id")" || return 1
   mkdir -p "$CHILDSTATE_DIR"
   [[ -f "$f" ]] && return 0
   jq -n --arg id "$id" --arg cwd "$cwd" --argjson managed "$managed" '
@@ -80,7 +74,11 @@ fleet_state_ensure() {
 #   fleet_state_jq <id> [jq-args...] <program>
 fleet_state_jq() {
   local id="$1"; shift
-  local f tmp; f="$(fleet_state_path "$id")"
+  # Fail CLOSED before touching the filesystem. This is the hole the registration
+  # guard did NOT cover: an EXISTING file short-circuits fleet_state_ensure, so
+  # '../victim' never reached the only validator and jq rewrote a doc outside
+  # CHILDSTATE_DIR (reproduced against 0ab4a0e; tests/window-alloc.sh section E).
+  local f tmp; f="$(fleet_state_path "$id")" || return 1
   [[ -f "$f" ]] || fleet_state_ensure "$id" "$PWD" false
   local -a a=( "$@" ); local n=${#a[@]}
   (( n >= 1 )) || return 1
@@ -96,7 +94,10 @@ fleet_state_jq() {
 # Read a single field. fleet_state_get <id> <jq-path> [default]
 fleet_state_get() {
   local id="$1" path="$2" def="${3:-}"
-  local f; f="$(fleet_state_path "$id")"
+  # Read path: an invalid id is indistinguishable from an absent doc, so answer the
+  # default rather than `die` — a bad id in the registry must not take `fleet status`
+  # down with it. Fail closed, stay honest, keep the caller alive.
+  local f; f="$(fleet_state_path "$id")" || { printf '%s\n' "$def"; return; }
   [[ -f "$f" ]] || { printf '%s\n' "$def"; return; }
   local v; v="$(jq -r "$path // empty" "$f" 2>/dev/null)"
   printf '%s\n' "${v:-$def}"
@@ -186,8 +187,10 @@ fleet_last_activity() {
   printf '%s\n' "$best"
 }
 
-# Path to a child's optional activity journal (gated behind FLEET_JOURNAL).
-fleet_journal_path() { printf '%s/%s.journal\n' "$CHILDSTATE_DIR" "$1"; }
+# Path to a child's optional activity journal (gated behind FLEET_JOURNAL). Validated:
+# an unguarded '../../escaped' here wrote a journal outside the state dir (verified
+# against 0ab4a0e).
+fleet_journal_path() { fleet_member_path "${CHILDSTATE_DIR:-}" "${1:-}" .journal; }
 
 # Append one activity line to a child's journal, then tail-truncate it to the
 # last FLEET_JOURNAL_LINES (default 200) so it can't grow unbounded. No-op unless
@@ -197,7 +200,7 @@ fleet_journal_path() { printf '%s/%s.journal\n' "$CHILDSTATE_DIR" "$1"; }
 fleet_journal_append() {
   [[ "${FLEET_JOURNAL:-off}" != "off" ]] || return 0
   local id="$1"; shift || true
-  local j; j="$(fleet_journal_path "$id")"
+  local j; j="$(fleet_journal_path "$id")" || return 0   # invalid id: write nothing
   mkdir -p "$CHILDSTATE_DIR" 2>/dev/null || true
   printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$j" 2>/dev/null || return 0
   local max="${FLEET_JOURNAL_LINES:-200}"
@@ -221,7 +224,10 @@ fleet_reconcile() {
   local id
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
-    local f; f="$(fleet_state_path "$id")"
+    # ids here come from live tmux WINDOW NAMES, not from our own state dir — a window
+    # named '../evil' must not be able to steer reconcile into creating a doc outside
+    # CHILDSTATE_DIR. Skip anything that is not a plain name.
+    local f; f="$(fleet_state_path "$id")" || continue
     if [[ ! -f "$f" ]]; then
       # Recreate the missing doc from the manifest's cwd (best-effort) + the
       # session id the SessionStart hook recorded under run/<id>.session.
@@ -233,7 +239,8 @@ fleet_reconcile() {
         cwd="${WORKSPACE:-$PWD}"
       fi
       fleet_state_ensure "$id" "$cwd" true
-      sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
+      local sf; sf="$(fleet_run_path "$id" .session)" || continue
+      sid=""; [[ -f "$sf" ]] && sid="$(<"$sf")"
       if [[ -n "$sid" ]]; then
         fleet_state_jq "$id" --arg s "$sid" '.session_id = (.session_id // $s)' >/dev/null 2>&1 || true
       fi
@@ -256,7 +263,7 @@ fleet_reconcile_unstick_ready() {
   local ready; ready="$(fleet_state_get "$id" '.ready' false)"
   [[ "$ready" == "true" ]] && return 0
   # Only consider unsticking when the registry believes there is undelivered mail.
-  local inbox n; inbox="$(fleet_inbox_file "$id" 2>/dev/null)"
+  local inbox n; inbox="$(fleet_inbox_file "$id" 2>/dev/null)" || inbox=""
   [[ -n "$inbox" && -f "$inbox" ]] || return 0
   n="$(jq -s '[.[]|select(.delivered==false)]|length' "$inbox" 2>/dev/null || echo 0)"
   [[ "${n:-0}" -gt 0 ]] || return 0

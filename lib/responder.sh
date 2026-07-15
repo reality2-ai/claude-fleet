@@ -95,7 +95,7 @@ fi
 # Resume an off-thread target context when the provider supports it. Claude uses
 # a real fork. Codex uses a headless resumed run, which preserves context without
 # typing the question into the live tmux window.
-sid=""; [[ -f "$RUN_DIR/$to.session" ]] && sid="$(<"$RUN_DIR/$to.session")"
+sid=""; _to_sf="$(fleet_run_path "$to" .session)" && [[ -f "$_to_sf" ]] && sid="$(<"$_to_sf")"
 provider="$(fleet_state_get "$to" '.provider' "")"
 [[ -z "$provider" && "$to" != "supervisor" ]] && provider="$(fleet_provider_for_child "$to")"
 [[ -z "$provider" ]] && provider="$(fleet_default_provider)"

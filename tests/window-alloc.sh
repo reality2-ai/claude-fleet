@@ -105,6 +105,11 @@ build
 TMP="$(mktemp -d)"; trap 'cleanup; rm -rf "$TMP"' EXIT
 export FLEET_TMUX_SOCKET="$SOCK" FLEET_TMUX_SESSION="$SESSION"
 export TOOL_ROOT="$ROOT" RUN_DIR="$TMP/run"; mkdir -p "$RUN_DIR"
+# common.sh FIRST: tmux.sh's spawn guard calls fleet_valid_member_id/fleet_run_path/warn,
+# which live there. (Production always sources common first — bin/fleet, the hooks, and
+# bg-controller all do; tmux.sh itself sources nothing.)
+# shellcheck source=../lib/common.sh
+source "$ROOT/lib/common.sh"
 # shellcheck source=../lib/tmux.sh
 source "$ROOT/lib/tmux.sh"
 STUB="$TMP/stub"; printf '#!/usr/bin/env bash\nexec sleep 300\n' > "$STUB"; chmod +x "$STUB"
@@ -130,8 +135,6 @@ fi
 section "D. flag-like member ids are rejected at registration (phantom-member guard)"
 # Live .fleet/state held --help.json and --.json: misparsed flags registered as members.
 export CHILDSTATE_DIR="$TMP/state"; mkdir -p "$CHILDSTATE_DIR"
-# shellcheck source=../lib/common.sh
-source "$ROOT/lib/common.sh" 2>/dev/null || true
 # shellcheck source=../lib/registry.sh
 source "$ROOT/lib/registry.sh"
 for bad in "--help" "-x" "--" "" "a/b" ".." "x/../y"; do
@@ -151,6 +154,183 @@ else
   ok "fleet_state_ensure refuses a flag-like id"
 fi
 if [[ ! -f "$CHILDSTATE_DIR/--help.json" ]]; then ok "no phantom state doc written"; else no "phantom --help.json was created"; fi
+
+section "E. an invalid id fails CLOSED at every path/boundary primitive"
+# GROUND TRUTH (all reproduced against 0ab4a0e on 2026-07-15, before this fix):
+#   fleet_state_jq '../victim' '.state="pwned"'      -> rewrote a doc OUTSIDE CHILDSTATE_DIR
+#   fleet_journal_append '../../escaped'             -> wrote a journal outside the state dir
+#   fleet_write_agent_argv_file '../../pwned'        -> wrote an argv file outside RUN_DIR
+#   rm -f "$RUN_DIR/../keepme.exit"  (start_child)   -> DELETED an out-of-tree file
+# Section D proves REGISTRATION rejects a bad id. That was never sufficient: registration
+# is not a boundary an ALREADY-EXISTING file has to cross (fleet_state_jq short-circuits
+# fleet_state_ensure when the doc exists), and the launch path reached registration only
+# AFTER creating/destroying artifacts. So E asserts on the ARTIFACTS, not on the validator.
+E_TMP="$TMP/e"; mkdir -p "$E_TMP"
+export WORKSPACE="$E_TMP/ws"; mkdir -p "$WORKSPACE"
+export STATE_DIR="$E_TMP/.fleet"
+# CHILDSTATE_DIR one level DOWN, so '../victim' names a real sibling doc — the exact
+# shape of the reported falsifier. A test rooted at the top of the tree cannot see this.
+export CHILDSTATE_DIR="$STATE_DIR/state/subdir" RUN_DIR="$E_TMP/run"
+export LOG_FILE="$STATE_DIR/log/fleet.log"
+mkdir -p "$CHILDSTATE_DIR" "$RUN_DIR" "$STATE_DIR/inbox" "$(dirname "$LOG_FILE")"
+# The libs fleet_tmux_start_child resolves at call time (fleet_child_get, provider
+# lookup, fleet_peer_primer, fleet_enqueue). Without these, start_child aborts on an
+# unbound `primer` long before it reaches the `rm -f` E6 is about — i.e. E6 would pass
+# against the BROKEN code for the wrong reason. Verified: with them sourced, E6 fails
+# against 0ab4a0e ("RESULT: DELETED") and passes here.
+# shellcheck disable=SC1091
+for _lib in manifest provider comms transport faculty; do source "$ROOT/lib/$_lib.sh"; done
+
+VICTIM="$STATE_DIR/state/victim.json"
+printf '{"id":"victim","state":"running","secret":"ORIGINAL"}\n' > "$VICTIM"
+
+# E1 — the falsifier itself: an existing doc outside CHILDSTATE_DIR must be untouchable.
+fleet_state_jq '../victim' '.state="pwned" | .secret="MUTATED"' >/dev/null 2>&1
+if grep -q 'ORIGINAL' "$VICTIM" && ! grep -q 'MUTATED' "$VICTIM"; then
+  ok "fleet_state_jq '../victim' cannot mutate a state doc outside CHILDSTATE_DIR"
+else
+  no "fleet_state_jq '../victim' MUTATED an out-of-tree state doc: $(cat "$VICTIM")"
+fi
+if fleet_state_jq '../victim' '.x=1' >/dev/null 2>&1; then
+  no "fleet_state_jq returned success for an invalid id"
+else
+  ok "fleet_state_jq reports failure for an invalid id"
+fi
+
+# E2 — the path primitives print nothing and fail, rather than yielding an escaping path.
+for bad in "../victim" "a/b" "--help" ".." ""; do
+  if p="$(fleet_state_path "$bad" 2>/dev/null)"; then
+    no "fleet_state_path accepted '$bad' -> $p"
+  elif [[ -n "$p" ]]; then
+    no "fleet_state_path printed a path for '$bad' despite failing: $p"
+  else
+    ok "fleet_state_path refuses '${bad:-<empty>}' (no path, non-zero)"
+  fi
+done
+
+# E3 — journal must not escape the state dir.
+FLEET_JOURNAL=on fleet_journal_append '../../escaped' "INJECTED" 2>/dev/null || true
+if [[ -e "$STATE_DIR/escaped.journal" || -e "$E_TMP/escaped.journal" ]]; then
+  no "fleet_journal_append escaped the state dir"
+else
+  ok "fleet_journal_append cannot escape the state dir"
+fi
+
+# E4 — read primitives answer the default instead of reading an out-of-tree file.
+got="$(fleet_state_get '../victim' '.secret' 'DEFAULT')"
+if [[ "$got" == "DEFAULT" ]]; then ok "fleet_state_get returns the default for an invalid id"
+else no "fleet_state_get read an out-of-tree doc (got '$got')"; fi
+
+# E5 — run-file paths cannot escape RUN_DIR, and the argv writer creates nothing.
+declare -a eargs=("$STUB")
+fleet_write_agent_argv_file '../../pwned' eargs >/dev/null 2>&1 || true
+if [[ -e "$E_TMP/pwned.argv" || -e "$TMP/pwned.argv" ]]; then
+  no "fleet_write_agent_argv_file escaped RUN_DIR"
+else
+  ok "fleet_write_agent_argv_file cannot escape RUN_DIR"
+fi
+if fleet_run_path '../../pwned' .argv >/dev/null 2>&1; then no "fleet_run_path accepted a traversal id"
+else ok "fleet_run_path refuses a traversal id"; fi
+
+# E6 — the launch path must not DESTROY an out-of-tree file. This is the ORDERING bug,
+# and it is the sharpest one: against 0ab4a0e this call printed "invalid member id
+# '../keepme'" AND deleted the file anyway — it refused the id only at
+# fleet_state_ensure, long after `rm -f "$RUN_DIR/$id.exit"` had already run. Rejecting
+# an id is worthless if the artifacts are gone by the time you reject it.
+printf 'PRECIOUS\n' > "$E_TMP/keepme.exit"
+( fleet_tmux_start_child '../keepme' ) >/dev/null 2>&1 || true
+if [[ -f "$E_TMP/keepme.exit" ]] && grep -q PRECIOUS "$E_TMP/keepme.exit"; then
+  ok "fleet_tmux_start_child does not rm an out-of-tree file before validating"
+else
+  no "fleet_tmux_start_child DELETED an out-of-tree file via '../keepme'"
+fi
+
+# E7 — no window is ever created for an invalid id (the artifact boundary).
+declare -a wargs=("$STUB")
+fleet_tmux_new_agent_window '../evil' "$TMP" "$TMP/exit" claude wargs >/dev/null 2>&1
+rc=$?
+if [[ "$rc" -ne 0 ]]; then ok "fleet_tmux_new_agent_window refuses an invalid id (rc=$rc)"
+else no "fleet_tmux_new_agent_window accepted an invalid id"; fi
+if tm list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null | grep -q 'evil'; then
+  no "a window was created for an invalid id"
+else
+  ok "no window exists for an invalid id"
+fi
+
+# E8 — mail: --from/--to are argv-supplied, so the inbox writer must fail closed.
+# shellcheck source=../lib/comms.sh
+source "$ROOT/lib/comms.sh" 2>/dev/null || true
+if declare -F fleet_enqueue >/dev/null 2>&1; then
+  fleet_enqueue '../../mailbox' 'attacker' 'payload' 1 msg true >/dev/null 2>&1 || true
+  if [[ -e "$STATE_DIR/mailbox.jsonl" || -e "$E_TMP/mailbox.jsonl" ]]; then
+    no "fleet_enqueue wrote an inbox outside STATE_DIR/inbox"
+  else
+    ok "fleet_enqueue cannot write an inbox outside STATE_DIR/inbox"
+  fi
+fi
+
+# E9 — the charset is the boundary, not just the path. An id also becomes a tmux window
+# name and a `pkill -f` REGEX (fleet_bg_unmount), where '.*' turns the supposedly
+# anchored pattern into match-everything and reaps every controller in the fleet. A
+# denylist that only bans '/' and '..' lets all of these through.
+for bad in ".*" "a*b" "x;y" 'a$b' 'a b' 'a|b' '`id`' '$(id)' "a'b" 'a"b' "a&b" "-x" "a
+b"; do
+  if fleet_valid_member_id "$bad"; then
+    no "id '$bad' should be rejected by the allowlist but was accepted"
+  else
+    ok "id '$(printf '%q' "$bad")' rejected by the allowlist"
+  fi
+done
+
+# E10 — REAL ids must still work. These are live member-id shapes taken from the running
+# fleet on 2026-07-15; if the allowlist ever rejects one of these it is too tight.
+for good in "core" "supervisor" "android-codex" "core-codex-claude-refute" "api-watchdog" \
+            "composer-merge" "a_b.c" "fleet-fix" "id-hardening" "web2"; do
+  if fleet_valid_member_id "$good"; then ok "live id shape '$good' still accepted"
+  else no "live id shape '$good' was rejected — the allowlist is too tight"; fi
+done
+# and a valid id must still round-trip through the path helpers
+if p="$(fleet_state_path "core")" && [[ "$p" == "$CHILDSTATE_DIR/core.json" ]]; then
+  ok "a valid id still yields its state path"
+else
+  no "a valid id no longer yields its state path (got '${p:-<none>}')"
+fi
+if p="$(fleet_run_path "core" .exit)" && [[ "$p" == "$RUN_DIR/core.exit" ]]; then
+  ok "a valid id still yields its run path"
+else
+  no "a valid id no longer yields its run path (got '${p:-<none>}')"
+fi
+
+# E11 — fail-closed must not become fail-FATAL. bin/fleet runs `set -euo pipefail`, so a
+# BARE `x="$(fleet_inbox_file "$id")"` aborts the entire command the moment the helper
+# starts returning non-zero for a junk id. Live state dirs really do contain such ids —
+# '--help' is in the running fleet right now — so hardening the helper silently killed
+# `fleet doctor` outright (no output, rc=1) until every call site handled the status.
+# That is strictly worse than the traversal being guarded against, and only two unrelated
+# RESUME assertions in smoke.sh caught it. This asserts it directly.
+E11_WS="$TMP/e11ws"
+mkdir -p "$E11_WS/repo" "$E11_WS/.fleet/state" "$E11_WS/.fleet/run" "$E11_WS/.fleet/log" "$TMP/e11home"
+cat > "$E11_WS/.fleet/fleet.toml" <<'TOML'
+[supervisor]
+strategy="one_for_one"
+[[child]]
+id="alpha"
+cwd="repo"
+TOML
+jq -n --arg cwd "$E11_WS/repo" '{id:"alpha",managed:true,provider:"claude",session_id:null,
+  cwd:$cwd,pid:null,state:"running",current_task:null,claims:[],started_at:null,
+  heartbeat:null,reason:null,restarts:[]}' > "$E11_WS/.fleet/state/alpha.json"
+# the phantom, verbatim as it appears in a live state dir
+printf '{"id":"--help","managed":true,"cwd":"/nonexistent","state":"running"}\n' \
+  > "$E11_WS/.fleet/state/--help.json"
+e11_out="$(HOME="$TMP/e11home" FLEET_WORKSPACE="$E11_WS" FLEET_RESUME_CHECK=on \
+           FLEET_TMUX_SOCKET="$SOCK" FLEET_TMUX_SESSION="$SESSION" \
+           "$ROOT/bin/fleet" doctor 2>&1)" || true
+if [[ "$e11_out" == *"missing RESUME.md"* ]]; then
+  ok "doctor still reports real problems alongside a '--help' phantom (no set -e abort)"
+else
+  no "doctor was ABORTED by a phantom id (set -e + failing path helper): ${e11_out:-<no output>}"
+fi
 
 printf '\n----------------------------------------\n'
 printf 'window-alloc: %s%d passed%s, %s%d failed%s\n' "$_grn" "$pass" "$_rst" \

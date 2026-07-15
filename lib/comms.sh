@@ -14,7 +14,11 @@
 # hop+1; the cap refuses sends past it. Configure via [supervisor] max_hops.
 fleet_max_hops() { printf '%s\n' "${FLEET_MAX_HOPS:-${SUP_MAX_HOPS:-6}}"; }
 
-fleet_inbox_file() { printf '%s/inbox/%s.jsonl\n' "$STATE_DIR" "$1"; }
+# inbox/<id>.jsonl — validated via the central choke point (lib/common.sh). This one
+# matters: `fleet send`/`fleet ask` take BOTH the target and `--from` from argv, and
+# --from is chosen by whichever agent is talking, so an unvalidated id here reaches
+# mkdir/append/truncate/mv on a caller-named path. Fails closed (no path, status 1).
+fleet_inbox_file() { fleet_member_path "${STATE_DIR:-}/inbox" "${1:-}" .jsonl; }
 
 # enqueue a message carrying its hop depth and kind (ask|msg|fyi|answer).
 # notify=true (default) → pending injection into the thread; notify=false → stored
@@ -22,7 +26,10 @@ fleet_inbox_file() { printf '%s/inbox/%s.jsonl\n' "$STATE_DIR" "$1"; }
 fleet_enqueue() {
   local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}" notify="${6:-true}" f ts delivered=false
   [[ "$notify" == "false" ]] && delivered=true
-  f="$(fleet_inbox_file "$to")"; mkdir -p "$(dirname "$f")"
+  # The readers below all gate on `[[ -f "$f" ]]`, which absorbs an empty path on its
+  # own; this WRITER cannot — it would mkdir/lock/append relative to $PWD. Fail closed.
+  f="$(fleet_inbox_file "$to")" || { warn "refusing to enqueue mail for invalid member id '$to'"; return 1; }
+  mkdir -p "$(dirname "$f")"
   ts="$(date +%s)"
   exec 9>"$f.lock"; flock 9 2>/dev/null || true
   jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" --argjson hops "$hops" --arg kind "$kind" --argjson delivered "$delivered" \
@@ -345,7 +352,7 @@ fleet_compact() {
 #   fleet_drain_inbox <to> [force]
 fleet_drain_inbox() {
   local to="$1" force="${2:-}" f
-  f="$(fleet_inbox_file "$to")"
+  f="$(fleet_inbox_file "$to")" || return 0
   [[ -f "$f" ]] || return 0
   # claude-bg workers are driven by their own controller (programmatic -p turns); the
   # cli-tmux drain must NOT type into the controller's bash window. Leave mail for it.

@@ -161,8 +161,10 @@ fleet_agent_argv_size() {
 fleet_write_agent_argv_file() {
   local id="$1" arr_name="$2" f
   local -n argv="$arr_name"
+  # Validated run path: an unguarded '../../pwned' here wrote an argv file clean
+  # outside RUN_DIR (verified against 0ab4a0e).
+  f="$(fleet_run_path "$id" .argv)" || return 1
   mkdir -p "$RUN_DIR"
-  f="$RUN_DIR/$id.argv"
   : >"$f"
   local a
   for a in "${argv[@]}"; do
@@ -174,6 +176,10 @@ fleet_write_agent_argv_file() {
 fleet_tmux_new_agent_window() {
   local id="$1" cwd="$2" exitfile="$3" provider="$4" arr_name="$5"
   local -n argv="$arr_name"
+  # The id becomes a tmux WINDOW NAME and an argv filename. Refuse a non-plain id
+  # here, at the artifact boundary — creating the window first and validating later
+  # (which is what the pre-0ab4a0e ordering did) leaves a phantom window behind.
+  fleet_valid_member_id "$id" || { warn "refusing to spawn a window for invalid member id '$id'"; return 1; }
   # Over this argv size, spill to a NUL-delimited file (run-argv-file.sh) instead of
   # passing argv inline — tmux ferries a command to its server over imsg, whose
   # MAX_IMSGSIZE ceiling is 16384 bytes; an inline argv above that dies with tmux's
@@ -217,6 +223,11 @@ fleet_tmux_new_agent_window() {
 # Resumes from run/<id>.session when present, else seeds a fresh session.
 fleet_tmux_start_child() {
   local id="$1"
+  # FIRST, before any run-file path is derived and before the window exists: the old
+  # order reached fleet_state_ensure (the only validator) only AFTER `rm -f
+  # "$RUN_DIR/$id.exit"`, so an id of '../keepme' deleted an out-of-tree file and a
+  # window was already spawned by the time registration refused the id.
+  fleet_require_member_id "$id"
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && { warn "child '$id' already has a window"; return 0; }
 
@@ -228,7 +239,8 @@ fleet_tmux_start_child() {
   pm="$(fleet_child_get "$id" permission_mode "")"
   seed="$(fleet_child_get "$id" seed "")"
   provider="$(fleet_provider_for_child "$id")"
-  sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
+  local sf; sf="$(fleet_run_path "$id" .session)" || return 1
+  sid=""; [[ -f "$sf" ]] && sid="$(<"$sf")"
 
   # prime the worker with its identity, peers, and the mailbox protocol
   if declare -F fleet_peer_primer >/dev/null 2>&1; then
@@ -251,7 +263,8 @@ fleet_tmux_start_child() {
   fleet_agent_build_args agent_args "$provider" "$id" "$name" "$cwd" "$primer" "$prompt" "$sid" "$pm"
 
   mkdir -p "$RUN_DIR"
-  local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"
+  local exitfile; exitfile="$(fleet_run_path "$id" .exit)" || return 1
+  rm -f "$exitfile"
   # -e sets env in the new window (tmux ≥3.0); command + args passed as argv so
   # no shell-quoting of the seed prompt is needed.
   fleet_tmux_new_agent_window "$id" "$cwd" "$exitfile" "$provider" agent_args
@@ -272,6 +285,7 @@ fleet_tmux_stop_child() {
 
 # Read the recorded exit code of a child's last run (empty if none).
 fleet_child_exit_code() {
-  local id="$1" f="$RUN_DIR/$1.exit"
+  local id="$1" f
+  f="$(fleet_run_path "$id" .exit)" || { printf ''; return; }
   [[ -f "$f" ]] && cat "$f" || printf ''
 }
