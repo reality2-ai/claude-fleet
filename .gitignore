@@ -9,3 +9,7 @@
 # .fleet/ = local fleet manifest + worker config; .claude/ = local Claude settings.
 .fleet/
 .claude/
+
+# Python bytecode cache from lib/fleet-safeio.py (never invoked as a module)
+__pycache__/
+*.pyc

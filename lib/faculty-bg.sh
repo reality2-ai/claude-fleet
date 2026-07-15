@@ -158,6 +158,10 @@ fleet_bg_mount() {
 # exact argv (anchored so 'specs' never matches 'specs2'). Idempotent.
 #   fleet_bg_unmount <id>
 # PIDs of running bg-controllers whose argv is EXACTLY [... , <*bg-controller.sh>, <id>].
+# NB: the LIVE reap no longer calls this — fleet_bg_unmount signals via the pidfd helper
+# (lib/fleet-safeio.py `signal`), which does the same argv-identity match AND binds a pidfd
+# so a recycled pid can't be struck. This shell matcher is retained as a read-only
+# diagnostic that tests/window-alloc.sh section F exercises to pin the exact-identity rule.
 # We match by argv IDENTITY via /proc, not by a `pkill -f` regex the id is spliced into.
 # That splice was a real defect (confirmed 2026-07-15 against 6d19957): the allowlist
 # admits '.', and in a `pkill` regex '.' matches ANY char, so the "anchored" pattern
@@ -185,12 +189,20 @@ _fleet_bg_controller_pids() {
 fleet_bg_unmount() {
   local id="$1"
   # Still reject a junk id up front — but note the allowlist is NOT what makes the reap
-  # safe (it admits '.'); the exact argv match in _fleet_bg_controller_pids is.
+  # safe (it admits '.'); the exact argv match is.
   fleet_valid_member_id "$id" || { warn "refusing to unmount invalid member id '$id'"; return 1; }
   declare -F fleet_tmux_stop_child >/dev/null 2>&1 && fleet_tmux_stop_child "$id" 2>/dev/null || true
-  local _pid
-  while IFS= read -r _pid; do
-    [[ -n "$_pid" ]] || continue
-    kill "$_pid" 2>/dev/null || true
-  done < <(_fleet_bg_controller_pids "$id")
+  # Reap the orphaned controller ONLY via the pidfd path (lib/fleet-safeio.py `signal`). It
+  # binds a pidfd to each argv-identity match and RE-VALIDATES the cmdline after binding, so
+  # a pid RECYCLED between discovery and the signal can never be struck — pidfd_send_signal
+  # targets THAT process instance or fails ESRCH, never a reused pid. SIGTERM = 15.
+  #
+  # There is DELIBERATELY no discover-then-`kill` fallback: doing so would reopen the exact
+  # discovery->signal pid-reuse window this path exists to close (a `kill <pid>` on a number
+  # recycled to an unrelated process). When pidfd is unavailable (no python3, non-Linux) we
+  # UNDER-REAP and rely on the tmux window kill above — under-reaping is safe; mis-reaping is
+  # not. This is fail-closed, and documented as the platform boundary (README Prerequisites).
+  if declare -F fleet_safeio_available >/dev/null 2>&1 && fleet_safeio_available && [[ -d /proc ]]; then
+    python3 "$FLEET_SAFEIO" signal 15 "$id" >/dev/null 2>&1 || true
+  fi
 }

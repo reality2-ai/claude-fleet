@@ -82,23 +82,29 @@ fleet_state_jq() {
   # guard did NOT cover: an EXISTING file short-circuits fleet_state_ensure, so
   # '../victim' never reached the only validator and jq rewrote a doc outside
   # CHILDSTATE_DIR (reproduced against 0ab4a0e; tests/window-alloc.sh section E).
-  local f tmp; f="$(fleet_state_path "$id")" || return 1
-  # The tmp+mv WRITE below is already atomic-no-follow (mv replaces a squatted link, its
-  # target never opened for write). The remaining exposure is the `jq ... "$f"` READ,
-  # which would follow a link and leak an out-of-tree file. Refuse a symlinked doc here —
-  # best-effort check-then-open (NOT atomic; a link replanted after this check could still
-  # be read; bounded to pre-planted links, residual recorded in RESUME.md).
-  fleet_path_regular_or_absent "$f" || { warn "refusing state read/write: '$f' is not a regular file"; return 1; }
-  [[ -f "$f" ]] || fleet_state_ensure "$id" "$PWD" false
+  local f; f="$(fleet_state_path "$id")" || return 1
   local -a a=( "$@" ); local n=${#a[@]}
   (( n >= 1 )) || return 1
   local prog="${a[n-1]}"; unset 'a[n-1]'
-  tmp="$f.tmp.$$"
-  if jq "${a[@]}" "$prog" "$f" >"$tmp" 2>/dev/null; then
-    mv "$tmp" "$f"
-  else
-    rm -f "$tmp"; return 1
+  # READ the doc through a fd-bound no-follow open (fleet_safe_read). The open IS the
+  # check — a pre-planted or race-replanted symlink cannot be followed and leak an
+  # out-of-tree doc; a missing primitive FAILS CLOSED (refuse). rc: 0 ok, 4 absent (create
+  # then re-read), 3 symlink/non-regular (refuse), 5 no-primitive (fail closed).
+  local content rc=0
+  content="$(fleet_safe_read "$f")" || rc=$?
+  if (( rc == 4 )); then
+    fleet_state_ensure "$id" "$PWD" false || return 1
+    rc=0; content="$(fleet_safe_read "$f")" || rc=$?
   fi
+  if (( rc != 0 )); then
+    (( rc == 3 )) && warn "refusing state read/write: '$f' is not a regular file"
+    return 1
+  fi
+  # Transform, then REPLACE via the no-follow atomic write (rename drops a squatted link,
+  # refuses a dir/special/foreign dest). jq failure leaves the doc untouched.
+  local out
+  out="$(printf '%s' "$content" | jq "${a[@]}" "$prog" 2>/dev/null)" || return 1
+  printf '%s' "$out" | fleet_safe_write "$f"
 }
 
 # Read a single field. fleet_state_get <id> <jq-path> [default]
@@ -108,12 +114,13 @@ fleet_state_get() {
   # default rather than `die` — a bad id in the registry must not take `fleet status`
   # down with it. Fail closed, stay honest, keep the caller alive.
   local f; f="$(fleet_state_path "$id")" || { printf '%s\n' "$def"; return; }
-  # Best-effort symlink refusal (check-then-open, NOT atomic): never `jq` through a link
-  # (it would read an out-of-tree file the id was never allowed to name). A link here is
-  # treated as absent -> default. Residual TOCTOU on this read is recorded in RESUME.md.
-  [[ -L "$f" ]] && { printf '%s\n' "$def"; return; }
-  [[ -f "$f" ]] || { printf '%s\n' "$def"; return; }
-  local v; v="$(jq -r "$path // empty" "$f" 2>/dev/null)"
+  # Fd-bound no-follow read (fleet_safe_read): never `jq` through a link (that would read
+  # an out-of-tree file the id was never allowed to name). Any non-zero — absent, symlink,
+  # non-regular, or primitive-unavailable — yields the caller's default (fail closed).
+  local content rc=0
+  content="$(fleet_safe_read "$f")" || rc=$?
+  (( rc != 0 )) && { printf '%s\n' "$def"; return; }
+  local v; v="$(printf '%s' "$content" | jq -r "$path // empty" 2>/dev/null)"
   printf '%s\n' "${v:-$def}"
 }
 
@@ -216,15 +223,15 @@ fleet_journal_append() {
   local id="$1"; shift || true
   local j; j="$(fleet_journal_path "$id")" || return 0   # invalid id: write nothing
   mkdir -p "$CHILDSTATE_DIR" 2>/dev/null || true
-  # `>>"$j"` through a symlink would append to an out-of-tree target (cannot truncate).
-  # Best-effort refusal (check-then-open, NOT atomic): a squatted link just disables the
-  # journal (no-op). Journal is best-effort; residual TOCTOU recorded in RESUME.md.
-  fleet_path_regular_or_absent "$j" || return 0
-  printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$j" 2>/dev/null || return 0
+  # Fd-bound no-follow APPEND (fleet_safe_append). A squatted/replanted symlink cannot be
+  # followed; a missing primitive just disables the journal for this call. The journal is
+  # best-effort by design, so every failure path is a quiet no-op (never fatal).
+  printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | fleet_safe_append "$j" 2>/dev/null || return 0
   local max="${FLEET_JOURNAL_LINES:-200}"
-  local n; n="$(wc -l <"$j" 2>/dev/null || echo 0)"
+  local n; n="$(fleet_safe_read "$j" 2>/dev/null | wc -l 2>/dev/null || echo 0)"
   if [[ "$n" =~ ^[0-9]+$ ]] && (( n > max )); then
-    tail -n "$max" "$j" >"$j.tmp" 2>/dev/null && mv "$j.tmp" "$j" 2>/dev/null || rm -f "$j.tmp"
+    # tail-truncate via a no-follow read piped into a no-follow rename write.
+    fleet_safe_read "$j" 2>/dev/null | tail -n "$max" | fleet_safe_write "$j" 2>/dev/null || true
   fi
 }
 

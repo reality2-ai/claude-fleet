@@ -61,12 +61,13 @@ and `fleet` keeps it running.
 | **bash ≥ 4** | the CLI, libs, and hooks are bash | `bash --version` — default on Linux; `brew install bash` on macOS |
 | **jq** | all state / manifest / message handling is JSON | `jq --version` · `sudo apt install jq` / `brew install jq` |
 | **tmux ≥ 3.0** | hosts the sessions; needed for everything except observe-only commands | `tmux -V` · `sudo apt install tmux` / `brew install tmux` |
+| **python3 ≥ 3.6** | fd-bound safe I/O for the mailbox & state store (`lib/fleet-safeio.py`): atomic `O_NOFOLLOW` open/append/rename and the locked enqueue/drain transaction. Without it those paths **fail closed** (refuse), so comms + state writes stop working. pidfd controller-reap additionally needs Linux ≥ 5.3 (python ≥ 3.9); elsewhere the reap under-reaps (window kill only). | `python3 --version` — default on Linux; `brew install python` on macOS |
 | **GitHub CLI** (`gh`) *(optional)* | only for `fleet wizard` (discovers repos under a gh owner) | `gh --version` · https://cli.github.com, then `gh auth login` |
-| **flock** *(optional)* | mailbox locking under concurrent sends; degrades gracefully if absent | part of `util-linux` (already present on most Linux) |
 
 Platform: Linux or macOS. The observe-only commands (`status`, `conflicts`,
 `logs`, `inbox`, `remote`) work with just `bash` + `jq`; lifecycle, comms, and
-remote-control need `tmux`.
+remote-control need `tmux`; the mailbox and state store additionally need
+`python3` (they fail closed without it — see the safe-I/O note above).
 
 > tmux ≥ 3.0 is required because `fleet` uses `tmux new-window -e` to set
 > per-member environment. On macOS, `claude` and `tmux` work, but Apple ships

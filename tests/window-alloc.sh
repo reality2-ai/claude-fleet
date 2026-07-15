@@ -464,6 +464,226 @@ else
 fi
 rm -f "$CHILDSTATE_DIR/$GID.json"
 
+section "H. fd-bound no-follow TRANSACTIONS, identity checks, and data-loss preservation"
+# Sections F+G proved a PRE-PLANTED symlink is refused. This section attacks the residual
+# f9f2947 (and the earlier drafts of this fix) still carried — none closable by a best-effort
+# check-then-open, and each RED against f9f2947:
+#   * enqueue/drain opening the lock+inbox by name (exec 9>>lock, >>inbox, <inbox);
+#   * the drain's TRUNCATING `9>` lock; a lock + repeated by-name opens is NOT a transaction;
+#   * fleet_atomic_write mishandling a dir/special dest (`mv` descends);
+#   * rotate-by-name capturing a decoy swapped in the open->rename window;
+#   * data-loss-as-success: a failed read/parse/restore treated as an empty queue;
+#   * a bg-controller reaped by a pid discovered in an earlier step (pid-reuse window).
+# Deterministic white-box probes (module import + monkeypatch, forced conflicts, a stub
+# helper) accompany the timing-/kernel-dependent behaviours, per the F0 precedent.
+export FLEET_SAFEIO="$ROOT/lib/fleet-safeio.py" FLEET_SAFEIO_QUIET=1
+unset _FLEET_SAFEIO_OK 2>/dev/null || true
+H_TMP="$TMP/h"; mkdir -p "$H_TMP/outside"
+export STATE_DIR="$H_TMP/.fleet" CHILDSTATE_DIR="$H_TMP/.fleet/state" RUN_DIR="$H_TMP/run" LOG_FILE="$H_TMP/.fleet/log/fleet.log"
+mkdir -p "$CHILDSTATE_DIR" "$STATE_DIR/inbox" "$RUN_DIR" "$H_TMP/.fleet/log"
+HID=core
+
+# H0 — the safe primitive must be present, else the hardened paths fail closed and the rest
+# of H would be testing refusal-by-absence, not by no-follow.
+if declare -F fleet_safeio_available >/dev/null 2>&1 && fleet_safeio_available; then
+  ok "fd-bound no-follow primitive (python3 + lib/fleet-safeio.py) is available"
+else
+  no "safe-IO primitive unavailable — hardened mailbox/state paths would fail closed here"
+fi
+
+# --- H1: enqueue is ONE locked no-follow transaction (no shell exec 9>>lock / >>inbox) ------
+if declare -f fleet_enqueue | grep -q 'fleet_safe_enqueue' \
+   && ! declare -f fleet_enqueue | grep -qE 'exec 9>|>>[[:space:]]*"\$f"'; then
+  ok "H1a fleet_enqueue is a fleet_safe_enqueue transaction (no exec 9>>lock / bare >>inbox)"
+else
+  no "H1a fleet_enqueue still opens the lock/inbox by name in shell"
+fi
+# H1b — a symlinked LOCK is refused (O_NOFOLLOW), enqueue fails, victim untouched.
+printf 'PRECIOUS\n' > "$H_TMP/outside/lockv"
+ln -s "$H_TMP/outside/lockv" "$STATE_DIR/inbox/$HID.jsonl.lock"
+if fleet_enqueue "$HID" atk payload 1 msg true >/dev/null 2>&1; then
+  no "H1b enqueue SUCCEEDED through a symlinked lock"
+elif grep -q PRECIOUS "$H_TMP/outside/lockv"; then
+  ok "H1b enqueue refuses a symlinked lock (transaction fails closed, victim intact)"
+else
+  no "H1b enqueue touched the out-of-tree lock victim"
+fi
+rm -f "$STATE_DIR/inbox/$HID.jsonl.lock" "$STATE_DIR/inbox/$HID.jsonl"
+# H1c — a symlinked INBOX is refused, victim untouched. (Clean the .lock the transaction may
+# have created before it hit the symlinked inbox, so later sub-tests start from a clean slate.)
+rm -f "$STATE_DIR/inbox/$HID.jsonl" "$STATE_DIR/inbox/$HID.jsonl.lock"
+printf 'ORIGINAL\n' > "$H_TMP/outside/inboxv"
+ln -s "$H_TMP/outside/inboxv" "$STATE_DIR/inbox/$HID.jsonl"
+fleet_enqueue "$HID" atk '{"pwn":1}' 1 msg true >/dev/null 2>&1 || true
+if grep -q ORIGINAL "$H_TMP/outside/inboxv" && ! grep -q pwn "$H_TMP/outside/inboxv"; then
+  ok "H1c enqueue refuses a symlinked inbox (no append out of tree)"
+else
+  no "H1c enqueue appended through a symlinked inbox"
+fi
+rm -f "$STATE_DIR/inbox/$HID.jsonl" "$STATE_DIR/inbox/$HID.jsonl.lock"
+
+# --- H2: drain uses a no-follow coproc lock + atomic rotate snapshot (no 9>/9>>/<inbox) -----
+if declare -f fleet_drain_inbox | grep -q 'fleet_safe_lock' \
+   && declare -f fleet_drain_inbox | grep -q 'fleet_safe_rotate' \
+   && ! declare -f fleet_drain_inbox | grep -qE 'exec 9>|<"\$f"'; then
+  ok "H2a fleet_drain_inbox holds a no-follow coproc lock + atomic rotate (no exec 9>/<inbox)"
+else
+  no "H2a fleet_drain_inbox still opens the lock/inbox by name (9>/9>>/<\$f)"
+fi
+# H2b — drain-lock symlink: the coproc lock refuses a symlinked "$f.lock" (old `9>` truncated
+# it). Drive drain past its gates with a stub, with a real inbox holding an undelivered line.
+_saved_hw="$(declare -f fleet_tmux_has_window 2>/dev/null || true)"
+fleet_tmux_has_window() { return 0; }
+rm -f "$STATE_DIR/inbox/$HID.jsonl" "$STATE_DIR/inbox/$HID.jsonl.lock"
+printf 'PRECIOUS\n' > "$H_TMP/outside/drainlockv"
+printf '{"from":"x","text":"y","delivered":false}\n' > "$STATE_DIR/inbox/$HID.jsonl"
+ln -s "$H_TMP/outside/drainlockv" "$STATE_DIR/inbox/$HID.jsonl.lock" \
+  || no "H2b setup: could not plant the lock symlink (a stale .lock lingered)"
+fleet_drain_inbox "$HID" force >/dev/null 2>&1 || true
+if [[ -L "$STATE_DIR/inbox/$HID.jsonl.lock" ]] && [[ -s "$H_TMP/outside/drainlockv" ]] && grep -q PRECIOUS "$H_TMP/outside/drainlockv"; then
+  ok "H2b drain refuses a symlinked lock (no follow/truncate of the out-of-tree victim)"
+else
+  no "H2b drain FOLLOWED+TRUNCATED the lock symlink (old 9> defect)"
+fi
+rm -f "$STATE_DIR/inbox/$HID.jsonl" "$STATE_DIR/inbox/$HID.jsonl.lock"
+# H2c — a symlinked inbox is NOT drained-through and is NOT unlinked by name (left in place).
+printf 'TARGET\n' > "$H_TMP/outside/inbox_target"
+ln -s "$H_TMP/outside/inbox_target" "$STATE_DIR/inbox/$HID.jsonl"
+fleet_drain_inbox "$HID" force >/dev/null 2>&1 || true
+if [[ -L "$STATE_DIR/inbox/$HID.jsonl" ]] && grep -q TARGET "$H_TMP/outside/inbox_target"; then
+  ok "H2c drain leaves a symlinked inbox in place (no by-name unlink) and fails closed"
+else
+  no "H2c drain unlinked the public inbox by name or drained through the symlink"
+fi
+[[ -n "$_saved_hw" ]] && eval "$_saved_hw"
+rm -f "$STATE_DIR/inbox/$HID.jsonl"
+
+# --- H3: fleet_atomic_write refuses a directory / special destination (never descends) ------
+H3_DIR="$H_TMP/dest_is_dir"; mkdir -p "$H3_DIR"
+printf 'payload\n' | fleet_atomic_write "$H3_DIR" >/dev/null 2>&1 || true
+if [[ -z "$(find "$H3_DIR" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+  ok "H3a fleet_atomic_write refuses a directory destination (nothing written inside)"
+else
+  no "H3a fleet_atomic_write descended into a directory destination"
+fi
+H3_FIFO="$H_TMP/dest_is_fifo"; mkfifo "$H3_FIFO" 2>/dev/null || true
+if [[ -p "$H3_FIFO" ]]; then
+  if printf 'x\n' | timeout 3 fleet_atomic_write "$H3_FIFO" >/dev/null 2>&1; then
+    no "H3b fleet_atomic_write accepted a FIFO destination"
+  elif [[ -p "$H3_FIFO" ]]; then
+    ok "H3b fleet_atomic_write refuses a FIFO destination (special file intact)"
+  else
+    no "H3b fleet_atomic_write replaced/removed the FIFO destination"
+  fi
+  rm -f "$H3_FIFO"
+else
+  ok "SKIP H3b fifo — mkfifo unavailable"
+fi
+
+# --- H4: identity-checked rotate closes the open->rename same-owner swap window (white-box) --
+# Import the helper as a module and monkeypatch os.rename to swap src for a same-owner decoy
+# in the open->rename window. A rename-by-name grab (the earlier draft) captures the decoy
+# (rc 0); the identity-checked rotate detects the swap and fails closed (rc 6).
+if python3 - "$ROOT/lib/fleet-safeio.py" "$H_TMP" <<'PY' >/dev/null 2>&1; then
+import importlib.util, os, sys, tempfile
+spec = importlib.util.spec_from_file_location("safeio", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(dir=sys.argv[2])
+src = os.path.join(d, "inbox"); dst = os.path.join(d, "snap"); decoy = os.path.join(d, "decoy")
+open(src, "w").write('{"real":1}\n'); open(decoy, "w").write('{"DECOY":1}\n')
+real = os.rename
+def swapping(a, b):
+    real(decoy, src)     # attacker swaps src -> decoy AFTER our open+fstat, BEFORE the rename
+    return real(a, b)
+os.rename = swapping
+rc = m.cmd_rotate(src, dst)
+os.rename = real
+sys.exit(0 if rc == 6 else 1)   # MUST fail closed on the swap
+PY
+  ok "H4a rotate detects a same-owner swap in the open->rename window and fails closed (rc 6)"
+else
+  no "H4a rotate captured a decoy swapped in the open->rename window (identity check missing)"
+fi
+# H4b — no-swap control: rotate returns the real content.
+H4C="$H_TMP/h4c"; mkdir -p "$H4C"; printf '{"real":1}\n' > "$H4C/inbox"
+if [[ "$(python3 "$ROOT/lib/fleet-safeio.py" rotate "$H4C/inbox" "$H4C/snap" 2>/dev/null)" == '{"real":1}' ]]; then
+  ok "H4b rotate (no swap) emits the verified snapshot content"
+else
+  no "H4b rotate failed on a clean inbox"
+fi
+
+# --- H5: data-loss preservation (a failure is never a silent-empty queue) -------------------
+_saved_hw2="$(declare -f fleet_tmux_has_window 2>/dev/null || true)"
+fleet_tmux_has_window() { return 0; }
+# H5a — a MALFORMED inbox line must be preserved and the drain fail closed (not zero-pending).
+printf '{"from":"a","text":"good","delivered":false}\nNOT-JSON\n' > "$STATE_DIR/inbox/$HID.jsonl"
+fleet_drain_inbox "$HID" force >/dev/null 2>&1
+mrc=$?
+if (( mrc != 0 )) && grep -q good "$STATE_DIR/inbox/$HID.jsonl" && grep -q NOT-JSON "$STATE_DIR/inbox/$HID.jsonl"; then
+  ok "H5a malformed inbox is PRESERVED and drain fails closed (not treated as empty)"
+else
+  no "H5a malformed inbox was lost or drain falsely reported success (rc=$mrc)"
+fi
+rm -f "$STATE_DIR/inbox/$HID.jsonl" "$STATE_DIR"/inbox/.snap.* "$STATE_DIR"/inbox/.drain.* 2>/dev/null || true
+[[ -n "$_saved_hw2" ]] && eval "$_saved_hw2"
+# H5b — restore into a DIRECTORY conflict must KEEP the snapshot (never rm the sole copy).
+H5SNAP="$STATE_DIR/inbox/.snap.h5b"; printf '{"m":"precious"}\n' > "$H5SNAP"; mkdir -p "$STATE_DIR/inbox/h5dir"
+_fleet_drain_restore "$H5SNAP" "$STATE_DIR/inbox/h5dir" victim >/dev/null 2>&1 || true
+if [[ -f "$H5SNAP" ]] && grep -q precious "$H5SNAP"; then
+  ok "H5b restore into a directory conflict KEEPS the snapshot (mail not lost)"
+else
+  no "H5b restore removed the snapshot after a destination conflict (data loss)"
+fi
+rm -f "$H5SNAP"; rmdir "$STATE_DIR/inbox/h5dir" 2>/dev/null || true
+# H5c — restore with safe-IO unavailable must KEEP the snapshot.
+H5SNAP2="$STATE_DIR/inbox/.snap.h5c"; printf '{"m":"precious2"}\n' > "$H5SNAP2"
+( _FLEET_SAFEIO_OK=0; _fleet_drain_restore "$H5SNAP2" "$STATE_DIR/inbox/h5newf" victim ) >/dev/null 2>&1 || true
+if [[ -f "$H5SNAP2" ]] && grep -q precious2 "$H5SNAP2"; then
+  ok "H5c restore with safe-IO unavailable KEEPS the snapshot (fail closed, no loss)"
+else
+  no "H5c restore removed the snapshot when safe-IO was unavailable (data loss)"
+fi
+rm -f "$H5SNAP2"
+
+# --- H6: bg-controller reap via pidfd only — no discover-then-kill fallback ------------------
+if declare -f fleet_bg_unmount | grep -qE 'signal|fleet_safeio_available' \
+   && ! declare -f fleet_bg_unmount | grep -q 'pkill' \
+   && ! declare -f fleet_bg_unmount | grep -qE '\bkill "\$_pid"'; then
+  ok "H6a fleet_bg_unmount reaps via pidfd only (no pkill, no discover-then-kill fallback)"
+else
+  no "H6a fleet_bg_unmount still has a pkill regex or a discover-then-kill fallback"
+fi
+if [[ -r /proc/self/cmdline ]] && python3 - <<'PY' 2>/dev/null; then
+import os, signal
+raise SystemExit(0 if hasattr(os, "pidfd_open") and hasattr(signal, "pidfd_send_signal") else 1)
+PY
+  mkdir -p "$H_TMP/h6"; H6_SH="$H_TMP/h6/bg-controller.sh"
+  printf '#!/bin/bash\nsleep 30\n' > "$H6_SH"; chmod +x "$H6_SH"
+  # H6b — pidfd signal reaps EXACTLY the argv-identity match, never a different id.
+  "$H6_SH" a.b & H6_AB=$!; "$H6_SH" aXb & H6_AXB=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -r "/proc/$H6_AB/cmdline" && -r "/proc/$H6_AXB/cmdline" ]] && break; sleep 0.1; done
+  python3 "$ROOT/lib/fleet-safeio.py" signal 15 a.b >/dev/null 2>&1 || true
+  sleep 0.3
+  if ! kill -0 "$H6_AB" 2>/dev/null && kill -0 "$H6_AXB" 2>/dev/null; then
+    ok "H6b pidfd signal reaps exactly the argv-identity match (a.b), never the aXb controller"
+  else
+    no "H6b pidfd signal mis-reaped (regex-widening/identity failure)"
+  fi
+  # H6c — when the primitive is UNAVAILABLE, unmount UNDER-REAPS (no /proc-kill fallback).
+  "$H6_SH" underreap & H6_UR=$!
+  for _ in 1 2 3 4 5; do [[ -r "/proc/$H6_UR/cmdline" ]] && break; sleep 0.1; done
+  ( _FLEET_SAFEIO_OK=0; declare -F fleet_tmux_stop_child >/dev/null 2>&1 || fleet_tmux_stop_child() { :; }; fleet_bg_unmount underreap ) >/dev/null 2>&1 || true
+  sleep 0.2
+  if kill -0 "$H6_UR" 2>/dev/null; then
+    ok "H6c unmount under-reaps when pidfd is unavailable (no discover-then-kill fallback)"
+  else
+    no "H6c unmount killed a controller via a fallback path when pidfd was unavailable"
+  fi
+  kill "$H6_AB" "$H6_AXB" "$H6_UR" 2>/dev/null || true
+else
+  ok "SKIP H6b/H6c — no /proc or no pidfd on this host (reap under-reaps via window kill)"
+fi
+
 printf '\n----------------------------------------\n'
 printf 'window-alloc: %s%d passed%s, %s%d failed%s\n' "$_grn" "$pass" "$_rst" \
   "$([[ "$fail" -gt 0 ]] && printf '%s' "$_red" || printf '%s' "$_grn")" "$fail" "$_rst"
