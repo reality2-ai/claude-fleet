@@ -1,10 +1,50 @@
 # RESUME — claude-fleet repo expert (id-hardening lane)
 
-## HOLD on 6d19957 (2026-07-15) — opposite-provider review found 2 CONFIRMED defects
+## Follow-up LANDED (2026-07-15) — `f9f2947` fixes both review findings, local commit only
+supervisor-codex GO'd the repairs (initial reviewer died on a safety-policy block; a fresh
+exact reviewer will attack the follow-up). **Committed `f9f2947`
+`fix(faculty-bg,registry): exact-identity controller reap + symlink-safe path IO`** on top
+of `6d19957`. NOT pushed (origin +11). watchdog + `_fleet_inject_trace` still excluded.
+
+### Fix 1 — exact-identity controller reap (finding 1)
+`fleet_bg_unmount` no longer builds an id-interpolated `pkill` regex. `_fleet_bg_controller_pids`
+(lib/faculty-bg.sh) prefilters with fixed-string `pgrep 'bg-controller'`, then compares the last
+`/proc/PID/cmdline` token to the id BYTE-FOR-BYTE. No regex touches the id, so dotted ids can't
+collide. Linux-only (/proc); on other hosts it reaps nothing and the tmux window kill is the
+teardown. tests/faculty.sh unmount assertion updated (exact identity, no pkill).
+
+### Fix 2 — symlink safety, split by HARM (finding 2)
+Bash has no O_NOFOLLOW, so:
+- **Truncate/overwrite removed STRUCTURALLY (no TOCTOU)**: `fleet_atomic_write` (lib/common.sh)
+  = mktemp + `rename()` over the dest; rename replaces a squatted link, target never written.
+  Used by the argv writer (lib/tmux.sh), `fleet_state_ensure`, and session-start's `.session`
+  write. The mailbox lock uses APPEND open `9>>` (cannot truncate); flock unchanged →
+  **concurrent mailbox correctness preserved** (stress: 60 racing enqueues → 60 valid distinct
+  lines, none lost/torn).
+- **Reads + appends = BEST-EFFORT check-then-open** (`fleet_path_regular_or_absent`): state
+  read (state_get/state_jq), inbox append, journal append. These refuse a PRE-PLANTED symlink
+  but are **NOT atomic O_NOFOLLOW**.
+
+### ⚠ RESIDUAL TOCTOU (do-not-assume; disclosed to supervisor)
+The read/append refusals above have a residual race: a concurrent same-directory writer can
+replant a symlink BETWEEN the `[[ -L ]]` check and the open. Threat model is BOUNDED to a
+pre-planted link (a member who can plant, not one racing a tight replant loop). A true fix
+needs an atomic no-follow open (O_NOFOLLOW fd), which bash cannot express — would require a
+tiny helper binary or moving these writers behind `fleet_atomic_write`-style rename where the
+op allows (appends to a shared accumulating inbox do not). This residual is INTENTIONAL and
+recorded; a fresh reviewer may escalate it. The truncate/overwrite paths have NO such residual.
+
+### Falsifier proof (both findings, this session)
+New tests/window-alloc.sh sections F + G run against a `6d19957` worktree → **8 checks FAIL**
+(F0 pkill-regex-present; G1 lock truncation; G2 inbox append-through; G3 journal append-through;
+G4 argv write-through + still-symlink; G5 state_get read-through; G6 state_jq read-through).
+Fixed tree → **76/76**. Genuine falsifiers, not placebos.
+
+---
+## HOLD on 6d19957 (2026-07-15) — [RESOLVED by f9f2947 above]
 supervisor-codex's exact review put `6d19957` on HOLD. Both findings reproduced read-only
-against ground truth THIS session; a scoped local FOLLOW-UP (new commit on top, not amend) is
-required. Instruction: **wait for reviewer-final** before committing, keep `bin/fleet-watchdog.sh`
-+ `_fleet_inject_trace` excluded, **no push**. Currently WAITING for reviewer-final.
+against ground truth; the scoped follow-up `f9f2947` fixes both. Kept `bin/fleet-watchdog.sh`
++ `_fleet_inject_trace` excluded, no push.
 
 **Finding 1 — dotted-id `pkill` regex collision (in id-hardening scope; refutes my own claim).**
 The allowlist admits `.`, but `fleet_bg_unmount` (lib/faculty-bg.sh:168) interpolates the id into
