@@ -1661,7 +1661,8 @@ cmd_reap() {
     local st; st="$(fleet_state_get "$id" '.state' unknown)"
     [[ "$st" == "stopped" || "$st" == "failed" ]] && continue
     [[ "$st" == "running" ]] || continue
-    warn "child '$id' is down (rc=$(fleet_child_exit_code "$id"):-?) — applying policy"
+    local _rc; _rc="$(fleet_child_exit_code "$id" 2>/dev/null || true)"
+    warn "child '$id' is down (rc=${_rc:-?}) — applying policy"
     if fleet_restart_child "$id"; then reaped=$(( reaped + 1 )); fi
   done
   (( reaped == 0 )) && info "reap: nothing to restart"

@@ -69,10 +69,19 @@ cmd_safe() {
   local base="${first##*/}"               # basename, so /usr/bin/git → git, claude-fleet/bin/fleet → fleet
   local _ sub act
   case "$base" in
-    cd|ls|cat|head|tail|grep|egrep|fgrep|rg|pwd|echo|printf|wc|sort|uniq|cut|tr|nl|tac|\
+    cd|ls|cat|head|tail|grep|egrep|fgrep|pwd|echo|printf|wc|uniq|cut|tr|nl|tac|\
     column|tree|stat|file|which|type|whoami|id|date|cal|basename|dirname|realpath|\
-    readlink|true|false|uname|hostname|uptime|df|du|diff|cmp|md5sum|sha256sum|jq|yq|comm)
+    readlink|true|false|uname|hostname|uptime|df|du|diff|cmp|md5sum|sha256sum|jq|comm)
       return 0 ;;   # NB: 'env' deliberately excluded — `env VAR=v cmd` can exec
+    sort)   # read-only EXCEPT -o/--output (writes any file) + --compress-program (execs a helper)
+      case " $c " in *' -o'* | *' --output'* | *' --compress-program'*) return 1 ;; esac
+      return 0 ;;
+    rg)     # ripgrep is read-only EXCEPT flags that execute an external program
+      case " $c " in *' --pre'* | *' --hostname-bin'* | *' --search-zip'* | *' -z'*) return 1 ;; esac
+      return 0 ;;
+    yq)     # writes to stdout by default; -i / --inplace rewrites a file in place
+      case " $c " in *' -i'* | *' --inplace'* | *' --in-place'*) return 1 ;; esac
+      return 0 ;;
     find)   # read-only unless it executes or deletes
       case " $c " in *' -exec'* | *' -delete'* | *' -ok'* | *' -fls'* | *' -fprint'*) return 1 ;; esac
       return 0 ;;
@@ -167,9 +176,9 @@ pipe_safe() {
 }
 
 # Whole Bash command: auto-allow read-only/checkpoint commands, pipelines, and
-# '&&' chains where EVERY part is itself auto-approvable (so `cd repo && git add x
-# && git commit && git push` flows). Reject redirection, command substitution, a
-# lone '&' (background / &> / |&), ';' sequencing, here-docs/newlines.
+# '&&'/';' chains where EVERY part is itself auto-approvable (so `cd repo && git add
+# x && git commit && git push` flows). Reject redirection, command substitution, a
+# lone '&' (background / &> / |&), here-docs/newlines.
 bash_safe() {
   local c="$1"
   c="${c#"${c%%[![:space:]]*}"}"          # ltrim
@@ -225,8 +234,75 @@ checkpointable_git() {
 # artifacts are high-stakes + often irreversible. Source edits (.rs/.toml/.md) under
 # keystore/provision dirs are NOT gated — only the dangerous OPERATIONS + trust-material
 # artifacts — so #20/#17 source dev stays fast while flash/sign/mint require a human go.
+# Command-wrappers that pass through to another program (`env espflash …`,
+# `timeout 60 espflash …`, `sudo openssl genpkey …`). The gate must look THROUGH
+# these, or a wrapper defeats the basename match and the op runs silently.
+_hs_is_wrapper() {
+  case "$1" in
+    env|command|sudo|doas|nice|ionice|chrt|nohup|setsid|stdbuf|time|timeout|xargs|\
+    sh|bash|dash|zsh|ksh) return 0 ;;
+  esac
+  return 1
+}
+
+# Does command basename $1 (with full segment $2 for arg-context) denote a
+# firmware-flash / firmware-sign / key-mint operation? (probe A9)
+_hs_flash_or_mint() {
+  local base="$1" seg="$2" cargo_sub cargo_d; local -a _cw
+  case "$base" in
+    espflash|esptool|esptool.py|dfu-util|dfu-programmer|st-flash|stm32flash|openocd|\
+    nrfjprog|nrfutil|adafruit-nrfutil|JLinkExe|teensy_loader_cli|teensy-loader-cli|\
+    cargo-embed|cargo-flash|probe-run|elf2uf2-rs|avrdude|bossac)
+      return 0 ;;
+    probe-rs)
+      case " $seg " in *' download'* | *' run'* | *' erase'* | *' flash'* | *' gdb'*) return 0 ;; esac ;;
+    picotool)
+      case " $seg " in *' load'* | *' save'* | *' erase'*) return 0 ;; esac ;;
+    pyocd)
+      case " $seg " in *' flash'* | *' erase'* | *' load'*) return 0 ;; esac ;;
+    west)
+      case " $seg " in *' flash'*) return 0 ;; esac ;;
+    idf.py)
+      case " $seg " in *' flash'*) return 0 ;; esac ;;
+    pio|platformio)
+      case " $seg " in *' upload'*) return 0 ;; esac ;;
+    arduino-cli)
+      case " $seg " in *' upload'* | *' burn-bootloader'*) return 0 ;; esac ;;
+    ssh-keygen|age-keygen|minisign|signify|certtool|mkcert)
+      return 0 ;;
+    keytool)
+      case " $seg " in *' -genkey'* | *' -genkeypair'* | *' -genseckey'* | *' -importcert'* | *' -certreq'*) return 0 ;; esac ;;
+    wg)
+      case " $seg " in *' genkey'* | *' genpsk'*) return 0 ;; esac ;;
+    cfssl)
+      case " $seg " in *' gencert'* | *' genkey'* | *' sign'*) return 0 ;; esac ;;
+    step)
+      case " $seg " in *' certificate create'* | *' crypto keypair'* | *' ca sign'*) return 0 ;; esac ;;
+    openssl)
+      case " $seg " in *' genpkey'* | *' genrsa'* | *' ecparam'* | *' gendsa'* | *' -sign'* | *' dgst'* | *' pkeyutl'* | *' req '* | *' pkcs12'*) return 0 ;; esac ;;
+    gpg|gpg2)
+      case " $seg " in *' --sign'* | *' --clearsign'* | *' --detach-sig'* | *' --gen-key'* | *' --full-gen-key'* | *' --export-secret'*) return 0 ;; esac ;;
+    dd)
+      case " $seg " in *' of=/dev/'*) return 0 ;; esac ;;
+    cargo|cross)
+      # embed/flash/espflash always flash a device; `cargo run` flashes IFF the
+      # target's .cargo runner is a flasher (probe-rs/cargo-embed/espflash/…)
+      read -ra _cw <<<"$seg"; cargo_sub="${_cw[1]:-}"; [[ "$cargo_sub" == +* ]] && cargo_sub="${_cw[2]:-}"
+      case "$cargo_sub" in
+        embed|flash|espflash) return 0 ;;
+        run|r|rr|runner)
+          cargo_d="$cwd"
+          while [[ -n "$cargo_d" ]]; do
+            [[ -f "$cargo_d/.cargo/config.toml" ]] && grep -qiE 'runner[[:space:]]*=.*(probe-rs|probe-run|cargo-?embed|cargo-?flash|espflash|dfu-util|elf2uf2)' "$cargo_d/.cargo/config.toml" 2>/dev/null && return 0
+            [[ "$cargo_d" == "/" ]] && break; cargo_d="${cargo_d%/*}"; [[ -z "$cargo_d" ]] && cargo_d="/"
+          done ;;
+      esac ;;
+  esac
+  return 1
+}
+
 hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operation?
-  local c="$1" first base seg rest cargo_sub cargo_d; local -a _cw
+  local c="$1" first base seg rest tb; local -a _cw segtoks
   # fleet messaging (send/broadcast/ask) carries human TEXT about the work — OTA/
   # cert/sign/mint WORDS in a status note are not operations, and the note may
   # contain ';'/'&&' that the naive splitter below would expose as fragments. The
@@ -235,47 +311,25 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
   if [[ "${_cw[0]##*/}" == fleet ]]; then
     case "${_cw[1]:-}" in send|broadcast|ask) return 1 ;; esac
   fi
-  # git is SOURCE CONTROL — commit/add/push never flash firmware or mint a key at
-  # RUNTIME; the commit message / diff may merely MENTION mint/sign/cert/firmware as
-  # prose. Exempt git ops (strip a leading `cd <dir> &&`, the common
-  # `cd repo && git commit -m "...mint cert..."` shape). The git-case downstream still
-  # applies its own source-control gating (force push / destructive ops prompt).
-  local _g="$c"
-  case "$_g" in cd\ *) _g="${_g#*&&}"; _g="${_g#"${_g%%[![:space:]]*}"}" ;; esac
-  case "${_g%%[[:space:]]*}" in git|*/git) return 1 ;; esac
+  # NB: git ops are exempted PER-SEGMENT below (not whole-command): the commit
+  # message may MENTION mint/sign/cert as prose, but a real flasher after
+  # `git commit && …` is its own segment and must still be gated.
   rest="${c//&&/;}"; rest="${rest//|/;}"          # scan every pipe/&&/; segment
   while [[ -n "$rest" ]]; do
     case "$rest" in *';'*) seg="${rest%%;*}"; rest="${rest#*;}" ;; *) seg="$rest"; rest="" ;; esac
     seg="${seg#"${seg%%[![:space:]]*}"}"
     first="${seg%%[[:space:]]*}"; base="${first##*/}"
     [[ "$base" == git ]] && continue   # git segment = source control, never a runtime flash/mint
-    case "$base" in
-      espflash|esptool|esptool.py|dfu-util|st-flash|stm32flash|openocd|nrfjprog|JLinkExe|teensy_loader_cli|cargo-embed|cargo-flash|probe-run|elf2uf2-rs)
-        return 0 ;;
-      probe-rs)
-        case " $seg " in *' download'* | *' run'* | *' erase'* | *' flash'* | *' gdb'*) return 0 ;; esac ;;
-      ssh-keygen|age-keygen|minisign|signify|certtool)
-        return 0 ;;
-      openssl)
-        case " $seg " in *' genpkey'* | *' genrsa'* | *' ecparam'* | *' gendsa'* | *' -sign'* | *' dgst'* | *' pkeyutl'* | *' req '* | *' pkcs12'*) return 0 ;; esac ;;
-      gpg|gpg2)
-        case " $seg " in *' --sign'* | *' --clearsign'* | *' --detach-sig'* | *' --gen-key'* | *' --full-gen-key'* | *' --export-secret'*) return 0 ;; esac ;;
-      dd)
-        case " $seg " in *' of=/dev/'*) return 0 ;; esac ;;
-      cargo|cross)
-        # embed/flash/espflash always flash a device; `cargo run` flashes IFF the
-        # target's .cargo runner is a flasher (probe-rs/cargo-embed/espflash/…)
-        read -ra _cw <<<"$seg"; cargo_sub="${_cw[1]:-}"; [[ "$cargo_sub" == +* ]] && cargo_sub="${_cw[2]:-}"
-        case "$cargo_sub" in
-          embed|flash|espflash) return 0 ;;
-          run|r|rr|runner)
-            cargo_d="$cwd"
-            while [[ -n "$cargo_d" ]]; do
-              [[ -f "$cargo_d/.cargo/config.toml" ]] && grep -qiE 'runner[[:space:]]*=.*(probe-rs|probe-run|cargo-?embed|cargo-?flash|espflash|dfu-util|elf2uf2)' "$cargo_d/.cargo/config.toml" 2>/dev/null && return 0
-              [[ "$cargo_d" == "/" ]] && break; cargo_d="${cargo_d%/*}"; [[ -z "$cargo_d" ]] && cargo_d="/"
-            done ;;
-        esac ;;
-    esac
+    _hs_flash_or_mint "$base" "$seg" && return 0
+    # look THROUGH a command-wrapper (env/sudo/timeout/nice/bash -c … <flasher>):
+    # re-classify every token's basename so the wrapper can't hide the real op.
+    if _hs_is_wrapper "$base"; then
+      read -ra segtoks <<<"$seg"
+      for tb in "${segtoks[@]}"; do
+        [[ "${tb##*/}" == git ]] && continue
+        _hs_flash_or_mint "${tb##*/}" "$seg" && return 0
+      done
+    fi
     # explicit signed-OTA / cert-mint / persona-write verbs on any tool
     case " $seg " in
       *' ota '*' sign'* | *' ota '*' push'* | *' sign-firmware'* | *' mint-cert'* | *' mint '*'cert'* | *' provision '*' write'* | *' write-persona'*) return 0 ;;

@@ -658,11 +658,19 @@ gate described below, which actively *denies* and escalates.
 pipelines and `&&` chains are allowed only when every segment is itself allowed.
 
 **Still prompts (everything else):** writes outside the repo, `rm`/`mv`/`dd`,
-installs, arbitrary network (`curl`/`ssh` …), `sudo`, force-push, destructive git
-ops (`reset`, `rebase`, `pull`, broad checkout/restore/clean), publish/install
-runners, redirection/substitution, and unknown tools. Genuine decision questions
-an agent raises ("which approach?") aren't permission prompts, so they always
-wait for you.
+installs, arbitrary network (`curl`/`ssh` …), `sudo`, force-push, the genuinely
+irreversible git ops (`rebase`, `clean`), publish/install runners,
+redirection/substitution, and unknown tools. Genuine decision questions an agent
+raises ("which approach?") aren't permission prompts, so they always wait for you.
+
+**Auto-approved after a silent checkpoint.** The *recoverable-but-tree-changing*
+git ops — `reset` (incl. `--hard`), `checkout`, `restore`, `merge`, `pull` — are
+**not** blocked: the hook first snapshots your working tree to a
+`refs/auto-checkpoint/*` ref (via `git stash create`, without touching the tree),
+then auto-approves the op, so a wrong one is unwound with
+`git stash apply <ref>` rather than gated. That is the GitHub-failsafe stance —
+make risky changes *recoverable*, not *blocked* — so under skip-permissions these
+run; only the un-checkpointable `rebase`/`clean` still wait for you.
 
 **The firmware / key escalation gate (hard-deny).** Under
 `--dangerously-skip-permissions` a silent fall-through would *run* a dangerous
