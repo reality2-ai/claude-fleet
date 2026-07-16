@@ -511,6 +511,23 @@ mac_case "real OUI under old 00:00 PREFIX (IANA) now BLOCKS"   "dev = $_iana:$_n
 mac_case "real-looking MAC under old ff:ff PREFIX now BLOCKS"  "dev = $_ffp:$_o" block
 mac_case "FLEET_MAC_SCAN=off lets a real MAC through"      "device = $REALMAC" pass FLEET_MAC_SCAN=off
 
+# --- 2026-07-17 regression: THE GATE BLOCKED A LEAK REMEDIATION -------------
+# This hook REFUSED the push that scrubbed a real rbid correlator off r2-composer's
+# PUBLIC main, over four DOCUMENTED synthetic placeholders — teaching the lane to
+# bypass the gate at the exact moment the stakes were highest. A hygiene gate whose
+# false positives block remediation is worse than no gate at that moment.
+# These four are the actual values that blocked it; they MUST pass.
+_z1='00:00:00:00:00:01'; _z2='00:00:00:00:00:02'; _ladder='11:22:33:44:55:66'
+_oui_zeronic="$(printf 'f4:12:fa')":'00:00:00'      # real vendor OUI + ALL-ZERO synthetic NIC
+mac_case "synthetic all-zero-OUI counter NICs pass (00:00:00:00:00:01/02)" \
+         "$(printf 'a=%s\nb=%s\n' "$_z1" "$_z2")" pass
+mac_case "byte-ladder placeholder passes (11:22:33:44:55:66)" "x = $_ladder" pass
+mac_case "real OUI with ALL-ZERO NIC passes (vendor, not device)" "x = $_oui_zeronic" pass
+# ...and the fix must NOT re-open the fail-open class it was built to close:
+# a POPULATED NIC under the same real OUI is a device-unique value and MUST still block.
+mac_case "same real OUI with a POPULATED NIC still BLOCKS" "x = $(printf 'f4:12:fa'):$_n" block
+mac_case "all-zero OUI with a POPULATED NIC still BLOCKS"  "x = 00:00:00:$_n" block
+
 # --- vectors/**.json allowlist: narrow by design -----------------------------
 # The allowlist exempts synthetic KAT vectors from the secret-VALUE scan ONLY. It must NOT
 # blind the filename scan or the MAC scan — otherwise vectors/ becomes a blind spot, which

@@ -72,13 +72,29 @@ scan_range() {  # $1 = git rev range or single sha
     macs="$(printf '%s\n' "$added_all" \
       | grep -oiE '\b([0-9a-f]{2}:){5}[0-9a-f]{2}\b' \
       | grep -viE '^(02:|aa:bb:cc:|de:ad:be:ef)' \
-      | grep -vxiE '00:00:00:00:00:00|ff:ff:ff:ff:ff:ff' \
+      | grep -vxiE '00:00:00:00:00:00|ff:ff:ff:ff:ff:ff|11:22:33:44:55:66' \
+      | grep -vxiE '00:00:00:00:00:[0-9a-f]{2}' \
+      | grep -viE ':00:00:00$' \
       | sort -u || true)"
       # allowlist discipline (fail-CLOSED): 02:/aa:bb:cc:/de:ad:be:ef are PREFIXES
       # (locally-administered + synthetic OUI classes, never a burned-in device).
-      # all-zero + broadcast are EXACT-token literals, NOT prefixes — a 00:00/ff:ff
-      # *prefix* allowlist waved through real OUIs (00:00:0c Cisco, 00:00:5e IANA,
-      # ff:ff:11…). Fixed 2026-07-15 after a refutation pass on the sibling CI gate.
+      # all-zero + broadcast + the 11:22:33:44:55:66 byte-ladder are EXACT-token
+      # literals, NOT prefixes — a 00:00/ff:ff *prefix* allowlist waved through real
+      # OUIs (00:00:0c Cisco, 00:00:5e IANA, ff:ff:11…). Fixed 2026-07-15 after a
+      # refutation pass on the sibling CI gate.
+      #
+      # SYNTHETIC-NIC classes added 2026-07-17. A gate whose FALSE POSITIVES block
+      # REMEDIATION is worse than no gate at that moment: this hook REFUSED the push
+      # that scrubbed a real rbid correlator off r2-composer's PUBLIC main, over four
+      # documented synthetic placeholders — so it taught the lane to bypass it at the
+      # exact moment the stakes were highest. That is a gate defect, not a lane defect.
+      #   · 00:00:00:00:00:NN  — all-zero OUI + counter NIC; no vendor owns 00:00:00
+      #     as a burned-in prefix in this shape, so it is a placeholder by construction.
+      #   · *:00:00:00         — ALL-ZERO NIC under any OUI (e.g. f4:12:fa:00:00:00).
+      #     The OUI names a VENDOR, never a DEVICE; a burned-in NIC is never all-zero.
+      #     So this leaks "a DFRobot board exists", not WHICH board — not the
+      #     device-unique class this scan exists to catch.
+      # Both stay NARROW: they allow a zeroed/countered NIC, never a populated one.
     if [[ -n "$macs" ]]; then
       mac_n="$(printf '%s\n' "$macs" | grep -c . || true)"
       mac_oui="$(printf '%s\n' "$macs" | head -1 | cut -d: -f1-3)"
