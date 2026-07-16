@@ -939,6 +939,55 @@ _fleet_guard_primary_lifecycle() {
   return 0
 }
 
+# --- MESSAGING AUTHORITY GUARD: a read-only companion / refuter lane exists to
+# FEED OBSERVATIONS to its primary, which then decides and relays. It must not
+# itself issue fleet-wide coordination. INCIDENT 2026-07-16: supervisor-codex
+# repeatedly BROADCAST HOLD/RESUME/deconflict coordination that countermanded
+# the primary supervisor, freezing core/hive/android; the lifecycle guard above
+# closed the kill path, this closes the *messaging* path (same root: a companion
+# must not exercise primary authority). Structural rule:
+#   • broadcast / pair-send  → DENIED for a companion (that IS fleet-wide coord)
+#   • send                   → a companion may message ONLY its own primary/pair
+#                              (the legitimate feed-up channel)
+#   • ask                    → still allowed (read-only off-thread inquiry, no
+#                              directive lands in a thread)
+# Human root (no FLEET_CHILD_ID) and normal writers are unaffected. Denies+audits.
+_fleet_guard_messaging() {
+  local kind="$1" from="$2" to="${3:-}"      # to empty for broadcast/pair
+  [[ -z "$from" || "$from" == "supervisor" ]] && return 0   # human / primary supervisor
+  _fleet_actor_is_readonly_companion "$from" 2>/dev/null || return 0  # writer/primary — allowed
+  local primary base
+  primary="$(fleet_state_get "$from" '.companion_for' "")"
+  base="${from%-codex-refute}"; base="${base%-refute}"; base="${base%-codex}"
+  primary="${primary:-$base}"
+  case "$kind" in
+    broadcast|pair)
+      fleet_log security "$from" "DENIED $kind — read-only companion/refuter may not issue fleet-wide coordination (feed primary '$primary' instead)"
+      die "refused: '$from' is a read-only companion/refuter and may not '$kind' (fleet-wide coordination). Send your observation to your primary ('$primary'); the primary decides + relays. (audit logged)"
+      ;;
+    msg)
+      if [[ "$to" != "$primary" && "$to" != "$base" ]]; then
+        fleet_log security "$from" "DENIED send to='$to' — read-only companion/refuter may message only its primary ('$primary')"
+        die "refused: '$from' is a read-only companion/refuter and may only message its primary ('$primary'), not '$to'. Route coordination through the primary. (audit logged)"
+      fi
+      ;;
+  esac
+  return 0
+}
+
+# Provenance prefix (partial #78): mark messages that ORIGINATE from a read-only
+# companion so a recipient can tell a companion's advisory from the primary's
+# authoritative signal, even on the one path a companion may still use (→ its
+# primary). Empty for the supervisor/writers (no change to their messages).
+# NOTE: this is the textual floor; cryptographic supervisor-signal provenance
+# (#78) remains a separate queued design.
+_fleet_authority_tag() {
+  local from="$1"
+  [[ -z "$from" || "$from" == "supervisor" ]] && return 0
+  _fleet_actor_is_readonly_companion "$from" 2>/dev/null && printf '[companion·advisory — not authoritative] '
+  return 0
+}
+
 _fleet_takeover_permission_mode() {
   local provider="$1" source_id="${2:-}" pm=""
   pm="$(fleet_child_get "$source_id" permission_mode "" 2>/dev/null || true)"
@@ -2009,6 +2058,7 @@ _fleet_parse_msg() {
 _fleet_deliver() {   # <kind> <to> <from> <text>
   local kind="$1" to="$2" from="$3" text="$4"
   [[ "$to" == "$from" ]] && die "cannot $kind to self ($to)"
+  text="$(_fleet_authority_tag "$from")$text"   # provenance prefix (companion → advisory)
   local cap; cap="$(fleet_max_hops)"
   local hop; hop="$(fleet_next_hop "$from")" || {
     fleet_log hop-limit "$to" "from=$from cap=$cap"
@@ -2029,6 +2079,7 @@ cmd_pair_send() {
   _fleet_parse_msg "$@"
   [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet pair-send <pair-id> \"<msg>\" [--from <id>]"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  _fleet_guard_messaging pair "$_F_FROM"   # authority before operational checks
   fleet_has_tmux || die "tmux required. Run: sudo apt install tmux"
   local pair="$_F_TO" from="$_F_FROM" text="$_F_TEXT" to sent=0 queued=0
   local -a targets=()
@@ -2071,6 +2122,7 @@ cmd_send() {
   _fleet_parse_msg "$@"
   [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet send <to> \"<msg>\" [--from <id>]"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  _fleet_guard_messaging msg "$_F_FROM" "$_F_TO"   # authority before operational checks
   fleet_has_tmux || die "tmux required. Run: sudo apt install tmux"
   _fleet_deliver msg "$_F_TO" "$_F_FROM" "$_F_TEXT"
 }
@@ -2113,6 +2165,7 @@ cmd_broadcast() {
   local msg="${1:?usage: fleet broadcast \"<msg>\"}"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   local from="${FLEET_CHILD_ID:-supervisor}" c
+  _fleet_guard_messaging broadcast "$from"
   for c in "${CHILD_IDS[@]:-}"; do
     [[ -z "$c" || "$c" == "$from" ]] && continue
     fleet_enqueue "$c" "$from" "$msg"; fleet_drain_inbox "$c" >/dev/null || true

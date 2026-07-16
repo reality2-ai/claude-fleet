@@ -277,6 +277,49 @@ FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=gc-codex "$FLEET" restart gc > "$TMP/guard
 FLEET_WORKSPACE="$WS2" "$FLEET" down gc-codex > "$TMP/guard_human.out" 2>&1
 lacks "human-root lifecycle is not guard-blocked" "$TMP/guard_human.out" "read-only companion/refuter"
 
+# --- 8c. messaging authority guard: a read-only companion/refuter may NOT issue
+# fleet-wide coordination (broadcast / pair-send) nor send to a THIRD party — it
+# may only feed its own primary. Regression for the 2026-07-16 incident where
+# supervisor-codex repeatedly broadcast HOLD/RESUME coordination that
+# countermanded the primary supervisor and froze core/hive. Same actor model as
+# §8b; closes the messaging path the lifecycle guard did not cover.
+section "8c. companion-cannot-coordinate messaging authority guard"
+printf '{"state":"running","role":"supervisor"}\n'                                  > "$WS2/.fleet/state/gc.json"
+printf '{"state":"running","role":"standby","writer":false,"companion_for":"gc"}\n' > "$WS2/.fleet/state/gc-codex.json"
+printf '{"state":"running","role":"expert","writer":true}\n'                         > "$WS2/.fleet/state/other.json"
+: > "$WS2/.fleet/log/fleet.log"
+
+# (1) companion broadcast MUST be refused + audited
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=gc-codex "$FLEET" broadcast "RESUME everyone" > "$TMP/msg_bcast.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "companion broadcast EXITS non-zero" || no "companion broadcast EXITS non-zero"
+has  "companion broadcast refusal names the reason" "$TMP/msg_bcast.out" "read-only companion/refuter"
+has  "companion broadcast denial is audited"        "$WS2/.fleet/log/fleet.log" "DENIED broadcast"
+
+# (2) companion pair-send MUST be refused
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=gc-codex "$FLEET" pair-send gc "HOLD" > "$TMP/msg_pair.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "companion pair-send EXITS non-zero" || no "companion pair-send EXITS non-zero"
+has  "companion pair-send refusal names the reason" "$TMP/msg_pair.out" "read-only companion/refuter"
+
+# (3) companion send to a THIRD party (not its primary) MUST be refused
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=gc-codex "$FLEET" send other "you are on HOLD" > "$TMP/msg_third.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "companion send-to-third-party EXITS non-zero" || no "companion send-to-third-party EXITS non-zero"
+has  "companion third-party send refusal names the reason" "$TMP/msg_third.out" "read-only companion/refuter"
+has  "companion third-party send denial is audited"        "$WS2/.fleet/log/fleet.log" "DENIED send"
+
+# (4) companion send to its OWN primary is NOT authority-blocked (the feed-up
+# channel) AND carries the advisory provenance tag when it lands.
+rm -f "$WS2/.fleet/inbox/gc.jsonl"
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=gc-codex "$FLEET" send gc "observation for you" > "$TMP/msg_primary.out" 2>&1 || true
+lacks "companion send-to-primary is NOT authority-blocked" "$TMP/msg_primary.out" "read-only companion/refuter"
+# (5) provenance: the delivered message carries the companion advisory tag
+has "companion send-to-primary carries the advisory provenance tag" "$WS2/.fleet/inbox/gc.jsonl" "companion·advisory"
+
+# (6) human root + normal writer are NEVER messaging-guard-blocked
+FLEET_WORKSPACE="$WS2" "$FLEET" broadcast "human coordination" > "$TMP/msg_human.out" 2>&1 || true
+lacks "human-root broadcast is not messaging-guard-blocked" "$TMP/msg_human.out" "read-only companion/refuter"
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=other "$FLEET" send gc "peer note" > "$TMP/msg_writer.out" 2>&1 || true
+lacks "normal writer send is not messaging-guard-blocked" "$TMP/msg_writer.out" "read-only companion/refuter"
+
 # --- 9. forked responder (fleet ask plumbing) -------------------------------
 section "9. forked responder"
 # a stub claude that prints a fixed answer and logs its argv
