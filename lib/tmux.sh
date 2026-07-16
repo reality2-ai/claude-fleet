@@ -161,28 +161,53 @@ fleet_agent_argv_size() {
 fleet_write_agent_argv_file() {
   local id="$1" arr_name="$2" f
   local -n argv="$arr_name"
+  # Validated run path: an unguarded '../../pwned' here wrote an argv file clean
+  # outside RUN_DIR (verified against 0ab4a0e).
+  f="$(fleet_run_path "$id" .argv)" || return 1
   mkdir -p "$RUN_DIR"
-  f="$RUN_DIR/$id.argv"
-  : >"$f"
+  # Atomic no-follow write: a symlink squatting the argv path would send an in-place
+  # `:>"$f"` through to an out-of-tree target. Instead build the NUL-delimited argv in a
+  # fresh temp and rename() it into place (fleet_atomic_write) — rename replaces a
+  # squatted link (target untouched) with no TOCTOU window. Confirmed against 6d19957.
   local a
-  for a in "${argv[@]}"; do
-    printf '%s\0' "$a"
-  done >"$f"
+  { for a in "${argv[@]}"; do printf '%s\0' "$a"; done; } | fleet_atomic_write "$f" || return 1
   printf '%s\n' "$f"
 }
 
 fleet_tmux_new_agent_window() {
   local id="$1" cwd="$2" exitfile="$3" provider="$4" arr_name="$5"
   local -n argv="$arr_name"
-  local max="${FLEET_TMUX_ARG_MAX:-20000}" size argvfile
+  # The id becomes a tmux WINDOW NAME and an argv filename. Refuse a non-plain id
+  # here, at the artifact boundary — creating the window first and validating later
+  # (which is what the pre-0ab4a0e ordering did) leaves a phantom window behind.
+  fleet_valid_member_id "$id" || { warn "refusing to spawn a window for invalid member id '$id'"; return 1; }
+  # Over this argv size, spill to a NUL-delimited file (run-argv-file.sh) instead of
+  # passing argv inline — tmux ferries a command to its server over imsg, whose
+  # MAX_IMSGSIZE ceiling is 16384 bytes; an inline argv above that dies with tmux's
+  # "command too long" (hit live 2026-07-01: a codex companion prompt at 17429 bytes
+  # slipped the old 20000 gate — which sat ABOVE tmux's real ceiling — and failed to
+  # launch). Keep the default comfortably under 16384 to leave room for the
+  # new-window wrapper (run-child.sh path, -e env, --). The file path is proven and
+  # cheap, so erring low only costs a small temp file.
+  local max="${FLEET_TMUX_ARG_MAX:-12000}" size argvfile
   size="$(fleet_agent_argv_size "$arr_name")"
+  # ALWAYS target "$FLEET_TMUX_SESSION:" — the trailing colon (an explicit EMPTY window
+  # component) is load-bearing, not cosmetic. A bare "$FLEET_TMUX_SESSION" is parsed by
+  # tmux as a target-WINDOW and resolved by window-NAME match, which PREFIX-matches any
+  # window named like the session — e.g. session `fleet` matches the window `fleet-fix`.
+  # new-window then tries to create AT that window's index and dies with
+  # "create window failed: index N in use", deterministically, for every spawn
+  # (up/dispatch/pair/refute). Live 2026-07-15: `fleet refute` failed with "index 11 in
+  # use" = the fleet-fix window's index; it tracked that window as it moved (12 → 11).
+  # With the empty component tmux resolves session-only and allocates the next unused
+  # index. Same fix as cmd_ask (8ac37cc). See tests/window-alloc.sh.
   if [[ "$size" =~ ^[0-9]+$ && "$max" =~ ^[0-9]+$ && "$size" -gt "$max" ]]; then
     argvfile="$(fleet_write_agent_argv_file "$id" "$arr_name")"
-    fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+    fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "$id" -c "$cwd" \
       -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
       "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "$TOOL_ROOT/lib/run-argv-file.sh" "$argvfile"
   else
-    fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+    fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "$id" -c "$cwd" \
       -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
       "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${argv[@]}"
   fi
@@ -199,6 +224,11 @@ fleet_tmux_new_agent_window() {
 # Resumes from run/<id>.session when present, else seeds a fresh session.
 fleet_tmux_start_child() {
   local id="$1"
+  # FIRST, before any run-file path is derived and before the window exists: the old
+  # order reached fleet_state_ensure (the only validator) only AFTER `rm -f
+  # "$RUN_DIR/$id.exit"`, so an id of '../keepme' deleted an out-of-tree file and a
+  # window was already spawned by the time registration refused the id.
+  fleet_require_member_id "$id"
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && { warn "child '$id' already has a window"; return 0; }
 
@@ -210,7 +240,8 @@ fleet_tmux_start_child() {
   pm="$(fleet_child_get "$id" permission_mode "")"
   seed="$(fleet_child_get "$id" seed "")"
   provider="$(fleet_provider_for_child "$id")"
-  sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
+  local sf; sf="$(fleet_run_path "$id" .session)" || return 1
+  sid=""; [[ -f "$sf" ]] && sid="$(<"$sf")"
 
   # prime the worker with its identity, peers, and the mailbox protocol
   if declare -F fleet_peer_primer >/dev/null 2>&1; then
@@ -233,7 +264,8 @@ fleet_tmux_start_child() {
   fleet_agent_build_args agent_args "$provider" "$id" "$name" "$cwd" "$primer" "$prompt" "$sid" "$pm"
 
   mkdir -p "$RUN_DIR"
-  local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"
+  local exitfile; exitfile="$(fleet_run_path "$id" .exit)" || return 1
+  rm -f "$exitfile"
   # -e sets env in the new window (tmux ≥3.0); command + args passed as argv so
   # no shell-quoting of the seed prompt is needed.
   fleet_tmux_new_agent_window "$id" "$cwd" "$exitfile" "$provider" agent_args
@@ -254,6 +286,7 @@ fleet_tmux_stop_child() {
 
 # Read the recorded exit code of a child's last run (empty if none).
 fleet_child_exit_code() {
-  local id="$1" f="$RUN_DIR/$1.exit"
+  local id="$1" f
+  f="$(fleet_run_path "$id" .exit)" || { printf ''; return; }
   [[ -f "$f" ]] && cat "$f" || printf ''
 }

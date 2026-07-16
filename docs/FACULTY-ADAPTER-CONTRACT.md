@@ -80,9 +80,21 @@ Every adapter implements these. Signatures are conceptual (the bash seam realize
 - `deliver(entity, msg)` — hand one message to the leaf. **Native delivery** (API) where available; the tmux
   baseline is `fleet_inject` with its at-least-once / verified-submit guarantees. Returns delivered/queued.
 - `headless_answer(entity, question) → text` — a one-shot **forked** answer that does **not** disturb the
-  entity's live body (the `fleet ask` responder). Must run **isolated** (worktree) so a fork can never write
-  the entity's live checkout — this requirement is what structurally fixes
-  `fleet-ask-fork-writes-live-checkout-hazard`.
+  entity's live body (the `fleet ask` responder). Must run **isolated** so a fork can never write the entity's
+  live checkout — this requirement is what structurally fixes `fleet-ask-fork-writes-live-checkout-hazard`.
+  Isolation is enforced on **two structural layers** (never prompt text), because a resumed Claude/Codex session
+  can restore the *original* session cwd and ignore the caller's:
+  1. **Existing isolated cwd, passed explicitly and required at the adapter boundary** — `responder.sh` creates
+     a detached worktree at `HEAD` (or, for a non-git target, a bare temp dir), `cd`s in, and threads that cwd
+     into the adapter (`--cd` for codex; a `cd`'d subshell for claude). `fleet_agent_headless_answer` refuses to
+     invoke either provider when the cwd argument is missing or does not name an existing directory. The
+     responder also **fails closed**: if it cannot create/enter an isolated cwd it sends an error answer rather
+     than launch from the live checkout.
+  2. **No write capability at the provider** — claude runs `--safe-mode --permission-mode dontAsk --tools
+     Read,Grep,Glob --disallowedTools Edit,Write,NotebookEdit,Bash`: safe mode disables customizations, `--tools`
+     exposes only the named built-ins, and the current compatible mutation/exec tools are denied explicitly.
+     Codex runs `--cd <isolate> --sandbox read-only --ask-for-approval never`. So even a resumed fork that tries
+     to restore the original cwd has no Edit/Write/Bash surface to write with. See `tests/ask-isolation.sh`.
 - `spawn_tool(entity, task) → result` — run a bounded sub-task as an ephemeral leaf (a subagent), returning a
   result. The brain's *tools*, one level down (research / verify / refute).
 - `recall(entity, query) → text` — **lazy retrieval** from shared memory: the entity-memory head, the decision

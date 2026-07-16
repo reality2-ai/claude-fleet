@@ -481,7 +481,7 @@ cmd_conflicts() {
 
 # count of undelivered (unanswered) messages in a member's mailbox
 _undelivered_count() {
-  local f; f="$(fleet_inbox_file "$1")"
+  local f; f="$(fleet_inbox_file "$1")" || { echo 0; return; }
   [[ -f "$f" ]] || { echo 0; return; }
   jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0
 }
@@ -652,11 +652,11 @@ fleet_start_supervisor_companion() {
   local primer prompt sid exitfile
   primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
   prompt="You are the $provider backup supervisor lane for this fleet. Work as the same logical supervisor as 'supervisor', but from a different provider. Monitor fleet status, doctor output, provider exhaustion, conflicts, RESUME.md health, and pair handoffs. If the Claude supervisor is exhausted or unavailable, continue coordination from ground truth using fleet commands. Do not assume private Claude transcript state."
-  sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
+  local _sf; sid=""; _sf="$(fleet_run_path "$id" .session)" && [[ -f "$_sf" ]] && sid="$(<"$_sf")"
   [[ -n "$sid" && -n "${FLEET_RESUME_NUDGE-carry on}" ]] && prompt="${FLEET_RESUME_NUDGE-carry on}"
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$id" fleet-supervisor-codex "$WORKSPACE" "$primer" "$prompt" "$sid" ""
-  exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  exitfile="$(fleet_run_path "$id" .exit)" || return 1; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   fleet_tmux_new_agent_window "$id" "$WORKSPACE" "$exitfile" "$provider" cargs
   fleet_state_ensure "$id" "$WORKSPACE" true
   fleet_state_jq "$id" --arg p "$provider" --arg cwd "$WORKSPACE" \
@@ -1316,6 +1316,7 @@ _fleet_start_companion() {
   fi
 
   local base_provider target_provider cid cwd pm primer prompt exitfile summary sid had_skip=0 old_skip=""
+  local had_capprove=0 old_capprove="" had_csandbox=0 old_csandbox=""
   base_provider="$(_fleet_id_provider "$base")"
   target_provider="${provider:-$(_fleet_opposite_provider "$base_provider")}"
   _fleet_validate_provider "$target_provider"
@@ -1329,6 +1330,7 @@ _fleet_start_companion() {
   fi
 
   cid="${companion_id:-$base-$target_provider}"
+  fleet_require_member_id "$cid"
   [[ "$cid" != "$base" ]] || { warn "$base: companion id equals base id; skipping"; return 0; }
   if fleet_tmux_has_window "$cid"; then
     info "pair: '$cid' already running for '$base'"
@@ -1339,12 +1341,28 @@ _fleet_start_companion() {
   pm="${FLEET_PAIR_PERMISSION_MODE:-plan}"
   primer="$(fleet_peer_primer "$cid")"
   prompt="$(_fleet_companion_prompt "$base" "$cid" "$base_provider" "$target_provider")"
-  sid=""; [[ -f "$RUN_DIR/$cid.session" ]] && sid="$(<"$RUN_DIR/$cid.session")"
-  exitfile="$RUN_DIR/$cid.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  local _sf; sid=""; _sf="$(fleet_run_path "$cid" .session)" && [[ -f "$_sf" ]] && sid="$(<"$_sf")"
+  exitfile="$(fleet_run_path "$cid" .exit)" || return 1; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   local -a cargs=()
   [[ -n "${FLEET_SKIP_PERMISSIONS+x}" ]] && { had_skip=1; old_skip="$FLEET_SKIP_PERMISSIONS"; }
   FLEET_SKIP_PERMISSIONS=off; export FLEET_SKIP_PERMISSIONS
+  # A codex companion is a READ-ONLY adversarial reviewer/standby. Plan mode's codex
+  # default (--ask-for-approval untrusted) stops to ask "yes?" on nearly every command
+  # and strands the pane (the "codex asks many questions" bug Roy hit with refuters).
+  # Force the non-interactive read-only combo — same fix as cmd_refute — so it reviews
+  # autonomously and never writes. A per-child manifest sandbox/approval_policy still
+  # wins (fleet_codex_add_common_flags reads it via fleet_child_get, ahead of these env
+  # defaults). Claude companions ignore these knobs.
+  if [[ "$target_provider" == codex ]]; then
+    [[ -n "${FLEET_CODEX_APPROVAL+x}" ]] && { had_capprove=1; old_capprove="$FLEET_CODEX_APPROVAL"; }
+    [[ -n "${FLEET_CODEX_SANDBOX+x}"  ]] && { had_csandbox=1; old_csandbox="$FLEET_CODEX_SANDBOX"; }
+    FLEET_CODEX_APPROVAL=never FLEET_CODEX_SANDBOX=read-only; export FLEET_CODEX_APPROVAL FLEET_CODEX_SANDBOX
+  fi
   fleet_agent_build_args cargs "$target_provider" "$cid" "$cid" "$cwd" "$primer" "$prompt" "$sid" "$pm"
+  if [[ "$target_provider" == codex ]]; then
+    if [[ "$had_capprove" == 1 ]]; then FLEET_CODEX_APPROVAL="$old_capprove"; export FLEET_CODEX_APPROVAL; else unset FLEET_CODEX_APPROVAL; fi
+    if [[ "$had_csandbox" == 1 ]]; then FLEET_CODEX_SANDBOX="$old_csandbox"; export FLEET_CODEX_SANDBOX; else unset FLEET_CODEX_SANDBOX; fi
+  fi
   _fleet_restore_skip_permissions "$had_skip" "$old_skip"
   fleet_tmux_new_agent_window "$cid" "$cwd" "$exitfile" "$target_provider" cargs
   fleet_state_ensure "$cid" "$cwd" true
@@ -1434,13 +1452,14 @@ cmd_dispatch() {
   [[ -n "$provider_opt" ]] && _fleet_validate_provider "$provider_opt"
   local id="${1:?usage: fleet dispatch [--provider claude|codex] <id> \"<task>\" [cwd]}"
   local task="${2:?provide a task prompt}" cwd_arg="${3:-}" cwd
+  fleet_require_member_id "$id"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_has_tmux || die "tmux required for dispatch. Run: sudo apt install tmux"
   cwd="${cwd_arg:-$WORKSPACE}"; [[ "$cwd" != /* ]] && cwd="$WORKSPACE/$cwd"
   fleet_ensure_managed_settings
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && die "child '$id' already running — pick another id"
-  local exitfile="$RUN_DIR/$id.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  local exitfile; exitfile="$(fleet_run_path "$id" .exit)" || return 1; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   local provider; provider="${provider_opt:-${FLEET_DISPATCH_PROVIDER:-$(fleet_default_provider)}}"
   local primer; primer="$(fleet_peer_primer "$id")"
   local -a cargs=()
@@ -1551,6 +1570,7 @@ cmd_handoff() {
     to="$(_fleet_live_companion_id "$from" "$provider" || true)"
     to="${to:-$from-$provider}"
   fi
+  fleet_require_member_id "$from"; fleet_require_member_id "$to"
   [[ "$to" != "$from" ]] || die "handoff target id must differ from source id; use a new id like '$from-$provider'"
 
   local cwd; cwd="$(_fleet_id_cwd "$from")"
@@ -1559,7 +1579,7 @@ cmd_handoff() {
 
   fleet_ensure_managed_settings
   local primer prompt pm exitfile summary resume_sid="" stopped_source=0 promoting_standby=0
-  [[ -f "$RUN_DIR/$to.session" ]] && resume_sid="$(<"$RUN_DIR/$to.session")"
+  local _sf; _sf="$(fleet_run_path "$to" .session)" && [[ -f "$_sf" ]] && resume_sid="$(<"$_sf")"
   if _fleet_is_readonly_standby "$to"; then
     promoting_standby=1
     [[ "${FLEET_HANDOFF_EXCLUSIVE:-on}" != "off" ]] && stop_source=1
@@ -1603,7 +1623,7 @@ cmd_handoff() {
   primer="$(fleet_peer_primer "$to")"
   prompt="$(_fleet_handoff_prompt "$from" "$to" "$source_provider" "$provider" "$task")"
   pm="$(_fleet_takeover_permission_mode "$provider" "$from")"
-  exitfile="$RUN_DIR/$to.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  exitfile="$(fleet_run_path "$to" .exit)" || return 1; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$to" "$to" "$cwd" "$primer" "$prompt" "$resume_sid" "$pm"
   fleet_tmux_new_agent_window "$to" "$cwd" "$exitfile" "$provider" cargs
@@ -1736,6 +1756,7 @@ cmd_refute() {
     esac
   done
   [[ -n "$target" ]] || die "usage: fleet refute [--provider claude|codex] [--id id] <target> [claim]"
+  fleet_require_member_id "$target"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_has_tmux || die "tmux required for refute. Run: sudo apt install tmux"
 
@@ -1743,6 +1764,7 @@ cmd_refute() {
   provider="${provider:-$(_fleet_opposite_provider "$target_provider")}"
   _fleet_validate_provider "$provider"
   reviewer="${reviewer:-$target-$provider-refute}"
+  fleet_require_member_id "$reviewer"
   [[ "$reviewer" != "$target" ]] || die "reviewer id must differ from target id"
 
   local cwd; cwd="$(_fleet_id_cwd "$target")"
@@ -1754,7 +1776,7 @@ cmd_refute() {
   local primer prompt exitfile had_skip=0 old_skip=""
   primer="$(fleet_peer_primer "$reviewer")"
   prompt="$(_fleet_refute_prompt "$target" "$reviewer" "$target_provider" "$provider" "$lens" "$claim" "$diff_ref")"
-  exitfile="$RUN_DIR/$reviewer.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
+  exitfile="$(fleet_run_path "$reviewer" .exit)" || return 1; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   [[ -n "${FLEET_SKIP_PERMISSIONS+x}" ]] && { had_skip=1; old_skip="$FLEET_SKIP_PERMISSIONS"; }
   FLEET_SKIP_PERMISSIONS=off; export FLEET_SKIP_PERMISSIONS
   # A refuter is READ-ONLY (it never writes), but read-only must not mean PROMPTING: the
@@ -1810,7 +1832,8 @@ cmd_reap() {
     local st; st="$(fleet_state_get "$id" '.state' unknown)"
     [[ "$st" == "stopped" || "$st" == "failed" ]] && continue
     [[ "$st" == "running" ]] || continue
-    warn "child '$id' is down (rc=$(fleet_child_exit_code "$id"):-?) — applying policy"
+    local _rc; _rc="$(fleet_child_exit_code "$id" 2>/dev/null || true)"
+    warn "child '$id' is down (rc=${_rc:-?}) — applying policy"
     if fleet_restart_child "$id"; then reaped=$(( reaped + 1 )); fi
   done
   (( reaped == 0 )) && info "reap: nothing to restart"
@@ -1964,7 +1987,7 @@ cmd_doctor() {
 
     # live window ⇒ a state doc with a session_id must exist.
     if [[ "$has_win" == 1 ]]; then
-      local sf; sf="$(fleet_state_path "$id")"
+      local sf; sf="$(fleet_state_path "$id")" || sf=""
       if [[ ! -f "$sf" ]]; then
         problems+=("$id: live window but NO state doc (reconcile failed)")
       else
@@ -1978,7 +2001,12 @@ cmd_doctor() {
     (( inf > 0 )) && { problems+=("$id: $inf unverified inject failure(s) (mail may be stranded)"); total_inject_failures=$(( total_inject_failures + inf )); }
 
     # stale undelivered mail.
-    local inbox; inbox="$(fleet_inbox_file "$id" 2>/dev/null)"
+    # `|| inbox=""` is load-bearing: bin/fleet runs `set -euo pipefail`, and
+    # fleet_inbox_file now returns non-zero for a junk id (e.g. the '--help' phantom
+    # that lives in real state dirs). A bare assignment would abort doctor ENTIRELY
+    # and silently — fail-closed must not become fail-fatal. The -f guard below then
+    # does the closing.
+    local inbox; inbox="$(fleet_inbox_file "$id" 2>/dev/null)" || inbox=""
     if [[ -n "$inbox" && -f "$inbox" ]]; then
       local oldest; oldest="$(jq -s --argjson now "$now" '
         [.[] | select(.delivered==false) | ($now - (.ts // $now))] | (max // 0)' "$inbox" 2>/dev/null || echo 0)"
@@ -2054,6 +2082,12 @@ _fleet_parse_msg() {
   set -- "${rest[@]}"
   _F_TO="${1:-}"; _F_TEXT="${2:-}"
   [[ -z "$_F_FROM" ]] && _F_FROM="${FLEET_CHILD_ID:-supervisor}"
+  # Both ids become path components (inbox/<id>.jsonl) and tmux targets. --from is
+  # picked by whichever agent is calling and was previously never checked, so validate
+  # here: the single boundary every messaging command funnels through. An EMPTY _F_TO
+  # is left to the callers' usage message rather than pre-empted with "invalid id".
+  [[ -n "$_F_TO" ]] && fleet_require_member_id "$_F_TO"
+  fleet_require_member_id "$_F_FROM"
 }
 _fleet_deliver() {   # <kind> <to> <from> <text>
   local kind="$1" to="$2" from="$3" text="$4"
@@ -2151,7 +2185,10 @@ cmd_ask() {
   # off-thread from provider-native context, then routes the reply back
   # (full → asker's inbox, one-line summary → asker's thread, brief FYI → target's
   # thread). The window closes itself when done.
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "ask:$to" -c "$cwd" \
+  # Qualify the empty window component (`session:`): tmux then allocates the next
+  # unused index instead of reusing a caller/session-current index inherited via
+  # TMUX + TMUX_PANE (which can be occupied by a worker window).
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "ask:$to" -c "$cwd" \
     -e "TOOL_ROOT=$TOOL_ROOT" -e "FLEET_WORKSPACE=$WORKSPACE" \
     -e "FLEET_TMUX_SOCKET=$FLEET_TMUX_SOCKET" \
     -e "FLEET_CLAUDE_BIN=${FLEET_CLAUDE_BIN:-claude}" -e "FLEET_CODEX_BIN=${FLEET_CODEX_BIN:-codex}" \
@@ -2177,7 +2214,8 @@ cmd_inbox() {
   fleet_load_paths
   local id="${1:-${FLEET_CHILD_ID:-}}"
   [[ -z "$id" ]] && die "usage: fleet inbox <id>  (or set FLEET_CHILD_ID)"
-  local f; f="$(fleet_inbox_file "$id")"
+  fleet_require_member_id "$id"
+  local f; f="$(fleet_inbox_file "$id")" || { info "(no messages for $id)"; return; }
   [[ -f "$f" ]] || { info "(no messages for $id)"; return; }
   # Read under a SHARED flock (same fd/lock-file convention the writers use in
   # comms.sh) so we never dump a half-written line while an enqueue/drain holds

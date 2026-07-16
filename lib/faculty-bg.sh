@@ -37,7 +37,7 @@ fleet_bg_deliver_turn() {
 #   fleet_bg_drain <to>
 fleet_bg_drain() {
   local to="$1" f sid cwd
-  f="$(fleet_inbox_file "$to")"; [[ -f "$f" ]] || return 0
+  f="$(fleet_inbox_file "$to")" || return 0; [[ -f "$f" ]] || return 0
   sid="$(fleet_state_get "$to" '.session_id' "")"
   [[ -n "$sid" && "$sid" != "null" ]] || return 1            # no durable session yet → keep queued
   cwd="$(fleet_state_get "$to" '.cwd' "$PWD")"
@@ -95,7 +95,7 @@ fleet_codex_deliver_turn() {
 
 # Any undelivered mail queued for <to>?  (controller uses this to prioritise mail.)
 fleet_bg_has_mail() {
-  local f; f="$(fleet_inbox_file "$1")"; [[ -f "$f" ]] || return 1
+  local f; f="$(fleet_inbox_file "$1")" || return 1; [[ -f "$f" ]] || return 1
   local n; n="$(jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0)"
   [[ "${n:-0}" -gt 0 ]]
 }
@@ -119,6 +119,11 @@ fleet_bg_start_session() {
 #   fleet_bg_mount <id>
 fleet_bg_mount() {
   local id="$1"
+  # This path spawns its window with a DIRECT `fleet_tmux new-window` (below) rather
+  # than via fleet_tmux_new_agent_window, so it does not inherit that function's guard.
+  # Validate here explicitly instead of relying on fleet_state_ensure further down —
+  # ordering, not intent, is what kept this safe before.
+  fleet_require_member_id "$id"
   fleet_tmux_ensure_session
   fleet_tmux_has_window "$id" && { warn "child '$id' already has a window"; return 0; }
   local rel cwd; rel="$(fleet_child_get "$id" cwd ".")"
@@ -136,7 +141,10 @@ fleet_bg_mount() {
   # SKIPS this worker — its controller is the sole, keystroke-free deliverer. Record
   # the real provider so the controller drives claude (-p --resume) or codex (exec resume).
   fleet_state_jq "$id" --arg p "$provider" '.state="running" | .reason=null | .provider=$p | .faculty="claude-bg"' >/dev/null
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n "$id" -c "$cwd" \
+  # "$FLEET_TMUX_SESSION:" — the trailing colon is load-bearing; a bare session name is
+  # resolved by window-NAME match and collides with any window named like the session
+  # ("fleet" → "fleet-fix"). See fleet_tmux_new_agent_window / tests/window-alloc.sh.
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "$id" -c "$cwd" \
     -e "TOOL_ROOT=$TOOL_ROOT" -e "FLEET_WORKSPACE=$WORKSPACE" -e "FLEET_CHILD_ID=$id" \
     -e "FLEET_FACULTY_ADAPTER=claude-bg" -e "FLEET_SKIP_PERMISSIONS=${FLEET_SKIP_PERMISSIONS:-on}" \
     "$TOOL_ROOT/lib/bg-controller.sh" "$id"
@@ -149,8 +157,52 @@ fleet_bg_mount() {
 # fully died could leave a duplicate controller — so we explicitly pkill the loop by its
 # exact argv (anchored so 'specs' never matches 'specs2'). Idempotent.
 #   fleet_bg_unmount <id>
+# PIDs of running bg-controllers whose argv is EXACTLY [... , <*bg-controller.sh>, <id>].
+# NB: the LIVE reap no longer calls this — fleet_bg_unmount signals via the pidfd helper
+# (lib/fleet-safeio.py `signal`), which does the same argv-identity match AND binds a pidfd
+# so a recycled pid can't be struck. This shell matcher is retained as a read-only
+# diagnostic that tests/window-alloc.sh section F exercises to pin the exact-identity rule.
+# We match by argv IDENTITY via /proc, not by a `pkill -f` regex the id is spliced into.
+# That splice was a real defect (confirmed 2026-07-15 against 6d19957): the allowlist
+# admits '.', and in a `pkill` regex '.' matches ANY char, so the "anchored" pattern
+# `bg-controller\.sh a.b$` reaped a DIFFERENT controller running for id 'aXb'. An exact
+# byte-for-byte compare of the last argv token cannot collide. The pgrep prefilter uses
+# the fixed string 'bg-controller' (no metacharacters), so the id never touches a regex.
+# Linux-only (needs /proc): on a host without it this yields no pids and the window kill
+# in fleet_tmux_stop_child remains the teardown — safer to under-reap than mis-reap.
+_fleet_bg_controller_pids() {
+  local id="$1" pid
+  command -v pgrep >/dev/null 2>&1 || return 0
+  while IFS= read -r pid; do
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [[ -r "/proc/$pid/cmdline" ]] || continue
+    local -a argv=()
+    mapfile -d '' -t argv < "/proc/$pid/cmdline" 2>/dev/null || continue
+    local n=${#argv[@]}
+    (( n >= 2 )) || continue
+    [[ "${argv[n-1]}" == "$id" ]] || continue            # last token == id, byte-for-byte
+    [[ "${argv[n-2]}" == *bg-controller.sh ]] || continue # launched as `bg-controller.sh <id>`
+    printf '%s\n' "$pid"
+  done < <(pgrep -f 'bg-controller' 2>/dev/null)
+}
+
 fleet_bg_unmount() {
   local id="$1"
+  # Still reject a junk id up front — but note the allowlist is NOT what makes the reap
+  # safe (it admits '.'); the exact argv match is.
+  fleet_valid_member_id "$id" || { warn "refusing to unmount invalid member id '$id'"; return 1; }
   declare -F fleet_tmux_stop_child >/dev/null 2>&1 && fleet_tmux_stop_child "$id" 2>/dev/null || true
-  pkill -f "bg-controller\.sh ${id}\$" 2>/dev/null || true
+  # Reap the orphaned controller ONLY via the pidfd path (lib/fleet-safeio.py `signal`). It
+  # binds a pidfd to each argv-identity match and RE-VALIDATES the cmdline after binding, so
+  # a pid RECYCLED between discovery and the signal can never be struck — pidfd_send_signal
+  # targets THAT process instance or fails ESRCH, never a reused pid. SIGTERM = 15.
+  #
+  # There is DELIBERATELY no discover-then-`kill` fallback: doing so would reopen the exact
+  # discovery->signal pid-reuse window this path exists to close (a `kill <pid>` on a number
+  # recycled to an unrelated process). When pidfd is unavailable (no python3, non-Linux) we
+  # UNDER-REAP and rely on the tmux window kill above — under-reaping is safe; mis-reaping is
+  # not. This is fail-closed, and documented as the platform boundary (README Prerequisites).
+  if declare -F fleet_safeio_available >/dev/null 2>&1 && fleet_safeio_available && [[ -d /proc ]]; then
+    python3 "$FLEET_SAFEIO" signal 15 "$id" >/dev/null 2>&1 || true
+  fi
 }

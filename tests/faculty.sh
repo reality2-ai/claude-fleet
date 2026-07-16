@@ -100,8 +100,18 @@ if declare -f faculty_deliver | grep -q 'claude-bg'; then ok "faculty_deliver ha
 if declare -f fleet_bg_drain | grep -q 'fleet_bg_deliver_turn' && ! declare -f fleet_bg_drain | grep -q 'fleet_codex_deliver_turn'; then ok "fleet_bg_drain is claude-only (no codex dispatch)"; else no "drain still dispatches codex"; fi
 # fleet_bg_mount diverts a codex worker to the cli-tmux path (refuter-only on bg)
 if declare -f fleet_bg_mount | grep -q 'fleet_tmux_start_child'; then ok "fleet_bg_mount diverts codex → cli-tmux"; else no "mount has no codex divert"; fi
-# unmount reaps the controller (orphaned/duplicate-controller fix)
-if declare -F fleet_bg_unmount >/dev/null 2>&1 && declare -f fleet_bg_unmount | grep -q 'pkill'; then ok "fleet_bg_unmount reaps controller"; else no "no controller-reaping unmount"; fi
+# unmount reaps the controller (orphaned/duplicate-controller fix) via the pidfd `signal`
+# path — exact argv identity + pidfd (closes the discovery->signal pid-reuse window), NOT an
+# id-interpolated `pkill` regex and NOT a bare discover-then-`kill` fallback (that would
+# reopen the reuse window). See tests/window-alloc.sh sections F + H.
+if declare -F fleet_bg_unmount >/dev/null 2>&1 \
+   && declare -f fleet_bg_unmount | grep -qE 'signal|fleet_safeio_available' \
+   && ! declare -f fleet_bg_unmount | grep -q 'pkill' \
+   && ! declare -f fleet_bg_unmount | grep -qE '\bkill "\$_pid"'; then
+  ok "fleet_bg_unmount reaps via the pidfd signal path (no pkill regex, no discover-then-kill)"
+else
+  no "fleet_bg_unmount does not reap via pidfd (or still uses pkill / a discover-then-kill fallback)"
+fi
 if declare -f faculty_unmount | grep -q '_faculty_adapter_for'; then ok "faculty_unmount resolves adapter per-worker"; else no "faculty_unmount uses global adapter"; fi
 for v in fleet_bg_start_session fleet_bg_mount fleet_bg_unmount fleet_bg_has_mail; do
   if declare -F "$v" >/dev/null 2>&1; then ok "claude-bg lifecycle fn: $v"; else no "missing: $v"; fi

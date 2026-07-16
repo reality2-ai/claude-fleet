@@ -65,10 +65,17 @@ fleet_manifest_load() {
       child)
         if [[ "$key" == "id" ]]; then
           # rename the provisional id to the real one
-          local old="$cur_id" i
+          local old="$cur_id" i mk
           cur_id="$val"
           for i in "${!CHILD_IDS[@]}"; do
             [[ "${CHILD_IDS[$i]}" == "$old" ]] && CHILD_IDS[$i]="$cur_id"
+          done
+          # migrate any fields stored BEFORE `id` was seen (TOML need not put id first)
+          for mk in "${!MANIFEST_KV[@]}"; do
+            if [[ "$mk" == "$old".* ]]; then
+              MANIFEST_KV["$cur_id.${mk#"$old".}"]="${MANIFEST_KV[$mk]}"
+              unset 'MANIFEST_KV[$mk]'
+            fi
           done
         fi
         MANIFEST_KV["$cur_id.$key"]="$val"

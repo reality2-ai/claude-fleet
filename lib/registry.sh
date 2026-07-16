@@ -11,7 +11,10 @@
 FLEET_IDLE_SECS="${FLEET_IDLE_SECS:-300}"    # no transcript write in 5m → idle
 FLEET_DEAD_SECS="${FLEET_DEAD_SECS:-1800}"   # 30m → presumed dead
 
-fleet_state_path() { printf '%s/%s.json\n' "$CHILDSTATE_DIR" "$1"; }
+# state/<id>.json — validated via the central choke point (lib/common.sh), so an id
+# that is not a plain name yields NO path and a non-zero status instead of one that
+# escapes CHILDSTATE_DIR. Every caller below fails closed on that status.
+fleet_state_path() { fleet_member_path "${CHILDSTATE_DIR:-}" "${1:-}" .json; }
 
 fleet_state_ids() {
   # Ground-truth union: every id with a state doc on disk, UNIONED with every id
@@ -49,15 +52,25 @@ fleet_state_ids() {
 }
 
 # Create the doc if absent. fleet_state_ensure <id> <cwd> <managed:true|false>
+# Rejecting at REGISTRATION stops the phantom members observed live
+# (.fleet/state/--help.json, --.json). NB: this is no longer the ONLY guard —
+# registration is not a boundary an existing file has to cross, so the real
+# choke point is fleet_member_path (lib/common.sh). fleet_valid_member_id is
+# called here only to `die` with a helpful message on the registration path.
 fleet_state_ensure() {
   local id="$1" cwd="$2" managed="${3:-false}"
-  local f; f="$(fleet_state_path "$id")"
+  fleet_require_member_id "$id"
+  local f; f="$(fleet_state_path "$id")" || return 1
   mkdir -p "$CHILDSTATE_DIR"
+  # A symlink here is refused so we neither read it as "present" nor create through it;
+  # the write itself also goes via temp+rename (fleet_atomic_write), so even a link
+  # replanted after this check is replaced rather than followed (no out-of-tree create).
+  [[ -L "$f" ]] && { warn "refusing state write: '$f' is a symlink"; return 1; }
   [[ -f "$f" ]] && return 0
   jq -n --arg id "$id" --arg cwd "$cwd" --argjson managed "$managed" '
     { id: $id, managed: $managed, provider: "claude", session_id: null, cwd: $cwd, pid: null,
       state: "unknown", current_task: null, claims: [],
-      started_at: null, heartbeat: null, reason: null, restarts: [] }' >"$f"
+      started_at: null, heartbeat: null, reason: null, restarts: [] }' | fleet_atomic_write "$f"
 }
 
 # Apply a jq program to the doc in place. The LAST argument is the jq program;
@@ -65,25 +78,49 @@ fleet_state_ensure() {
 #   fleet_state_jq <id> [jq-args...] <program>
 fleet_state_jq() {
   local id="$1"; shift
-  local f tmp; f="$(fleet_state_path "$id")"
-  [[ -f "$f" ]] || fleet_state_ensure "$id" "$PWD" false
+  # Fail CLOSED before touching the filesystem. This is the hole the registration
+  # guard did NOT cover: an EXISTING file short-circuits fleet_state_ensure, so
+  # '../victim' never reached the only validator and jq rewrote a doc outside
+  # CHILDSTATE_DIR (reproduced against 0ab4a0e; tests/window-alloc.sh section E).
+  local f; f="$(fleet_state_path "$id")" || return 1
   local -a a=( "$@" ); local n=${#a[@]}
   (( n >= 1 )) || return 1
   local prog="${a[n-1]}"; unset 'a[n-1]'
-  tmp="$f.tmp.$$"
-  if jq "${a[@]}" "$prog" "$f" >"$tmp" 2>/dev/null; then
-    mv "$tmp" "$f"
-  else
-    rm -f "$tmp"; return 1
+  # READ the doc through a fd-bound no-follow open (fleet_safe_read). The open IS the
+  # check — a pre-planted or race-replanted symlink cannot be followed and leak an
+  # out-of-tree doc; a missing primitive FAILS CLOSED (refuse). rc: 0 ok, 4 absent (create
+  # then re-read), 3 symlink/non-regular (refuse), 5 no-primitive (fail closed).
+  local content rc=0
+  content="$(fleet_safe_read "$f")" || rc=$?
+  if (( rc == 4 )); then
+    fleet_state_ensure "$id" "$PWD" false || return 1
+    rc=0; content="$(fleet_safe_read "$f")" || rc=$?
   fi
+  if (( rc != 0 )); then
+    (( rc == 3 )) && warn "refusing state read/write: '$f' is not a regular file"
+    return 1
+  fi
+  # Transform, then REPLACE via the no-follow atomic write (rename drops a squatted link,
+  # refuses a dir/special/foreign dest). jq failure leaves the doc untouched.
+  local out
+  out="$(printf '%s' "$content" | jq "${a[@]}" "$prog" 2>/dev/null)" || return 1
+  printf '%s' "$out" | fleet_safe_write "$f"
 }
 
 # Read a single field. fleet_state_get <id> <jq-path> [default]
 fleet_state_get() {
   local id="$1" path="$2" def="${3:-}"
-  local f; f="$(fleet_state_path "$id")"
-  [[ -f "$f" ]] || { printf '%s\n' "$def"; return; }
-  local v; v="$(jq -r "$path // empty" "$f" 2>/dev/null)"
+  # Read path: an invalid id is indistinguishable from an absent doc, so answer the
+  # default rather than `die` — a bad id in the registry must not take `fleet status`
+  # down with it. Fail closed, stay honest, keep the caller alive.
+  local f; f="$(fleet_state_path "$id")" || { printf '%s\n' "$def"; return; }
+  # Fd-bound no-follow read (fleet_safe_read): never `jq` through a link (that would read
+  # an out-of-tree file the id was never allowed to name). Any non-zero — absent, symlink,
+  # non-regular, or primitive-unavailable — yields the caller's default (fail closed).
+  local content rc=0
+  content="$(fleet_safe_read "$f")" || rc=$?
+  (( rc != 0 )) && { printf '%s\n' "$def"; return; }
+  local v; v="$(printf '%s' "$content" | jq -r "$path // empty" 2>/dev/null)"
   printf '%s\n' "${v:-$def}"
 }
 
@@ -171,8 +208,10 @@ fleet_last_activity() {
   printf '%s\n' "$best"
 }
 
-# Path to a child's optional activity journal (gated behind FLEET_JOURNAL).
-fleet_journal_path() { printf '%s/%s.journal\n' "$CHILDSTATE_DIR" "$1"; }
+# Path to a child's optional activity journal (gated behind FLEET_JOURNAL). Validated:
+# an unguarded '../../escaped' here wrote a journal outside the state dir (verified
+# against 0ab4a0e).
+fleet_journal_path() { fleet_member_path "${CHILDSTATE_DIR:-}" "${1:-}" .journal; }
 
 # Append one activity line to a child's journal, then tail-truncate it to the
 # last FLEET_JOURNAL_LINES (default 200) so it can't grow unbounded. No-op unless
@@ -182,13 +221,17 @@ fleet_journal_path() { printf '%s/%s.journal\n' "$CHILDSTATE_DIR" "$1"; }
 fleet_journal_append() {
   [[ "${FLEET_JOURNAL:-off}" != "off" ]] || return 0
   local id="$1"; shift || true
-  local j; j="$(fleet_journal_path "$id")"
+  local j; j="$(fleet_journal_path "$id")" || return 0   # invalid id: write nothing
   mkdir -p "$CHILDSTATE_DIR" 2>/dev/null || true
-  printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$j" 2>/dev/null || return 0
+  # Fd-bound no-follow APPEND (fleet_safe_append). A squatted/replanted symlink cannot be
+  # followed; a missing primitive just disables the journal for this call. The journal is
+  # best-effort by design, so every failure path is a quiet no-op (never fatal).
+  printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | fleet_safe_append "$j" 2>/dev/null || return 0
   local max="${FLEET_JOURNAL_LINES:-200}"
-  local n; n="$(wc -l <"$j" 2>/dev/null || echo 0)"
+  local n; n="$(fleet_safe_read "$j" 2>/dev/null | wc -l 2>/dev/null || echo 0)"
   if [[ "$n" =~ ^[0-9]+$ ]] && (( n > max )); then
-    tail -n "$max" "$j" >"$j.tmp" 2>/dev/null && mv "$j.tmp" "$j" 2>/dev/null || rm -f "$j.tmp"
+    # tail-truncate via a no-follow read piped into a no-follow rename write.
+    fleet_safe_read "$j" 2>/dev/null | tail -n "$max" | fleet_safe_write "$j" 2>/dev/null || true
   fi
 }
 
@@ -206,7 +249,10 @@ fleet_reconcile() {
   local id
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
-    local f; f="$(fleet_state_path "$id")"
+    # ids here come from live tmux WINDOW NAMES, not from our own state dir — a window
+    # named '../evil' must not be able to steer reconcile into creating a doc outside
+    # CHILDSTATE_DIR. Skip anything that is not a plain name.
+    local f; f="$(fleet_state_path "$id")" || continue
     if [[ ! -f "$f" ]]; then
       # Recreate the missing doc from the manifest's cwd (best-effort) + the
       # session id the SessionStart hook recorded under run/<id>.session.
@@ -218,7 +264,8 @@ fleet_reconcile() {
         cwd="${WORKSPACE:-$PWD}"
       fi
       fleet_state_ensure "$id" "$cwd" true
-      sid=""; [[ -f "$RUN_DIR/$id.session" ]] && sid="$(<"$RUN_DIR/$id.session")"
+      local sf; sf="$(fleet_run_path "$id" .session)" || continue
+      sid=""; [[ -f "$sf" ]] && sid="$(<"$sf")"
       if [[ -n "$sid" ]]; then
         fleet_state_jq "$id" --arg s "$sid" '.session_id = (.session_id // $s)' >/dev/null 2>&1 || true
       fi
@@ -241,7 +288,7 @@ fleet_reconcile_unstick_ready() {
   local ready; ready="$(fleet_state_get "$id" '.ready' false)"
   [[ "$ready" == "true" ]] && return 0
   # Only consider unsticking when the registry believes there is undelivered mail.
-  local inbox n; inbox="$(fleet_inbox_file "$id" 2>/dev/null)"
+  local inbox n; inbox="$(fleet_inbox_file "$id" 2>/dev/null)" || inbox=""
   [[ -n "$inbox" && -f "$inbox" ]] || return 0
   n="$(jq -s '[.[]|select(.delivered==false)]|length' "$inbox" 2>/dev/null || echo 0)"
   [[ "${n:-0}" -gt 0 ]] || return 0

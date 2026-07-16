@@ -28,7 +28,7 @@ prompt — with **one deliberate exception**: a high-stakes class is actively DE
 - **Auto-approved:** read-only commands + pipelines; `cd …&&` prefixes and `&&`/`;` chains where EVERY part is
   itself safe; read-only `gh`/MCP; inter-agent messaging; LOCAL git checkpoints (add-named / commit / fetch /
   branch / switch); `git push` (non-force); scoped build/test runners (check·build·test).
-- **Still prompts:** irreversible/destructive (rm, force-push, reset --hard, clean, repo/disk delete),
+- **Still prompts:** irreversible/destructive (rm, force-push, rebase, clean, repo/disk delete),
   arbitrary execution (ssh, interpreters, command-substitution, redirection), outward sends, bulk staging.
 - **Hard-deny + escalate (the one exception):** firmware-flash / firmware-sign / key-mint / writes to
   key-or-signature artifacts (`espflash`/`probe-rs`/`esptool`, `openssl`/`gpg`/`ssh-keygen` sign+keygen,

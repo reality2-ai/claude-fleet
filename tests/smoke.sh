@@ -27,6 +27,9 @@ section() { printf '\n%s\n' "$1"; }
 TMP="$(mktemp -d)"
 export HOME="$TMP/home"; mkdir -p "$HOME"
 export FLEET_TMUX_USER_SCOPE=off
+# The fixtures treat manifest children without an explicit provider as Claude and
+# assert against the Claude stub. Do not inherit a caller's Codex fleet default.
+export FLEET_AGENT_PROVIDER=claude
 SOCK="smoke$$"; export FLEET_TMUX_SOCKET="$SOCK" FLEET_TMUX_SESSION="$SOCK"
 cleanup() { command tmux -L "$SOCK" kill-server 2>/dev/null || true; rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -351,6 +354,8 @@ ap_allow()  { local d="$1" pay="$2"; shift 2
   if printf '%s' "$pay" | env "$@" bash "$APHOOK" 2>/dev/null | grep -q '"permissionDecision":"allow"'; then ok "$d"; else no "$d"; fi; }
 ap_prompt() { local d="$1" pay="$2"; shift 2
   if [ -z "$(printf '%s' "$pay" | env "$@" bash "$APHOOK" 2>/dev/null)" ]; then ok "$d"; else no "$d"; fi; }
+ap_deny()   { local d="$1" pay="$2"; shift 2
+  if printf '%s' "$pay" | env "$@" bash "$APHOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; then ok "$d"; else no "$d"; fi; }
 mkp() { jq -nc --arg t "$1" --arg cwd "$WS2" --arg cmd "$2" --arg fp "$3" \
   '{tool_name:$t, cwd:$cwd, tool_input:({} + (if $cmd!="" then {command:$cmd} else {} end) + (if $fp!="" then {file_path:$fp} else {} end))}'; }
 
@@ -367,6 +372,18 @@ ap_prompt "edit outside the workspace prompts"   "$(mkp Edit '' '/etc/hosts')"
 ap_prompt "unknown tool prompts"                 "$(mkp Frobnicate '' '')"
 ap_prompt "FLEET_AUTOCONFIRM=off disables it"    "$(mkp Read '' "$WS2/x")"     FLEET_AUTOCONFIRM=off
 ap_prompt "FLEET_AUTOCONFIRM_EDITS=off keeps edit prompts" "$(mkp Edit '' "$WS2/a")" FLEET_AUTOCONFIRM_EDITS=off
+# firmware/key gate — regression guards for the basename-only-matching fixes:
+# a flasher/minter must be DENIED+escalated even when hidden behind a wrapper or a
+# git chain, while prose and plain read-only tools stay unaffected.
+ap_deny   "bare flasher is denied+escalated"     "$(mkp Bash 'espflash flash app.bin' '')"
+ap_deny   "adafruit-nrfutil (RAK) is denied"     "$(mkp Bash 'adafruit-nrfutil dfu serial -pkg fw.zip' '')"
+ap_deny   "wrapper-hidden flasher is denied"     "$(mkp Bash 'env espflash flash app.bin' '')"
+ap_deny   "flasher after a git chain is denied"  "$(mkp Bash 'git commit -m x && espflash flash /dev/ttyUSB0' '')"
+ap_deny   "key-mint is denied"                   "$(mkp Bash 'openssl genpkey -out k.pem' '')"
+ap_prompt "sort -o (file write) no longer auto-approves" "$(mkp Bash 'sort -o /tmp/x /etc/hostname' '')"
+ap_allow  "plain sort is still auto-allowed"     "$(mkp Bash 'sort -rn file.txt' '')"
+ap_allow  "commit msg mentioning flash/mint is allowed"  "$(mkp Bash 'git commit -m "flash board, mint cert"' '')"
+
 # outside any .fleet workspace → never acts
 ap_prompt "outside a fleet workspace it stays silent" "$(jq -nc '{tool_name:"Read",cwd:"/tmp",tool_input:{file_path:"/tmp/x"}}')"
 

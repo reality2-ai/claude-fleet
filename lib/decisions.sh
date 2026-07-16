@@ -193,7 +193,11 @@ fleet_start_decisions_window() {
   fleet_tmux_ensure_session 2>/dev/null || return 0
   local view="decisions"; [[ "${FLEET_DECISIONS_WINDOW_ALL:-off}" != "off" ]] && view="decisions --all"
   # shellcheck disable=SC2086
-  fleet_tmux new-window -t "$FLEET_TMUX_SESSION" -n decisions -c "$WORKSPACE" \
+  # Bare-session target ("$FLEET_TMUX_SESSION:") so tmux allocates the next free
+  # index rather than colliding with a same-named/last-active window (#66 fix —
+  # this feature landed on a separate line and needed the same treatment as the
+  # other spawn sites in lib/tmux.sh + lib/faculty-bg.sh).
+  fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n decisions -c "$WORKSPACE" \
     -e "FLEET_WORKSPACE=$WORKSPACE" -e "TOOL_ROOT=$TOOL_ROOT" \
     -e "FLEET_TMUX_SOCKET=$FLEET_TMUX_SOCKET" -e "FLEET_TMUX_SESSION=$FLEET_TMUX_SESSION" \
     "$TOOL_ROOT/bin/fleet" $view --watch 2>/dev/null || return 0

@@ -98,6 +98,222 @@ fleet_realpath() {
   else printf '%s/%s\n' "$( cd "$(dirname "$p")" 2>/dev/null && pwd )" "$(basename "$p")"; fi
 }
 
+# --- member ids and the paths derived from them ------------------------------
+# A member id must be a PLAIN NAME. It is not just a label: it is interpolated
+# into filesystem paths (state/<id>.json, run/<id>.exit, inbox/<id>.jsonl,
+# memory/<id>.md) and used as a tmux window name. Anything that is not a plain
+# name is therefore a boundary violation, not a cosmetic one:
+#   * a leading '-' is never a legitimate id — it is always a misparsed flag, and
+#     it is what registered the phantom members seen live (.fleet/state/--help.json,
+#     .fleet/state/--.json), which then haunt status/doctor forever;
+#   * '/' or '..' ESCAPE the state dir. Verified 2026-07-15 against 0ab4a0e:
+#     `fleet_state_jq '../victim' '.state="pwned"'` rewrote a state doc OUTSIDE
+#     CHILDSTATE_DIR, and `rm -f "$RUN_DIR/../keepme.exit"` deleted an out-of-tree
+#     file — because validation lived ONLY in fleet_state_ensure, which an already
+#     existing file short-circuits and which the launch path reached only AFTER
+#     creating/destroying artifacts.
+# This is an ALLOWLIST on purpose. A denylist is the wrong shape here, because an id
+# is not only a path component: it is also interpolated into a tmux window name and
+# into a `pkill -f` REGEX (fleet_bg_unmount, lib/faculty-bg.sh). A denylist that only
+# bans '/' and '..' still admits '.*', which silently turns that "anchored" pattern
+# into a match-everything regex and reaps EVERY controller in the fleet — so the
+# charset, not the path, is the real boundary.
+# Verified 2026-07-15 against all 66 live member ids on this host: every one of them
+# ('core', 'android-codex', 'core-codex-claude-refute', 'a_b.c') fits this allowlist,
+# and the only id that does not is the phantom '--help' this guard exists to reject.
+fleet_valid_member_id() {
+  local id="${1:-}"
+  [[ -n "$id" ]] || return 1
+  [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  # '-' leads a misparsed flag, never a real id ('--help' was live in .fleet/state).
+  [[ "$id" != -* ]] || return 1
+  # '.'/'..' name a directory rather than a member. ('/' is already excluded above, so
+  # traversal is impossible by construction; these stay as belt-and-braces.)
+  [[ "$id" != "." && "$id" != ".." && "$id" != *..* ]] || return 1
+  return 0
+}
+
+# The SINGLE choke point for id -> path. Prints "<dir>/<id><suffix>"; for an id
+# that is not a plain name it prints NOTHING and returns 1, so every caller fails
+# CLOSED rather than operating on a caller-chosen path. Callers must check:
+#   f="$(fleet_member_path "$dir" "$id" .json)" || return 1
+# (`local f; f="$(...)"` preserves the status; `local f="$(...)"` does NOT.)
+#   fleet_member_path <dir> <id> <suffix>
+fleet_member_path() {
+  local dir="${1:-}" id="${2:-}" suffix="${3:-}"
+  fleet_valid_member_id "$id" || return 1
+  printf '%s/%s%s\n' "$dir" "$id" "$suffix"
+}
+
+# run/<id><suffix> — the .session / .exit / .argv run files. Validated.
+fleet_run_path() { fleet_member_path "${RUN_DIR:-}" "${1:-}" "${2:-}"; }
+
+# Refuse an invalid id AT A USER-FACING BOUNDARY, with one consistent diagnostic.
+# Use this where an id arrives from argv and a clear error beats a silent skip; the
+# path primitives above stay the last line of defence for everything else.
+fleet_require_member_id() {
+  fleet_valid_member_id "${1:-}" \
+    || die "invalid member id '${1:-}': ids must match [A-Za-z0-9._-]+, and cannot be empty, start with '-', or be '.'/'..'"
+}
+
+# --- symlink safety (fd-bound, no-follow) ------------------------------------
+# A validated id keeps a path INSIDE its dir, but a valid id is not enough: a
+# pre-planted OR RACE-REPLANTED symlink at that in-tree path redirects the open to
+# an out-of-tree target. Verified 2026-07-15 against 6d19957: a symlink at
+# inbox/<validid>.jsonl.lock was FOLLOWED by `exec 9>"$f.lock"` and an out-of-tree
+# file was TRUNCATED — with a perfectly valid id 'core'. Same class hits every state
+# read and journal/argv/inbox write.
+#
+# Bash cannot express O_NOFOLLOW, so the REAL fix lives in a tiny helper
+# (lib/fleet-safeio.py) that opens each path with O_NOFOLLOW and does an fstat on the
+# resulting fd — the open IS the check, so there is NO check-then-open window even
+# against a live replant racer. The four hardened operations route through it:
+#   * READ   (state_get, state_jq)        -> fleet_safe_read   (O_RDONLY|O_NOFOLLOW)
+#   * APPEND (enqueue inbox, journal)      -> fleet_safe_append (O_APPEND|O_CREAT|O_NOFOLLOW)
+#   * REPLACE(atomic_write: state, argv..) -> fleet_safe_write  (O_EXCL temp -> rename)
+# fleet_safe_write also holds when the helper is absent: rename() never follows a final
+# symlink, so the overwrite/truncate class is safe in pure shell too (it only adds a
+# dir/special-file refusal). READ and APPEND, by contrast, REQUIRE the helper for a
+# no-follow open; without it they FAIL CLOSED (refuse) — we do NOT relabel the old
+# check-then-open as safe. python3 is therefore a prerequisite for the mailbox/state
+# hardening (see README Prerequisites); a host without it degrades those paths to
+# refusal, never to an unsafe follow.
+
+# Absolute path to the no-follow / pidfd helper.
+FLEET_SAFEIO="${FLEET_SAFEIO:-$TOOL_ROOT/lib/fleet-safeio.py}"
+
+# True iff the fd-bound no-follow primitive is usable here (python3 + helper present).
+# Cached in _FLEET_SAFEIO_OK so the probe runs once per process.
+fleet_safeio_available() {
+  if [[ -z "${_FLEET_SAFEIO_OK:-}" ]]; then
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$FLEET_SAFEIO" ]]; then
+      _FLEET_SAFEIO_OK=1
+    else
+      _FLEET_SAFEIO_OK=0
+    fi
+    export _FLEET_SAFEIO_OK
+  fi
+  [[ "$_FLEET_SAFEIO_OK" == 1 ]]
+}
+
+# One-time loud note when the safe primitive is missing on a read/append path, so a
+# fail-closed default is never silently mistaken for real data. Guarded so status/doctor
+# don't spam. FLEET_SAFEIO_QUIET=1 silences it (tests set this).
+_fleet_safeio_warn_once() {
+  [[ -n "${_FLEET_SAFEIO_WARNED:-}" || -n "${FLEET_SAFEIO_QUIET:-}" ]] && return 0
+  _FLEET_SAFEIO_WARNED=1; export _FLEET_SAFEIO_WARNED
+  warn "python3 (lib/fleet-safeio.py) not available: mailbox/state safe IO fails CLOSED (see README Prerequisites)."
+}
+
+# READ <path> to stdout with a no-follow open. Exit: 0 ok, 3 refused (symlink/non-
+# regular), 4 absent, 5 primitive-unavailable. Callers treat any non-zero as "no
+# content" and fall back to their default — a fail-closed read, never a follow.
+fleet_safe_read() {
+  local p="${1:-}"; [[ -n "$p" ]] || return 2
+  if fleet_safeio_available; then
+    python3 "$FLEET_SAFEIO" read "$p"; return $?
+  fi
+  _fleet_safeio_warn_once; return 5
+}
+
+# APPEND stdin to <path> with a no-follow open (creates if absent). Exit: 0 ok, 3
+# refused (symlink/non-regular), 5 primitive-unavailable. FAILS CLOSED without python3.
+fleet_safe_append() {
+  local p="${1:-}"; [[ -n "$p" ]] || return 2
+  if fleet_safeio_available; then
+    python3 "$FLEET_SAFEIO" append "$p"; return $?
+  fi
+  _fleet_safeio_warn_once; return 5
+}
+
+# Atomically REPLACE <dest> with stdin, WITHOUT following a symlink at <dest>. ALWAYS via
+# the helper (O_EXCL|O_NOFOLLOW temp -> fsync -> rename), never a shell `mv`: a shell
+# `[[ -d ]]` check then `mv` is itself TOCTOU — the dest can race from regular/absent to a
+# DIRECTORY after the check, and `mv` would then DESCEND into it, moving the temp inside and
+# silently defeating the atomic replace. rename(2) can never descend (a dir dest fails
+# atomically), so the helper is the only correct primitive. FAILS CLOSED (return 5) when the
+# helper is unavailable — we do not fall back to an unsafe `mv`.
+fleet_safe_write() {
+  local dest="${1:-}"; [[ -n "$dest" ]] || return 1
+  if fleet_safeio_available; then
+    python3 "$FLEET_SAFEIO" write "$dest"; return $?
+  fi
+  _fleet_safeio_warn_once; return 5
+}
+
+# Back-compat name kept for existing call sites (state_ensure, argv writer, .session).
+fleet_atomic_write() { fleet_safe_write "${1:-}"; }
+
+# ENQUEUE: one locked no-follow transaction (helper `enqueue`) — flock the lock and APPEND
+# stdin to the inbox, both O_NOFOLLOW, then release. Replaces the shell `exec 9>>lock` +
+# `>>inbox`. Reads the message line on stdin. FAILS CLOSED (5) without the primitive.
+fleet_safe_enqueue() {
+  local inbox="${1:-}" lock="${2:-}"; [[ -n "$inbox" && -n "$lock" ]] || return 1
+  fleet_safeio_available || { _fleet_safeio_warn_once; return 5; }
+  python3 "$FLEET_SAFEIO" enqueue "$inbox" "$lock"; return $?
+}
+
+# Atomically GRAB <src> as <dst> via rename (helper `rotate`) — the drain's snapshot: after
+# it, the read-modify-write runs on <dst>, an inode no other writer can name or swap. Returns
+# 0 (grabbed), 4 (src absent), non-zero (error / no primitive -> fail closed).
+fleet_safe_rotate() {
+  local src="${1:-}" dst="${2:-}"; [[ -n "$src" && -n "$dst" ]] || return 1
+  fleet_safeio_available || { _fleet_safeio_warn_once; return 5; }
+  python3 "$FLEET_SAFEIO" rotate "$src" "$dst"; return $?
+}
+
+# Plain atomic rename (helper `rename`) — used ONLY to RESTORE a drain snapshot back to the
+# inbox on abort, so mail is never lost. Never descends, never follows a final symlink.
+fleet_safe_rename() {
+  local src="${1:-}" dst="${2:-}"; [[ -n "$src" && -n "$dst" ]] || return 1
+  fleet_safeio_available || { _fleet_safeio_warn_once; return 5; }
+  python3 "$FLEET_SAFEIO" rename "$src" "$dst"; return $?
+}
+
+# Hold a no-follow flock on <lockpath> across arbitrary shell work, via a coprocess that
+# OWNS the fd (bash cannot open O_NOFOLLOW itself). The drain's read-modify-write runs
+# between fleet_safe_lock and fleet_safe_unlock without ever opening the lock in shell.
+# Only ONE such lock is held at a time (bash allows a single active coproc); the drain is
+# the sole caller and always releases before returning. 0 = locked; non-zero (incl. 5 = no
+# primitive, or a refused symlinked/non-regular lock) = fail closed, nothing held.
+fleet_safe_lock() {
+  local lockpath="${1:-}"; [[ -n "$lockpath" ]] || return 1
+  fleet_safeio_available || { _fleet_safeio_warn_once; return 5; }
+  mkdir -p "$(dirname "$lockpath")" 2>/dev/null || true
+  coproc _FLEET_LOCKP { python3 "$FLEET_SAFEIO" hold-lock "$lockpath"; }
+  _FLEET_LOCK_W=${_FLEET_LOCKP[1]}; _FLEET_LOCK_R=${_FLEET_LOCKP[0]}; _FLEET_LOCK_PID=$_FLEET_LOCKP_PID
+  local line=''
+  IFS= read -r line <&"${_FLEET_LOCK_R}" 2>/dev/null || line=''
+  if [[ "$line" != "LOCKED" ]]; then
+    exec {_FLEET_LOCK_W}>&- 2>/dev/null || true
+    wait "$_FLEET_LOCK_PID" 2>/dev/null || true
+    unset _FLEET_LOCK_W _FLEET_LOCK_R _FLEET_LOCK_PID
+    return 1
+  fi
+  return 0
+}
+
+# Release the lock held by fleet_safe_lock (idempotent).
+fleet_safe_unlock() {
+  [[ -n "${_FLEET_LOCK_W:-}" ]] || return 0
+  exec {_FLEET_LOCK_W}>&- 2>/dev/null || true    # close holder stdin -> it releases + exits
+  exec {_FLEET_LOCK_R}<&- 2>/dev/null || true
+  wait "${_FLEET_LOCK_PID}" 2>/dev/null || true
+  unset _FLEET_LOCK_W _FLEET_LOCK_R _FLEET_LOCK_PID
+}
+
+# BEST-EFFORT (check-then-open, NOT atomic): true iff <path> is absent or a regular
+# file that is not a symlink. RETAINED only as a cheap pre-filter where a subsequent
+# fleet_safe_* call is the real no-follow guard; never rely on it alone. Do not describe
+# it as race-safe.
+fleet_path_regular_or_absent() {
+  local p="${1:-}"
+  [[ -n "$p" ]] || return 1
+  [[ -L "$p" ]] && return 1          # a symlink is tampering: refuse to follow it
+  [[ -e "$p" ]] || return 0          # absent -> fine
+  [[ -f "$p" ]]                      # exists -> must be a regular file
+}
+
 # --- jq guard ----------------------------------------------------------------
 fleet_require_jq() {
   command -v jq >/dev/null 2>&1 || die "jq is required but not found on PATH."

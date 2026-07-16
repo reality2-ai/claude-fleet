@@ -15,7 +15,7 @@ fleet_journal_append "$CHILD_ID" "stop turn" 2>/dev/null || true
 
 # Count undelivered queued messages BEFORE draining — would this child keep working?
 _pending=0
-_inbox="$(fleet_inbox_file "$CHILD_ID" 2>/dev/null)"
+_inbox="$(fleet_inbox_file "$CHILD_ID" 2>/dev/null)" || _inbox=""
 [[ -n "$_inbox" && -f "$_inbox" ]] && _pending="$(jq -s '[.[]|select(.delivered==false)]|length' "$_inbox" 2>/dev/null || echo 0)"
 
 # Backstop: an earlier inject may have left a complete message unsubmitted in this worker's

@@ -49,7 +49,9 @@ source "$TOOL_ROOT/lib/registry.sh" 2>/dev/null || exit 0
 hc_resolve_id() {
   if [[ -n "${FLEET_CHILD_ID:-}" ]]; then printf '%s\n' "$FLEET_CHILD_ID"; return; fi
   local base; base="$(basename "$CWD")"
-  local f="$CHILDSTATE_DIR/$base.json"
+  # a cwd basename is not guaranteed to be a plain member id (e.g. '..'); no valid
+  # path -> no id -> the caller exits 0 rather than keying state off a junk name.
+  local f; f="$(fleet_state_path "$base")" || return 1
   if [[ -f "$f" ]]; then
     local owner; owner="$(jq -r '.session_id // empty' "$f" 2>/dev/null)"
     if [[ -n "$owner" && "$owner" != "$SESSION_ID" ]]; then

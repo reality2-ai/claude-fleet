@@ -129,7 +129,7 @@ faculty_stream(){ warn "faculty: stream not implemented by adapter '$FLEET_FACUL
 # land with the memory store; this is the head-read floor. (query arg reserved.)
 faculty_recall(){
   local id="$1" head cwd
-  head="$STATE_DIR/memory/$id.md"
+  head="$(fleet_member_path "${STATE_DIR:-}/memory" "$id" .md)" || return 1
   if [[ ! -f "$head" ]]; then
     cwd="$(fleet_state_get "$id" '.cwd' "")"
     [[ -n "$cwd" && "$cwd" != "null" ]] && head="$cwd/${FLEET_RESUME_FILE:-RESUME.md}"

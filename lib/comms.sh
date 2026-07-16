@@ -14,7 +14,11 @@
 # hop+1; the cap refuses sends past it. Configure via [supervisor] max_hops.
 fleet_max_hops() { printf '%s\n' "${FLEET_MAX_HOPS:-${SUP_MAX_HOPS:-6}}"; }
 
-fleet_inbox_file() { printf '%s/inbox/%s.jsonl\n' "$STATE_DIR" "$1"; }
+# inbox/<id>.jsonl — validated via the central choke point (lib/common.sh). This one
+# matters: `fleet send`/`fleet ask` take BOTH the target and `--from` from argv, and
+# --from is chosen by whichever agent is talking, so an unvalidated id here reaches
+# mkdir/append/truncate/mv on a caller-named path. Fails closed (no path, status 1).
+fleet_inbox_file() { fleet_member_path "${STATE_DIR:-}/inbox" "${1:-}" .jsonl; }
 
 # enqueue a message carrying its hop depth and kind (ask|msg|fyi|answer).
 # notify=true (default) → pending injection into the thread; notify=false → stored
@@ -22,12 +26,28 @@ fleet_inbox_file() { printf '%s/inbox/%s.jsonl\n' "$STATE_DIR" "$1"; }
 fleet_enqueue() {
   local to="$1" from="$2" text="$3" hops="${4:-1}" kind="${5:-msg}" notify="${6:-true}" f ts delivered=false
   [[ "$notify" == "false" ]] && delivered=true
-  f="$(fleet_inbox_file "$to")"; mkdir -p "$(dirname "$f")"
+  # The readers below all gate on `[[ -f "$f" ]]`, which absorbs an empty path on its
+  # own; this WRITER cannot — it would mkdir/lock/append relative to $PWD. Fail closed.
+  f="$(fleet_inbox_file "$to")" || { warn "refusing to enqueue mail for invalid member id '$to'"; return 1; }
+  mkdir -p "$(dirname "$f")"
+  # A valid id still lets an attacker pre-plant OR race-replant a SYMLINK at the inbox or
+  # the lock. Confirmed 2026-07-15 against 6d19957: a link at "$f.lock" was followed by the
+  # TRUNCATING `9>` open and an out-of-tree victim was TRUNCATED. Closed by making the whole
+  # lock+append ONE fd-bound no-follow transaction (fleet_safe_enqueue -> lib/fleet-safeio.py
+  # `enqueue`): flock(lock, O_NOFOLLOW) then APPEND the line (inbox, O_NOFOLLOW|fstat-regular)
+  # then release. No shell `exec 9>>lock`/`>>inbox`: the O_NOFOLLOW open IS the check, so a
+  # pre-planted or live-replanted symlink at EITHER path is refused, never followed. Mutual
+  # exclusion (and 60-way mailbox correctness) is unchanged — same lock inode. A refused
+  # symlink or a missing primitive FAILS CLOSED (mail refused), never reported as success.
   ts="$(date +%s)"
-  exec 9>"$f.lock"; flock 9 2>/dev/null || true
+  local rc=0
   jq -nc --argjson ts "$ts" --arg from "$from" --arg to "$to" --arg text "$text" --argjson hops "$hops" --arg kind "$kind" --argjson delivered "$delivered" \
-    '{ts:$ts, from:$from, to:$to, text:$text, hops:$hops, kind:$kind, delivered:$delivered}' >>"$f"
-  flock -u 9 2>/dev/null || true; exec 9>&-
+    '{ts:$ts, from:$from, to:$to, text:$text, hops:$hops, kind:$kind, delivered:$delivered}' \
+    | fleet_safe_enqueue "$f" "$f.lock" || rc=$?
+  if (( rc != 0 )); then
+    warn "refusing to enqueue: inbox '$f' or its lock is unsafe (symlink) or safe-IO unavailable"
+    return 1
+  fi
 }
 
 # Deliver a brief note into <to>'s thread now if it's idle, else queue it for the
@@ -185,6 +205,11 @@ fleet_input_busy() {
 # stuck-at-prompt can be reconstructed after the fact instead of inferred.
 _fleet_inject_trace() {
   [[ -n "${FLEET_INJECT_TRACE:-}" ]] || return 0
+  # If the trace dir is gone (e.g. FLEET_INJECT_TRACE points at a stale/dead session's
+  # scratchpad), silently disable — the append-redirect would otherwise spam a shell-level
+  # "No such file or directory" on every inject, which `2>/dev/null || true` on the printf
+  # cannot suppress (the redirect fails before printf runs). Delivery is unaffected either way.
+  [[ -d "${FLEET_INJECT_TRACE%/*}" ]] || return 0
   local to="$1" tag="$2" wk box
   fleet_pane_is_working "$to" && wk=WORKING || wk=idle
   box="$(fleet_tmux capture-pane -e -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | grep -aF '❯' | tail -1 | tr -d '\r' | cat -v | head -c 120)"
@@ -340,12 +365,25 @@ fleet_compact() {
   return 0
 }
 
+# Restore the exclusive drain snapshot <snap> back to the inbox <f>. On SUCCESS the snapshot
+# is consumed by the rename and nothing lingers. On FAILURE (destination conflict — e.g. $f
+# raced to a directory — or safe-IO down) the snapshot is the SOLE surviving copy of the mail,
+# so it is KEPT on disk and its path logged LOUDLY; it is NEVER removed. Callers must not
+# `rm` <snap> after this — do so only where the mail is confirmed safe at <f>.
+_fleet_drain_restore() {
+  local snap="$1" f="$2" to="$3"
+  fleet_safe_rename "$snap" "$f" && return 0
+  fleet_log deliver-fail "$to" "RESTORE FAILED; mail preserved in snapshot '$snap' (recover manually)" 2>/dev/null || true
+  warn "fleet_drain_inbox: could not restore inbox for '$to' — mail preserved in $snap (not lost)"
+  return 1
+}
+
 # Deliver any undelivered mail to <to>. Returns 0 if delivered (or nothing to
 # do), 1 if it had to leave mail queued (target offline or busy).
 #   fleet_drain_inbox <to> [force]
 fleet_drain_inbox() {
   local to="$1" force="${2:-}" f
-  f="$(fleet_inbox_file "$to")"
+  f="$(fleet_inbox_file "$to")" || return 0
   [[ -f "$f" ]] || return 0
   # claude-bg workers are driven by their own controller (programmatic -p turns); the
   # cli-tmux drain must NOT type into the controller's bash window. Leave mail for it.
@@ -354,24 +392,65 @@ fleet_drain_inbox() {
   if [[ "$force" != "force" ]]; then
     [[ "$(fleet_state_get "$to" '.ready' false)" == "true" ]] || return 1   # busy → keep queued
   fi
-  exec 9>"$f.lock"; flock 9 2>/dev/null || true
-  local n; n="$(jq -s '[.[]|select(.delivered==false)]|length' "$f" 2>/dev/null || echo 0)"
+  # NO-FOLLOW lock held across the whole read-modify-write: a coprocess owns an
+  # O_NOFOLLOW flock fd (bash cannot open O_NOFOLLOW), so a symlinked/replanted "$f.lock" is
+  # refused, never followed/truncated (the old `9>`/`9>>` shell open did follow it). Fail
+  # closed if the primitive is unavailable — mail simply stays queued, never drained unsafely.
+  fleet_safe_lock "$f.lock" || return 1
+  local dir; dir="$(dirname "$f")"
+  # ATOMIC SNAPSHOT. A held lock + repeated by-name opens is NOT a transaction: the lock is
+  # cooperative, and a hostile same-dir writer can swap a SAME-OWNER regular file between the
+  # count/read/commit opens (O_NOFOLLOW catches a symlink, not a regular->regular swap). So
+  # GRAB the inbox to a private, unpredictable name via rename under the held lock; every
+  # read/commit below then operates on ONE inode no other writer can name or swap.
+  local snap; snap="$(mktemp "$dir/.snap.XXXXXX" 2>/dev/null)" || { fleet_safe_unlock; return 1; }
+  rm -f "$snap" 2>/dev/null || true                         # rotate creates it fresh via rename
+  # Identity-checked grab: rotate emits the VERIFIED inode's content (open+fstat src, rename,
+  # reopen dst, require same dev/ino/regular/owner). rc: 0 ok(+content), 4 no inbox, 3 symlinked
+  # inbox, 6 swap detected in the open->rename window, other = error. A failure is NEVER read as
+  # an empty queue — we preserve/restore the snapshot and fail closed (no data-loss-as-success).
+  local content _rr=0
+  content="$(fleet_safe_rotate "$f" "$snap")" || _rr=$?
+  if (( _rr == 4 )); then fleet_safe_unlock; return 0; fi   # no inbox -> nothing to drain
+  if (( _rr == 3 )); then                                   # symlinked inbox -> fail closed
+    # Do NOT unlink the public inbox by name: a racer could swap it between rotate's symlink
+    # detection and the unlink, so we'd delete the wrong inode. Leave $f in place and refuse
+    # to drain (enqueue also refuses a symlinked inbox). rotate did not rename, so no snapshot
+    # exists to keep.
+    fleet_log deliver-fail "$to" "inbox is a symlink; refusing to drain (left in place)" 2>/dev/null || true
+    fleet_safe_unlock; return 1
+  fi
+  if (( _rr != 0 )); then                                   # 6 = swap detected / other error
+    # KEEP whatever rotate left at $snap (it may hold data); never remove a snapshot after an
+    # error. Fail closed.
+    fleet_log deliver-fail "$to" "snapshot grab failed (rc=$_rr; concurrent inbox swap?); not drained; any data preserved in $snap" 2>/dev/null || true
+    fleet_safe_unlock; return 1
+  fi
+  # Count pending. A jq/parse FAILURE (malformed data) is NOT zero-pending: RESTORE the
+  # snapshot to the inbox and fail closed, rather than silently declaring the queue empty.
+  local n _jqrc=0
+  n="$(printf '%s' "$content" | jq -s '[.[]|select(.delivered==false)]|length' 2>/dev/null)" || _jqrc=$?
+  if (( _jqrc != 0 )) || [[ ! "$n" =~ ^[0-9]+$ ]]; then
+    _fleet_drain_restore "$snap" "$f" "$to" || true        # restore or KEEP snapshot; never lose mail
+    fleet_log deliver-fail "$to" "inbox parse failed (malformed JSON?); mail preserved, not drained" 2>/dev/null || true
+    fleet_safe_unlock; return 1
+  fi
+  local q; q="$(mktemp "$dir/.drain.XXXXXX" 2>/dev/null)" || { _fleet_drain_restore "$snap" "$f" "$to" || true; fleet_safe_unlock; return 1; }
   if [[ "${n:-0}" -gt 0 ]]; then
-    # PER-LINE marking, stable by line position: read every line, inject each
-    # currently-undelivered one, and mark delivered=true ONLY for the lines whose
-    # fleet_inject returned 0. A failed inject leaves that line undelivered so the
-    # NEXT drain retries it (at-least-once, never silent loss); dedup stays stable
-    # by line position so a re-drain can't double-deliver a line already consumed.
+    # PER-LINE marking, stable by line position: inject each currently-undelivered line and
+    # mark delivered=true ONLY for the lines whose fleet_inject returned 0. A failed inject
+    # leaves that line undelivered so the NEXT drain retries it (at-least-once, never silent
+    # loss); dedup stays stable by line position so a re-drain can't double-deliver.
     local -a lines=(); local line
-    while IFS= read -r line; do lines+=("$line"); done <"$f"
+    while IFS= read -r line; do lines+=("$line"); done <<<"$content"
     local idx delivered from text hops kind maxhop=0 ok_count=0 fail_count=0 deferred_count=0 dead_count=0
-    : >"$f.tmp"
+    : >"$q"
     for idx in "${!lines[@]}"; do
       line="${lines[$idx]}"
       [[ -z "$line" ]] && continue
       delivered="$(jq -r '.delivered // false' <<<"$line" 2>/dev/null)"
       if [[ "$delivered" == "true" ]]; then
-        printf '%s\n' "$line" >>"$f.tmp"; continue
+        printf '%s\n' "$line" >>"$q"; continue
       fi
       from="$(jq -r '.from' <<<"$line")"; text="$(jq -r '.text' <<<"$line")"
       hops="$(jq -r '.hops // 1' <<<"$line")"; kind="$(jq -r '.kind // "msg"' <<<"$line")"
@@ -387,17 +466,17 @@ fleet_drain_inbox() {
       if (( _rc == 0 )); then
         (( hops > maxhop )) && maxhop="$hops"
         ok_count=$(( ok_count + 1 ))
-        printf '%s\n' "$(jq -c '.delivered=true' <<<"$line")" >>"$f.tmp"
+        printf '%s\n' "$(jq -c '.delivered=true' <<<"$line")" >>"$q"
       elif (( _rc == 2 )); then
         # DEFERRED — the pane is mid-turn or the box holds real input (a human typing,
         # a prior un-submitted inject). Normal backpressure, NOT a failure: leave this
         # message queued, copy the rest unchanged, and bail WITHOUT bumping any failure
         # counter. The next drain retries the whole queue once the pane is idle/clear.
         deferred_count=$(( deferred_count + 1 ))
-        printf '%s\n' "$line" >>"$f.tmp"
+        printf '%s\n' "$line" >>"$q"
         local j
         for (( j=idx+1; j<${#lines[@]}; j++ )); do
-          [[ -n "${lines[$j]}" ]] && printf '%s\n' "${lines[$j]}" >>"$f.tmp"
+          [[ -n "${lines[$j]}" ]] && printf '%s\n' "${lines[$j]}" >>"$q"
         done
         break
       else
@@ -413,20 +492,34 @@ fleet_drain_inbox() {
         _att=$(( _att + 1 ))
         if (( _att >= ${FLEET_INJECT_MAX_ATTEMPTS:-5} )); then
           dead_count=$(( dead_count + 1 ))
-          printf '%s\n' "$(jq -c --argjson a "$_att" '.attempts=$a | .delivered=true | .dead=true' <<<"$line")" >>"$f.tmp"
+          printf '%s\n' "$(jq -c --argjson a "$_att" '.attempts=$a | .delivered=true | .dead=true' <<<"$line")" >>"$q"
           fleet_log deadletter "$to" "quarantined undeliverable msg from $from after $_att attempts (kind=$kind len=${#text})" 2>/dev/null || true
           continue
         fi
         fail_count=$(( fail_count + 1 ))
-        printf '%s\n' "$(jq -c --argjson a "$_att" '.attempts=$a' <<<"$line")" >>"$f.tmp"
+        printf '%s\n' "$(jq -c --argjson a "$_att" '.attempts=$a' <<<"$line")" >>"$q"
         local j
         for (( j=idx+1; j<${#lines[@]}; j++ )); do
-          [[ -n "${lines[$j]}" ]] && printf '%s\n' "${lines[$j]}" >>"$f.tmp"
+          [[ -n "${lines[$j]}" ]] && printf '%s\n' "${lines[$j]}" >>"$q"
         done
         break
       fi
     done
-    mv "$f.tmp" "$f" 2>/dev/null || rm -f "$f.tmp"
+    # COMMIT: write the processed queue to the inbox (absent post-rotate -> created no-follow;
+    # a symlink an attacker replanted at $f is replaced by rename, a dir/special/foreign dest
+    # refused). A FAILED commit must NOT read as a clean drain — the delivered-marks would be
+    # lost and the next drain would re-inject — so RESTORE the snapshot (never lose mail) and
+    # fail closed.
+    local _wb=0; fleet_safe_write "$f" < "$q" || _wb=$?
+    rm -f "$q" 2>/dev/null || true
+    if (( _wb != 0 )); then
+      # commit refused: RESTORE the snapshot (or KEEP it if restore also fails); never lose mail.
+      _fleet_drain_restore "$snap" "$f" "$to" || true
+      fleet_log deliver-fail "$to" "commit refused (unsafe inbox or safe-IO down); marks not persisted" 2>/dev/null || true
+      fleet_safe_unlock
+      return 1
+    fi
+    rm -f "$snap" 2>/dev/null || true   # commit succeeded: mail is safe at $f, drop the snapshot
     if (( ok_count > 0 )); then
       # record the deepest hop delivered so this agent's reply inherits hop+1
       fleet_state_jq "$to" --argjson h "$maxhop" '.last_inbound_hops=$h' >/dev/null 2>&1 || true
@@ -450,18 +543,31 @@ fleet_drain_inbox() {
       fleet_state_jq "$to" --argjson n "$fail_count" --argjson t "$now" \
         '.inject_failures = ((.inject_failures // 0) + $n) | .last_drain_attempt = $t' >/dev/null 2>&1 || true
       fleet_log deliver-fail "$to" "$fail_count message(s) left queued (inject unverified)"
-      flock -u 9 2>/dev/null || true; exec 9>&-
+      fleet_safe_unlock
       return 1
     fi
     if (( deferred_count > 0 )); then
       # Deferred (box occupied by real input) — NOT a failure: mail stays queued, no
       # counter bump, quiet log. The next drain delivers once the prompt is clear.
       fleet_log deliver-defer "$to" "$deferred_count message(s) deferred (prompt busy)" 2>/dev/null || true
-      flock -u 9 2>/dev/null || true; exec 9>&-
+      fleet_safe_unlock
+      return 1
+    fi
+  else
+    # Nothing undelivered: RESTORE the snapshot unchanged so delivered-history lines survive.
+    # On restore failure the snapshot is KEPT (never removed) and the drain fails closed —
+    # losing delivered-history is still data loss.
+    if ! _fleet_drain_restore "$snap" "$f" "$to"; then
+      rm -f "$q" 2>/dev/null || true
+      fleet_safe_unlock
       return 1
     fi
   fi
-  flock -u 9 2>/dev/null || true; exec 9>&-
+  # Only $q (scratch) is dropped here. $snap is NEVER removed on this line: by now it was
+  # either committed-away (rm'd on success), renamed back by restore, or deliberately kept on
+  # a restore failure above. Removing it here could delete the sole surviving copy of mail.
+  rm -f "$q" 2>/dev/null || true
+  fleet_safe_unlock
   return 0
 }
 

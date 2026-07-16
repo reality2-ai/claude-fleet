@@ -61,12 +61,13 @@ and `fleet` keeps it running.
 | **bash ≥ 4** | the CLI, libs, and hooks are bash | `bash --version` — default on Linux; `brew install bash` on macOS |
 | **jq** | all state / manifest / message handling is JSON | `jq --version` · `sudo apt install jq` / `brew install jq` |
 | **tmux ≥ 3.0** | hosts the sessions; needed for everything except observe-only commands | `tmux -V` · `sudo apt install tmux` / `brew install tmux` |
+| **python3 ≥ 3.6** | fd-bound safe I/O for the mailbox & state store (`lib/fleet-safeio.py`): atomic `O_NOFOLLOW` open/append/rename and the locked enqueue/drain transaction. Without it those paths **fail closed** (refuse), so comms + state writes stop working. pidfd controller-reap additionally needs Linux ≥ 5.3 (python ≥ 3.9); elsewhere the reap under-reaps (window kill only). | `python3 --version` — default on Linux; `brew install python` on macOS |
 | **GitHub CLI** (`gh`) *(optional)* | only for `fleet wizard` (discovers repos under a gh owner) | `gh --version` · https://cli.github.com, then `gh auth login` |
-| **flock** *(optional)* | mailbox locking under concurrent sends; degrades gracefully if absent | part of `util-linux` (already present on most Linux) |
 
 Platform: Linux or macOS. The observe-only commands (`status`, `conflicts`,
 `logs`, `inbox`, `remote`) work with just `bash` + `jq`; lifecycle, comms, and
-remote-control need `tmux`.
+remote-control need `tmux`; the mailbox and state store additionally need
+`python3` (they fail closed without it — see the safe-I/O note above).
 
 > tmux ≥ 3.0 is required because `fleet` uses `tmux new-window -e` to set
 > per-member environment. On macOS, `claude` and `tmux` work, but Apple ships
@@ -703,11 +704,19 @@ gate described below, which actively *denies* and escalates.
 pipelines and `&&` chains are allowed only when every segment is itself allowed.
 
 **Still prompts (everything else):** writes outside the repo, `rm`/`mv`/`dd`,
-installs, arbitrary network (`curl`/`ssh` …), `sudo`, force-push, destructive git
-ops (`reset`, `rebase`, `pull`, broad checkout/restore/clean), publish/install
-runners, redirection/substitution, and unknown tools. Genuine decision questions
-an agent raises ("which approach?") aren't permission prompts, so they always
-wait for you.
+installs, arbitrary network (`curl`/`ssh` …), `sudo`, force-push, the genuinely
+irreversible git ops (`rebase`, `clean`), publish/install runners,
+redirection/substitution, and unknown tools. Genuine decision questions an agent
+raises ("which approach?") aren't permission prompts, so they always wait for you.
+
+**Auto-approved after a silent checkpoint.** The *recoverable-but-tree-changing*
+git ops — `reset` (incl. `--hard`), `checkout`, `restore`, `merge`, `pull` — are
+**not** blocked: the hook first snapshots your working tree to a
+`refs/auto-checkpoint/*` ref (via `git stash create`, without touching the tree),
+then auto-approves the op, so a wrong one is unwound with
+`git stash apply <ref>` rather than gated. That is the GitHub-failsafe stance —
+make risky changes *recoverable*, not *blocked* — so under skip-permissions these
+run; only the un-checkpointable `rebase`/`clean` still wait for you.
 
 **The firmware / key escalation gate (hard-deny).** Under
 `--dangerously-skip-permissions` a silent fall-through would *run* a dangerous
