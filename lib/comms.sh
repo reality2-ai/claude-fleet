@@ -205,6 +205,11 @@ fleet_input_busy() {
 # stuck-at-prompt can be reconstructed after the fact instead of inferred.
 _fleet_inject_trace() {
   [[ -n "${FLEET_INJECT_TRACE:-}" ]] || return 0
+  # If the trace dir is gone (e.g. FLEET_INJECT_TRACE points at a stale/dead session's
+  # scratchpad), silently disable — the append-redirect would otherwise spam a shell-level
+  # "No such file or directory" on every inject, which `2>/dev/null || true` on the printf
+  # cannot suppress (the redirect fails before printf runs). Delivery is unaffected either way.
+  [[ -d "${FLEET_INJECT_TRACE%/*}" ]] || return 0
   local to="$1" tag="$2" wk box
   fleet_pane_is_working "$to" && wk=WORKING || wk=idle
   box="$(fleet_tmux capture-pane -e -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | grep -aF '❯' | tail -1 | tr -d '\r' | cat -v | head -c 120)"
