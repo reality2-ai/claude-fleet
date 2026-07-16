@@ -30,10 +30,16 @@ while true; do
   if [[ "${FLEET_WATCHDOG_DOCTOR:-on}" != "off" ]]; then
     doctor_out="$("$FLEET" doctor --quiet 2>/dev/null)"; doctor_rc=$?
     if [[ "$doctor_rc" -ne 0 ]]; then
-      if [[ "$doctor_out" != "$prev_doctor" ]]; then    # edge-triggered: only on change
+      # Normalize VOLATILE numerics before the edge-compare: mail ages ("Ns old"), RESUME
+      # staleness ("stale by Ns"), and the monotonic inject-failure counters all tick every
+      # cycle, so comparing the RAW digest always differs → the edge-trigger was defeated and
+      # the same standing fault set got re-reported forever. Compare the STABLE fault set
+      # (member + kind) instead; only re-report when a NEW/changed fault appears.
+      doctor_key="$(printf '%s' "$doctor_out" | sed -E 's/[0-9]+s old/Ns old/g; s/stale by [0-9]+s/stale by Ns/g; s/[0-9]+ unverified inject failure/N unverified inject failure/g')"
+      if [[ "$doctor_key" != "$prev_doctor" ]]; then    # edge-triggered on the normalized fault set
         "$FLEET" send supervisor "[doctor] oversight-wire check failed: ${doctor_out}" >/dev/null 2>&1
       fi
-      prev_doctor="$doctor_out"
+      prev_doctor="$doctor_key"
     else
       prev_doctor=""   # recovered → re-arm so the next fault is reported
     fi
