@@ -317,6 +317,29 @@ lacks "companion send-to-primary is NOT authority-blocked" "$TMP/msg_primary.out
 # (5) provenance: the delivered message carries the companion advisory tag
 has "companion send-to-primary carries the advisory provenance tag" "$WS2/.fleet/inbox/gc.jsonl" "companion·advisory"
 
+# (5b) ★ FAIL-CLOSED ON UNREADABLE STATE — regression for the 2026-07-17 incident.
+# supervisor-codex's state file was ZERO BYTES, so .companion_for and the
+# readonly-standby read both came back empty and the old name pattern (*-refute
+# only) missed "-codex" => the guard concluded "not a companion" and let it
+# BROADCAST real identity values fleet-wide. The original §8c fixture always had
+# companion_for set, so it only ever proved the guard works when state is intact.
+# A companion must be identified by NAME even with NO usable state at all.
+: > "$WS2/.fleet/state/sc-codex.json"                 # ZERO-BYTE state (the incident)
+rm -f "$WS2/.fleet/state/nostate-codex.json"          # MISSING state entirely
+: > "$WS2/.fleet/log/fleet.log"
+
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=sc-codex "$FLEET" broadcast "RESUME everyone" > "$TMP/msg_empty.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "ZERO-BYTE-state companion broadcast EXITS non-zero" || no "ZERO-BYTE-state companion broadcast EXITS non-zero"
+has  "zero-byte-state companion broadcast names the reason" "$TMP/msg_empty.out" "read-only companion/refuter"
+has  "zero-byte-state companion broadcast is audited"       "$WS2/.fleet/log/fleet.log" "DENIED broadcast"
+
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=nostate-codex "$FLEET" broadcast "RESUME everyone" > "$TMP/msg_nostate.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "MISSING-state companion broadcast EXITS non-zero" || no "MISSING-state companion broadcast EXITS non-zero"
+
+# a *-codex lane must not reach a third party even with no usable state
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=sc-codex "$FLEET" send other "capture this vector" > "$TMP/msg_empty3.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "ZERO-BYTE-state companion send-to-third-party EXITS non-zero" || no "ZERO-BYTE-state companion send-to-third-party EXITS non-zero"
+
 # (6) human root + normal writer are NEVER messaging-guard-blocked
 FLEET_WORKSPACE="$WS2" "$FLEET" broadcast "human coordination" > "$TMP/msg_human.out" 2>&1 || true
 lacks "human-root broadcast is not messaging-guard-blocked" "$TMP/msg_human.out" "read-only companion/refuter"

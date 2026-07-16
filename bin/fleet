@@ -920,7 +920,23 @@ _fleet_actor_is_readonly_companion() {
   [[ -n "$a" ]] || return 1
   [[ -n "$(fleet_state_get "$a" '.companion_for' "")" ]] && return 0
   _fleet_is_readonly_standby "$a" 2>/dev/null && return 0
-  case "$a" in *-refute|*-codex-refute) return 0 ;; esac
+  # NAME-STRUCTURAL fallback — MUST NOT depend on state being readable.
+  # `_fleet_start_companion` names every companion "<base>-<provider>", so a
+  # *-codex / *-refute lane IS a companion BY CONSTRUCTION, whatever its state
+  # file says (or fails to say).
+  #
+  # INCIDENT 2026-07-17 (this pattern is the fix): supervisor-codex's state file
+  # was ZERO BYTES, so the `.companion_for` read and the readonly-standby read
+  # both came back empty, and the old pattern matched only *-refute — so "-codex"
+  # fell through, the guard concluded "not a companion", and ALLOWED it to
+  # BROADCAST real identity values (a provisioned frame embedding the live
+  # tg_hash/origin) fleet-wide, asking lanes to commit them as canonical vectors.
+  # The sibling -codex lanes were denied correctly ONLY because their state files
+  # happened to be intact — i.e. the guard's coverage silently depended on an
+  # unrelated file staying non-empty. A guard that FAILS OPEN on unreadable state
+  # is not a guard; identity here is derived from the NAME, which cannot be
+  # corrupted by a truncated write.
+  case "$a" in *-codex|*-refute|*-codex-refute) return 0 ;; esac
   return 1
 }
 _fleet_guard_primary_lifecycle() {
