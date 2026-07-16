@@ -52,6 +52,27 @@ Under this skill the assistant is a **refuter, not a validator**.
 7. **Update** confidence per the update rule.
 8. **Log** the ledger entry (format below).
 
+## Constructive complement — will it actually work?
+
+Refutation proves what is *wrong*; it does not prove the surviving thing *works*. A
+conjecture can clear every attack and still be unbuildable, un-runnable, or a regression
+of proven behaviour. Two positive checks run alongside the refutation session, and a
+change lands only when it passes **both** the attacks above **and** these:
+
+- **The "will actually work" check (constructive).** Positively verify the surviving
+  design is implementable, runs end-to-end, and does **not** regress what already works
+  — by *exercising* it, not reasoning about it. A stated "feasible" is a claim at a known
+  depth, not evidence; for a spec-level change that means a real implementer confirms it
+  builds and runs, not merely that it reads cleanly.
+- **Anchor on proven downstream implementations.** Treat the code that *already works* —
+  the live system, the field device, the green path — as ground truth, and design
+  against it rather than in a vacuum. If a change contradicts a working implementation,
+  resolve it explicitly: the spec is wrong, **or** an implementation migration is owed
+  and flagged — never a silent divergence.
+
+This is the empirical, forward direction of the same discipline: refutation removes
+false confidence, this earns the true kind.
+
 ## Severity — what counts as non-trivial
 
 An attack qualifies only if all three hold:

@@ -97,6 +97,21 @@ against. Code implements; it never silently leads.
 The simplest mechanism that meets the need wins. Complexity must earn its place. Each
 cut is itself a conjecture — make it, then see if anything breaks.
 
+### 3.10 Will actually work — and anchor on what already works
+Refutation proves what is *wrong*; it does not prove the corrected thing *works*. A
+change can survive every attack and still be unbuildable, un-runnable, or a regression
+of proven behaviour. So every decision also gets two constructive checks. **(a) The
+"will actually work" check:** positively verify it is implementable, runs end-to-end,
+and does **not** regress what already works — exercise it, don't reason about it. A
+stated "feasible" is a claim, not evidence; for a spec change that means a real
+implementer confirms it builds and runs. **(b) Anchor on proven downstream
+implementations:** treat the code that *already works* — the live system, the field
+device, the green path — as ground truth, and design against it rather than in a
+vacuum. If a change contradicts a working implementation, resolve it explicitly (the
+spec is wrong, or a migration is owed and flagged) — never a silent divergence. A
+change lands only when it is both refutation-clean **and** will-actually-work-verified
+against the proven implementation.
+
 ---
 
 ## 4. How it works — the mechanics
