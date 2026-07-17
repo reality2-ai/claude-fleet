@@ -247,6 +247,62 @@ _hs_is_wrapper() {
 
 # Does command basename $1 (with full segment $2 for arg-context) denote a
 # firmware-flash / firmware-sign / key-mint operation? (probe A9)
+# openssl is DUAL-USE: `dgst` and `pkeyutl` SIGN or VERIFY depending on flags.
+# Classify the OPERATION, not the vocabulary.
+#
+# LESSON (2026-07-17, reported by specs; core hit it too, and NEITHER routed
+# around it). The old test matched `*' dgst'*` and `*' -sign'*` as SUBSTRINGS, so
+#   openssl dgst -sha256 -verify pub.pem -signature sig.bin persona.bin
+# was denied TWICE over — once for `dgst`, and once because `-signature` CONTAINS
+# `-sign`. The sign-detector matched its own opposite. That command is a PURE
+# VERIFICATION: the exact operation that CATCHES a bad artifact.
+#
+# WHY THIS WAS THE WORST OF THE THREE GATE DEFECTS. The gate exists to stop
+# unauthorised signing/minting/flashing. Verification is the OPPOSITE operation.
+# Blocking it does not prevent a risky action — IT PREVENTS THE EVIDENCE THAT
+# WOULD TELL US WHETHER THE ACTION IS RISKY. Measured cost (specs' finding): core
+# could not re-derive the baked cert, fell back to a six-byte prefix match on the
+# subject — which is NOT a verification — so a would-be INDEPENDENTLY-VERIFIED
+# artifact became a SINGLY-VERIFIED one, in the exact area where the fleet was
+# chasing fail-silent radiating certs. The gate degraded the evidence base it
+# exists to protect. VERIFYING IS NOT SIGNING.
+_hs_openssl_mutates() {
+  local -a t; local i sub="" start=0
+  read -ra t <<<"$1"
+  # LOCATE `openssl` first — the caller reaches here through the wrapper loop too,
+  # so the segment may be `sudo openssl …` / `env X=1 openssl …` and t[0] is NOT
+  # openssl. Assuming index 0 made `sudo openssl genpkey` read `openssl` as its own
+  # subcommand and stop denying — caught by this file's own positive control.
+  for (( i=0; i<${#t[@]}; i++ )); do
+    [[ "${t[i]##*/}" == openssl ]] && { start=$i; break; }
+  done
+  for (( i=start+1; i<${#t[@]}; i++ )); do    # first non-flag token = subcommand
+    case "${t[i]}" in -*) ;; *) sub="${t[i]}"; break ;; esac
+  done
+  case "$sub" in
+    genpkey|genrsa|gendsa|ecparam|pkcs12|ca) return 0 ;;   # always mints
+    dgst|pkeyutl)   # dual-use: an explicit verify flag wins; bare dgst = a hash
+      for (( i=1; i<${#t[@]}; i++ )); do
+        case "${t[i]}" in -verify|-verifyrecover|-prverify) return 1 ;; esac
+      done
+      for (( i=1; i<${#t[@]}; i++ )); do      # `-sign` as a TOKEN — `-signature` is not it
+        case "${t[i]}" in -sign) return 0 ;; esac
+      done
+      return 1 ;;
+    x509)           # prints by default; only mutates when it signs/creates
+      for (( i=1; i<${#t[@]}; i++ )); do
+        case "${t[i]}" in -req|-signkey|-CA|-CAkey) return 0 ;; esac
+      done
+      return 1 ;;
+    req)            # `-in … -noout -text` prints; -new/-newkey/-x509/-keyout mint
+      for (( i=1; i<${#t[@]}; i++ )); do
+        case "${t[i]}" in -new|-newkey|-x509|-keyout) return 0 ;; esac
+      done
+      return 1 ;;
+  esac
+  return 1          # verify / asn1parse / pkey -pubout / version / … = inspection
+}
+
 _hs_flash_or_mint() {
   local base="$1" seg="$2" cargo_sub cargo_d; local -a _cw
   case "$base" in
@@ -279,7 +335,7 @@ _hs_flash_or_mint() {
     step)
       case " $seg " in *' certificate create'* | *' crypto keypair'* | *' ca sign'*) return 0 ;; esac ;;
     openssl)
-      case " $seg " in *' genpkey'* | *' genrsa'* | *' ecparam'* | *' gendsa'* | *' -sign'* | *' dgst'* | *' pkeyutl'* | *' req '* | *' pkcs12'*) return 0 ;; esac ;;
+      _hs_openssl_mutates "$seg" && return 0 ;;
     gpg|gpg2)
       case " $seg " in *' --sign'* | *' --clearsign'* | *' --detach-sig'* | *' --gen-key'* | *' --full-gen-key'* | *' --export-secret'*) return 0 ;; esac ;;
     dd)

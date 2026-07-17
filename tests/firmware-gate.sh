@@ -92,7 +92,25 @@ check pass 'fleet broadcast "reproduced: git commit -m \"a; write-persona is wro
 check pass "fleet send hive 'it said \"a; ota sign\" and that was prose'"
 check pass 'git commit -m "quote the report: \"a; mint cert\" was never an op"'
 
+echo "── VERIFYING IS NOT SIGNING — read-only crypto must never be denied (defect 4) ──"
+# The gate blocked a read-only cert verify: `dgst` matched, AND `-signature`
+# contains `-sign`, so the sign-detector matched its own opposite. Blocking a
+# verify does not prevent a risky action — it prevents the evidence that would
+# tell us whether the action is risky. Measured cost: it turned an
+# independently-verified artifact into a singly-verified one.
+check pass 'openssl dgst -sha256 -verify pub.pem -signature sig.bin persona.bin'
+check pass 'openssl pkeyutl -verify -pubin -inkey pub.pem -sigfile sig.bin -in digest.bin'
+check pass 'openssl x509 -in cert.pem -noout -text'
+check pass 'openssl verify -CAfile ca.pem cert.pem'
+check pass 'openssl asn1parse -in persona.der -inform DER'
+check pass 'openssl dgst -sha256 persona.bin'
+
 echo "── REAL OPS — must always be denied (positive controls; defect 2) ──"
+# ...and the same subcommands when they actually SIGN or MINT.
+check deny 'openssl dgst -sha256 -sign key.pem -out sig.bin persona.bin'
+check deny 'openssl pkeyutl -sign -inkey key.pem -in digest.bin -out sig.bin'
+check deny 'openssl x509 -req -in csr.pem -signkey ca.key -out cert.pem'
+check deny 'openssl req -new -newkey ed25519 -keyout tg.key -out tg.csr'
 check deny 'adafruit-nrfutil dfu serial -pkg x.zip -p /dev/ttyACM0 -b 115200 -sb'
 check deny 'espflash flash --monitor target/x.bin'
 check deny 'cd /tmp && sudo openssl genpkey -algorithm ed25519 -out tg.key'
