@@ -112,7 +112,11 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet ask <to> "<question>"   consult a peer off-thread: a fork of its live
                                   context answers; reply → asker's inbox  [needs tmux]
   fleet send <to> "<msg>"       brief FYI into a peer's live thread (no reply)
+  fleet send <to> --file <path> same, body read OUT OF BAND (use for anything
+                               multi-line: the text never becomes a shell token,
+                               so backticks/$(..)/$VAR cannot eat a clause silently)
   fleet broadcast "<msg>"       brief FYI to all peer agents
+  fleet broadcast --file <path> same, body read out of band (--file - reads stdin)
   fleet inbox [id]              read a mailbox (full answers + audit trail)
 
   fleet decision add "<question>" [--for <agent>] [--options "a|b|c"] [--raised-by <who>]
@@ -2091,12 +2095,45 @@ cmd_doctor() {
 # --- inter-agent comms ------------------------------------------------------
 # `ask` (cmd_ask) answers off-thread via a provider-native responder. `send` delivers a
 # brief FYI into the target's live thread via _fleet_deliver below.
-# _fleet_parse_msg sets _F_FROM/_F_TO/_F_TEXT from [--from] <to> <text>.
+# _fleet_parse_msg sets _F_FROM/_F_TO/_F_TEXT from [--from] <to> [text].
+#
+# --file <path> / --file - (stdin) reads the BODY OUT OF BAND. Use it for anything
+# longer than a line.
+#
+# WHY IT EXISTS (2026-07-17, hive; tallied across one night: composer mangled 4 sends,
+# core mangled 3 — twice inside messages ABOUT rigour — hive mangled a commit). Passing
+# a message as a shell WORD makes the text a shell TOKEN, so backticks, $(…), $VAR,
+# braces, globs and quotes are all live. Every mitigation we tried — "avoid backticks",
+# "use single quotes", "prose only" — is DISCIPLINE: a rule you must recall at the exact
+# moment your attention is on the thing you are reporting, WHICH IS THE MOMENT IT FAILS.
+# It failed 7+ times to lanes who could all recite it.
+#
+# ★ AND THE DANGEROUS CASE HAS NO TELL. A mangled backtick throws a parse error and you
+# see it. AN UNSET $VAR EXPANDS TO EMPTY: the clause VANISHES, exit code 0, the message
+# delivers, and the recipient reads something COHERENT WITH A HOLE IN IT and cannot know.
+# The channel carrying our fail-silent-while-green findings had the identical defect, and
+# an eaten clause leaves no evidence at EITHER end.
+#
+# THE DISCRIMINATOR IS NOT QUOTING STYLE — IT IS WHETHER THE TEXT IS EVER A SHELL TOKEN.
+# Read from a file and it never is: it is DATA FROM BIRTH. That is a CONSTRUCTION, not a
+# rule, so it cannot be forgotten under load. (hive's `"$(cat body)"` form works for the
+# same reason — command-substitution output is not re-scanned for metacharacters — but it
+# still requires REMEMBERING to use it. This makes the safe path a flag.)
 _fleet_parse_msg() {
-  _F_FROM=""; local rest=()
-  while [[ $# -gt 0 ]]; do case "$1" in --from) _F_FROM="$2"; shift 2 ;; *) rest+=("$1"); shift ;; esac; done
+  _F_FROM=""; local rest=() _f_file=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --from) _F_FROM="$2"; shift 2 ;;
+    --file) _f_file="$2"; shift 2 ;;
+    *) rest+=("$1"); shift ;;
+  esac; done
   set -- "${rest[@]}"
   _F_TO="${1:-}"; _F_TEXT="${2:-}"
+  if [[ -n "$_f_file" ]]; then
+    [[ -n "$_F_TEXT" ]] && die "give the body EITHER as an argument OR via --file, not both"
+    if [[ "$_f_file" == "-" ]]; then _F_TEXT="$(cat)"
+    else [[ -r "$_f_file" ]] || die "--file: cannot read '$_f_file'"; _F_TEXT="$(cat -- "$_f_file")"; fi
+    [[ -n "$_F_TEXT" ]] || die "--file: '$_f_file' is empty — refusing to send a blank message"
+  fi
   [[ -z "$_F_FROM" ]] && _F_FROM="${FLEET_CHILD_ID:-supervisor}"
   # Both ids become path components (inbox/<id>.jsonl) and tmux targets. --from is
   # picked by whichever agent is calling and was previously never checked, so validate
@@ -2215,7 +2252,21 @@ cmd_ask() {
 }
 
 cmd_broadcast() {
-  local msg="${1:?usage: fleet broadcast \"<msg>\"}"
+  # --file <path> | --file -  → read the body out of band; see _fleet_parse_msg for why
+  # (a message passed as a shell WORD is a shell TOKEN, and an unset $VAR eats a clause
+  # silently: exit 0, message delivered, hole in it, nobody can tell).
+  local msg="" _b_file=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --file) _b_file="$2"; shift 2 ;;
+    *) [[ -z "$msg" ]] && msg="$1"; shift ;;
+  esac; done
+  if [[ -n "$_b_file" ]]; then
+    [[ -n "$msg" ]] && die "give the body EITHER as an argument OR via --file, not both"
+    if [[ "$_b_file" == "-" ]]; then msg="$(cat)"
+    else [[ -r "$_b_file" ]] || die "--file: cannot read '$_b_file'"; msg="$(cat -- "$_b_file")"; fi
+    [[ -n "$msg" ]] || die "--file: '$_b_file' is empty — refusing to broadcast a blank message"
+  fi
+  [[ -n "$msg" ]] || die "usage: fleet broadcast \"<msg>\" | fleet broadcast --file <path>"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   local from="${FLEET_CHILD_ID:-supervisor}" c
   _fleet_guard_messaging broadcast "$from"
