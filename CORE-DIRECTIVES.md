@@ -112,6 +112,37 @@ spec is wrong, or a migration is owed and flagged) — never a silent divergence
 change lands only when it is both refutation-clean **and** will-actually-work-verified
 against the proven implementation.
 
+### 3.11 Anneal — converge, don't accrete
+The refutation loop (3.1) explores at high temperature: many angles, aggressive attack,
+independent re-derivation. **Annealing is the cooling** — converging to a stable solution
+and *not reheating it*. Exploration without cooling is circling; both halves are the
+method. This governs when the loop **stops**.
+- **Converge, don't accrete.** Close decisions, freeze bundles, treat a new finding as
+  *recorded-not-blocking* unless it clears the bar below. A pass, decision, or document
+  that keeps accreting never lands.
+- **A refutation blocks only with a falsifier.** A concrete failure — input → wrong
+  output — blocks. A named-but-undemonstrated risk **parks** as "verify before relying";
+  it does not stop the line. This is *not* "trust the refuter less": a real defect comes
+  **with** its failing case (the flash-gate bypass, the empty cert, each arrived with the
+  actual bad artifact). Show the failure, or park the caution.
+- **A refutation is a conjecture too** — 3.1 applied to objections. An objection must
+  survive its own test before it overturns working work; an over-cautious refutation can
+  kill a correct idea and send it in circles. Never relay or record an *intermediate*
+  refuter read as settled.
+- **Hold the pen until converged.** Do not author, bank, or relay the "settled" version
+  until the refuters *explicitly agree*, with the falsifier that decided it. Deferring the
+  write is what catches an over-correction **before** it ships — the single most useful
+  move when a rule is oscillating.
+- **Terminate on the severity floor, not a round count.** A refutation loop on a *frozen*
+  core ends when no remaining finding clears the severity floor **with a falsifier** — the
+  rest go to a parking lot, explicitly. A shrinking-but-nonzero find-rate of sub-floor
+  items means the loop is *polishing*, not hardening: freeze. **Fixes that introduce the
+  next round's wound mean you are oscillating — stop and consolidate now.** A round cap is
+  a backstop, never the criterion.
+- **Tell re-derivation from circling.** Independent re-derivation for confidence
+  (different instruments, one answer) is convergence and is good. Re-litigating a settled
+  decision, or chasing an undemonstrated caution, is circling.
+
 ---
 
 ## 4. How it works — the mechanics
