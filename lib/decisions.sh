@@ -125,7 +125,15 @@ _fleet_decisions_print() {
     return
   fi
   local out
-  out="$(jq -rs --argjson all "$all" --arg grn "$c_grn" --arg rst "$c_reset" '
+  # Render each decision as a READABLE BLOCK, not a one-line blob. A decision's
+  # question is often a paragraph and its options are full phrases; the old format
+  # concatenated question + "/"-joined options onto ONE line, which was unreadable
+  # once questions grew past a sentence. Now: a header line (id · age · waiting/
+  # answered), the question on its own line, each option on its own "•" line, the
+  # answer (if any) on its own line, and a blank line between records.
+  out="$(jq -rs --argjson all "$all" \
+      --arg grn "$c_grn" --arg rst "$c_reset" --arg bld "$c_bold" \
+      --arg dim "$c_dim" --arg yel "$c_yel" '
     def ago($d):
       if   $d < 60    then "\($d)s"
       elif $d < 3600  then "\($d/60|floor)m"
@@ -134,12 +142,24 @@ _fleet_decisions_print() {
     (now|floor) as $now
     | map(select($all==1 or .status=="open"))
     | sort_by(.epoch)
-    | .[]
-    | ("#\(.id) · \(ago(($now - (.epoch // $now))|if . < 0 then 0 else . end)) · "
-       + (if (.waiting // "") != "" then "[waiting: \(.waiting)] · " else "" end)
-       + .question
-       + (if (.options // [] | length) > 0 then "  (\(.options|join("/")))" else "" end)
-       + (if .status == "answered" then "  \($grn)→ \(.answer // "")\($rst)" else "" end))
+    | map(
+        # header: bold id, dim age + waiting/answered marker
+        "\($bld)#\(.id)\($rst)  \($dim)\(ago(($now - (.epoch // $now))|if . < 0 then 0 else . end)) ago"
+        + (if .status == "answered" then " · answered"
+           elif (.waiting // "") != "" then " · \($yel)waiting: \(.waiting)\($dim)"
+           else "" end)
+        + "\($rst)\n"
+        # question on its own line
+        + "  " + ((.question // "") | gsub("\n"; "\n  "))
+        # options, one per line
+        + (if (.options // [] | length) > 0
+             then "\n  \($dim)options:\($rst)\n" + (.options | map("    • " + .) | join("\n"))
+             else "" end)
+        # answer on its own line
+        + (if .status == "answered" and (.answer // "") != ""
+             then "\n  \($grn)→ \(.answer)\($rst)" else "" end)
+      )
+    | join("\n\n")
   ' "${files[@]}" 2>/dev/null || true)"
   if [[ -z "$out" ]]; then
     [[ "$all" == "1" ]] && info "(no decisions recorded yet)" || info "(no open decisions — nothing waiting on you)"

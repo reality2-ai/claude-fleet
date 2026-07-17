@@ -24,10 +24,18 @@ fleet_state_ids() {
   # FLEET_STATE_IDS_UNION=off (then only on-disk docs, old behaviour).
   local -A seen=()
   local id f
+  # Reserved INFRASTRUCTURE window names that are NOT fleet members and must never
+  # appear in the roster / status / token accounting. `decisions` is the persistent
+  # decision-ledger pane (fleet_start_decisions_window) — a valid member-id shape,
+  # so it passes id validation and was showing up as a phantom "stopped" worker.
+  # (2026-07-18. Same phantom-member class as the --help.json / --.json guards, but
+  # those are caught by id validity; this one is a legitimately-named infra window.)
+  local -A _reserved=( [decisions]=1 )
   if [[ -d "$CHILDSTATE_DIR" ]]; then
     for f in "$CHILDSTATE_DIR"/*.json; do
       [[ -e "$f" ]] || continue
       id="$(basename "$f" .json)"
+      [[ -n "${_reserved[$id]:-}" ]] && continue
       [[ -n "${seen[$id]:-}" ]] && continue
       seen["$id"]=1; printf '%s\n' "$id"
     done
@@ -39,12 +47,14 @@ fleet_state_ids() {
   if declare -F transport_ids >/dev/null 2>&1; then
     while IFS= read -r id; do
       [[ -n "$id" ]] || continue
+      [[ -n "${_reserved[$id]:-}" ]] && continue
       [[ -n "${seen[$id]:-}" ]] && continue
       seen["$id"]=1; printf '%s\n' "$id"
     done < <(transport_ids 2>/dev/null)
   elif declare -F fleet_tmux_window_ids >/dev/null 2>&1; then
     while IFS= read -r id; do
       [[ -n "$id" ]] || continue
+      [[ -n "${_reserved[$id]:-}" ]] && continue
       [[ -n "${seen[$id]:-}" ]] && continue
       seen["$id"]=1; printf '%s\n' "$id"
     done < <(fleet_tmux_window_ids 2>/dev/null)
