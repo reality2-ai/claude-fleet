@@ -301,25 +301,114 @@ _hs_flash_or_mint() {
   return 1
 }
 
+# Split a command into top-level segments, HONOURING QUOTES.
+#
+# LESSON (2026-07-17). The previous splitter was `${c//&&/;}` + split-on-';' —
+# QUOTE-BLIND. Text inside '…' or "…" is DATA, not shell, but it was fragmented
+# anyway and each fragment was then classified AS IF IT WERE A COMMAND. So a
+# commit message or a fleet note that merely DESCRIBED this subject tripped the
+# gate: `git commit -m "a; write-persona is the wrong verb"` → fragment
+# ` write-persona is the wrong verb"` → matched the verb list → hard DENY. It
+# blocked three lanes in one evening, including a RESUME.md commit — i.e. it
+# blocked the DURABLE HANDOFF RECORD — and a lane escalating a security finding
+# TO the supervisor. A gate that taxes precise reporting of a defect degrades the
+# evidence base it exists to protect, and teaches lanes to describe findings
+# vaguely to get them through. Gates must match ACTS, never the WORDS in a
+# message body. Parse the structure; do not substring-match fragments.
+_hs_segments() {
+  local s="$1"                       # NB: separate statement — a `local` line expands
+  local i=0 n=${#s} ch q='' seg=''   # every word BEFORE assigning, so `n=${#s}` on the
+                                     # same line reads an unset s and `set -u` aborts.
+  while (( i < n )); do
+    ch="${s:i:1}"
+    if [[ -n "$q" ]]; then                       # inside a quote: copy verbatim
+      # Inside "…" a backslash ESCAPES the next char, including the closing quote;
+      # inside '…' a backslash is literal. Shell semantics, and load-bearing: the
+      # first cut of this splitter skipped it, so `fleet broadcast "… -m \"a;
+      # write-persona\" …"` read the \" as a CLOSING quote, fell out of the quoted
+      # region, split on the ';', and denied the message. It denied this very
+      # commit's own announcement. Prose quoting prose is the COMMON case here.
+      if [[ "$q" == '"' && "$ch" == '\' ]]; then
+        seg+="$ch${s:i+1:1}"; (( i+=2 )); continue
+      fi
+      seg+="$ch"; [[ "$ch" == "$q" ]] && q=''
+      (( i++ )); continue
+    fi
+    case "$ch" in
+      "'"|'"')  q="$ch"; seg+="$ch" ;;           # quote opens → text is data
+      '\')      seg+="$ch${s:i+1:1}"; (( i++ )) ;;   # escaped char: take both
+      ';'|'&'|'|')
+        printf '%s\n' "$seg"; seg=''
+        while (( i+1 < n )); do                  # swallow the rest of &&, ||, ;;
+          case "${s:i+1:1}" in ';'|'&'|'|') (( i++ )) ;; *) break ;; esac
+        done ;;
+      *)        seg+="$ch" ;;
+    esac
+    (( i++ ))
+  done
+  printf '%s\n' "$seg"
+}
+
+# Does this SEGMENT invoke fleet messaging? The wire only DELIVERS text, never
+# executes it, so OTA/cert/sign/mint WORDS in a note are not operations.
+# Looks THROUGH wrappers (`timeout 30 fleet send …`) — the old check read only
+# token 0 of the WHOLE command, so any `cd … && fleet send …` defeated it.
+# FAIL-CLOSED on a command substitution: `fleet send "$(espflash …)"` is not
+# just text, so it does not earn the exemption.
+# Explicit signed-OTA / cert-mint / persona-write verbs, matched as a TOKEN
+# SEQUENCE rather than by substring.
+#
+# LESSON (2026-07-17, found by writing positive controls for the fix above).
+# The old test was `case " $seg " in *' ota '*' sign'*)` — and it COULD NOT MATCH
+# `composer ota sign`, the exact canonical form it names: matching `' ota '`
+# consumes the space that `' sign'` then requires, so only the non-adjacent
+# `ota --foo sign` ever fired. Same for `' ota '*' push'`. So the gate's headline
+# verbs NEVER caught their headline case, and every green run "confirmed" a check
+# that was structurally incapable of firing — the decorative-cert defect
+# (task #89), one level up, in the gate itself. Substring patterns with
+# overlapping delimiters are a trap; compare TOKENS.
+# NB `sign` as a token, never a substring — `*sign*` would match `design`.
+_hs_verb_seq() {
+  local -a t; local i j
+  read -ra t <<<"$1"
+  for (( i=0; i<${#t[@]}; i++ )); do
+    case "${t[i]}" in
+      sign-firmware|mint-cert|write-persona|write_persona) return 0 ;;
+      ota)       for (( j=i+1; j<${#t[@]}; j++ )); do
+                   case "${t[j]}" in sign|push) return 0 ;; esac; done ;;
+      mint)      for (( j=i+1; j<${#t[@]}; j++ )); do
+                   case "${t[j]}" in cert|certificate|cert-*) return 0 ;; esac; done ;;
+      provision) for (( j=i+1; j<${#t[@]}; j++ )); do
+                   case "${t[j]}" in write) return 0 ;; esac; done ;;
+    esac
+  done
+  return 1
+}
+
+_hs_is_fleet_msg() {
+  case "$1" in *'$('* | *'`'*) return 1 ;; esac
+  local -a t; read -ra t <<<"$1"; local i
+  for (( i=0; i<${#t[@]}; i++ )); do
+    [[ "${t[i]##*/}" == fleet ]] || continue
+    case "${t[i+1]:-}" in send|broadcast|ask|pair-send|pair-ask) return 0 ;; esac
+    return 1
+  done
+  return 1
+}
+
 hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operation?
-  local c="$1" first base seg rest tb; local -a _cw segtoks
-  # fleet messaging (send/broadcast/ask) carries human TEXT about the work — OTA/
-  # cert/sign/mint WORDS in a status note are not operations, and the note may
-  # contain ';'/'&&' that the naive splitter below would expose as fragments. The
-  # wire only DELIVERS text, never executes it → exempt the whole messaging command.
-  read -ra _cw <<<"$c"
-  if [[ "${_cw[0]##*/}" == fleet ]]; then
-    case "${_cw[1]:-}" in send|broadcast|ask) return 1 ;; esac
-  fi
-  # NB: git ops are exempted PER-SEGMENT below (not whole-command): the commit
-  # message may MENTION mint/sign/cert as prose, but a real flasher after
-  # `git commit && …` is its own segment and must still be gated.
-  rest="${c//&&/;}"; rest="${rest//|/;}"          # scan every pipe/&&/; segment
-  while [[ -n "$rest" ]]; do
-    case "$rest" in *';'*) seg="${rest%%;*}"; rest="${rest#*;}" ;; *) seg="$rest"; rest="" ;; esac
+  local c="$1" first base seg tb inner body; local -a segtoks
+  # git and fleet-messaging are exempted PER-SEGMENT (never whole-command): the
+  # commit message / note may MENTION mint/sign/cert as prose, but a real flasher
+  # after `git commit && …` is its OWN segment and must still be gated.
+  while IFS= read -r seg; do
     seg="${seg#"${seg%%[![:space:]]*}"}"
+    [[ -n "$seg" ]] || continue
     first="${seg%%[[:space:]]*}"; base="${first##*/}"
-    [[ "$base" == git ]] && continue   # git segment = source control, never a runtime flash/mint
+    case "$seg" in *'$('* | *'`'*) : ;; *)
+      [[ "$base" == git ]] && continue ;;   # git segment = source control, never a runtime flash/mint
+    esac
+    _hs_is_fleet_msg "$seg" && continue
     _hs_flash_or_mint "$base" "$seg" && return 0
     # look THROUGH a command-wrapper (env/sudo/timeout/nice/bash -c … <flasher>):
     # re-classify every token's basename so the wrapper can't hide the real op.
@@ -331,10 +420,17 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
       done
     fi
     # explicit signed-OTA / cert-mint / persona-write verbs on any tool
-    case " $seg " in
-      *' ota '*' sign'* | *' ota '*' push'* | *' sign-firmware'* | *' mint-cert'* | *' mint '*'cert'* | *' provision '*' write'* | *' write-persona'*) return 0 ;;
-    esac
-  done
+    _hs_verb_seq "$seg" && return 0
+    # a command substitution embeds a REAL command — scan its body too, so
+    # `fleet send hive "$(espflash flash …)"` cannot launder a flasher through
+    # an exemption. Terminates: each pass consumes one `$(`.
+    inner="$seg"
+    while [[ "$inner" == *'$('* ]]; do
+      inner="${inner#*\$(}"
+      body="${inner%%)*}"
+      [[ -n "$body" ]] && hs_bash "$body" && return 0
+    done
+  done < <(_hs_segments "$c")
   return 1
 }
 
