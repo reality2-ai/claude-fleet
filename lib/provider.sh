@@ -117,6 +117,23 @@ fleet_agent_build_args() {
   local -n argv="$arr_name"
   argv=()
 
+  # COMMS STANDARD — prepended to EVERY member's primer, BOTH providers, on start
+  # AND on resume (claude: --append-system-prompt composes with --resume; codex:
+  # folded into the combined prompt). Carries the RFC 2119/8174 normative rules,
+  # the caveman v2 compressed register, and the dense agent-to-agent wire format.
+  #
+  # It lives HERE rather than in per-repo AGENTS.md because AGENTS.md is opt-in
+  # per lane and reaches a codex twin only after its writer commits and pushes —
+  # three lanes had it committed-but-unpushed. This path reaches every member at
+  # launch regardless. AGENTS.md remains the durable per-repo copy (survives a
+  # takeover by a member this launcher never started); the two are belt-and-braces.
+  # Toggle: FLEET_COMMS_STANDARD=off
+  if [[ "${FLEET_COMMS_STANDARD:-on}" != "off" && -r "$TOOL_ROOT/skill/COMMS.md" ]]; then
+    primer="$(cat "$TOOL_ROOT/skill/COMMS.md")
+
+$primer"
+  fi
+
   case "$provider" in
     claude)
       argv+=("$bin" --name "$name")
