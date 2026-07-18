@@ -391,9 +391,9 @@ _hs_segments() {
       seg+="$ch"; [[ "$ch" == "$q" ]] && q=''
       (( i++ )); continue
     fi
+    # shellcheck disable=SC1003  # the '\' branch is a literal-backslash pattern, not a bad escape
     case "$ch" in
       "'"|'"')  q="$ch"; seg+="$ch" ;;           # quote opens → text is data
-      # shellcheck disable=SC1003  # '\' is a literal backslash case pattern
       '\')      seg+="$ch${s:i+1:1}"; (( i++ )) ;;   # escaped char: take both
       ';'|'&'|'|')
         printf '%s\n' "$seg"; seg=''
