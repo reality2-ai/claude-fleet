@@ -32,7 +32,13 @@ scan_range() {  # $1 = git rev range or single sha
   names="$(git diff --name-only --diff-filter=AM "$range" 2>/dev/null || true)"
 
   # 1) secret-bearing filenames being added/modified
-  printf '%s\n' "$names" | grep -qiE '(^|/)(\.env(\..*)?$|.*\.pem$|.*\.key$|.*\.priv(\.bin)?$|id_rsa$|id_ed25519$|.*secret.*|tg_priv)' \
+  # NB: the "secret" token requires a secret-DATA extension (not a bare .*secret.*).
+  # A bare match flagged every SOURCE/DOC path containing "secret" — R2-SECRETS.md, the
+  # crates/r2-secrets resolver, check_identity_leak's "secret" refs, the custody template —
+  # i.e. the entire R2-SECRETS custody migration (2026-07-19). Real secret CONTENT in any
+  # file is still caught by the value scan (2) + MAC scan (3); this line catches secret DATA
+  # FILES (tg_secret.bin / secret.env / *.key …), which is what it was for.
+  printf '%s\n' "$names" | grep -qiE '(^|/)(\.env(\..*)?$|.*\.pem$|.*\.key$|.*\.priv(\.bin)?$|id_rsa$|id_ed25519$|.*secret[^/]*\.(bin|dat|env|key|pem|priv|p12|pfx|jks|keystore)$|tg_priv)' \
     && findings+="  • a secret-bearing filename (.env/.key/.pem/.priv/id_rsa/tg_priv…)\n"
 
   # 2) high-signal secret VALUES in added content
