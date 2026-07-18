@@ -37,7 +37,7 @@
 # a suite that only proves false positives are gone cannot tell a working gate from a
 # gate that was accidentally disabled.
 set -uo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 HOOK="$PWD/hooks/auto-approve.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not installed"; exit 0; }

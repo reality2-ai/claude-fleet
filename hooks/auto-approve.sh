@@ -96,7 +96,7 @@ cmd_safe() {
         commit) return 0 ;;
         add)    # named staging only — reject bulk/force (secret-staging footgun)
           case " $c " in *' -A'* | *' --all'* | *' -f'* | *' --force'*) return 1 ;; esac
-          case "$c" in *' .' | *' . '* | *' :/'* | *' :/') return 1 ;; esac
+          case "$c" in *' .' | *' . '* | *' :/'*) return 1 ;; esac   # ' :/'* already covers a trailing ' :/'
           return 0 ;;
         switch) # branch switch / create-branch — non-destructive (git refuses to clobber
                 # uncommitted work); reject force-create / discard variants
@@ -327,7 +327,7 @@ _hs_flash_or_mint() {
     ssh-keygen|age-keygen|minisign|signify|certtool|mkcert)
       return 0 ;;
     keytool)
-      case " $seg " in *' -genkey'* | *' -genkeypair'* | *' -genseckey'* | *' -importcert'* | *' -certreq'*) return 0 ;; esac ;;
+      case " $seg " in *' -genkey'* | *' -genseckey'* | *' -importcert'* | *' -certreq'*) return 0 ;; esac ;;   # ' -genkey'* already covers -genkeypair
     wg)
       case " $seg " in *' genkey'* | *' genpsk'*) return 0 ;; esac ;;
     cfssl)
@@ -384,6 +384,7 @@ _hs_segments() {
       # write-persona\" …"` read the \" as a CLOSING quote, fell out of the quoted
       # region, split on the ';', and denied the message. It denied this very
       # commit's own announcement. Prose quoting prose is the COMMON case here.
+      # shellcheck disable=SC1003  # '\' is a literal backslash to match, not a bad escape
       if [[ "$q" == '"' && "$ch" == '\' ]]; then
         seg+="$ch${s:i+1:1}"; (( i+=2 )); continue
       fi
@@ -392,6 +393,7 @@ _hs_segments() {
     fi
     case "$ch" in
       "'"|'"')  q="$ch"; seg+="$ch" ;;           # quote opens → text is data
+      # shellcheck disable=SC1003  # '\' is a literal backslash case pattern
       '\')      seg+="$ch${s:i+1:1}"; (( i++ )) ;;   # escaped char: take both
       ';'|'&'|'|')
         printf '%s\n' "$seg"; seg=''

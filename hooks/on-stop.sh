@@ -22,6 +22,7 @@ _inbox="$(fleet_inbox_file "$CHILD_ID" 2>/dev/null)" || _inbox=""
 # input box (it started a turn in the paste→Enter window; Enter/C-u were swallowed mid-turn).
 # Now that it's at its prompt, submit that stuck message before draining new mail. MANAGED
 # workers only (never auto-submit the human's ad-hoc lane).
+# shellcheck disable=SC2015  # best-effort chain; the trailing `|| true` is the intended fallback
 [[ "$MANAGED" == true ]] && { fleet_flush_stuck_box "$CHILD_ID" >/dev/null 2>&1 && sleep 0.3 || true; }
 
 fleet_drain_inbox "$CHILD_ID" force >/dev/null 2>&1 || true

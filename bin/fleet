@@ -940,7 +940,7 @@ _fleet_actor_is_readonly_companion() {
   # unrelated file staying non-empty. A guard that FAILS OPEN on unreadable state
   # is not a guard; identity here is derived from the NAME, which cannot be
   # corrupted by a truncated write.
-  case "$a" in *-codex|*-refute|*-codex-refute) return 0 ;; esac
+  case "$a" in *-codex|*-refute) return 0 ;; esac   # *-codex-refute already ends in -refute
   return 1
 }
 _fleet_guard_primary_lifecycle() {
@@ -1406,7 +1406,7 @@ _fleet_pair_base() {
 }
 
 _fleet_pair_targets() {
-  local base="$(_fleet_pair_base "$1")" id expected
+  local base id expected; base="$(_fleet_pair_base "$1")"
   local -A seen=()
   for id in "$base" "$base-claude" "$base-codex"; do
     [[ -n "$id" && -z "${seen[$id]:-}" ]] || continue
@@ -1547,9 +1547,13 @@ cmd_pair() {
 
   local -a bases=()
   local base
+  # SC2190 misfires here: bases is declared -a (indexed) above; these are valid
+  # indexed-array assignments, not associative ones.
   if [[ -n "$only" ]]; then
+    # shellcheck disable=SC2190
     bases=("$only")
   else
+    # shellcheck disable=SC2190
     bases=("${CHILD_IDS[@]:-}")
   fi
   [[ ${#bases[@]} -gt 0 ]] || die "no manifest children found; pass an id"
@@ -1809,6 +1813,7 @@ cmd_refute() {
   [[ -n "${FLEET_CODEX_APPROVAL+x}" ]] && { had_capprove=1; old_capprove="$FLEET_CODEX_APPROVAL"; }
   [[ -n "${FLEET_CODEX_SANDBOX+x}"  ]] && { had_csandbox=1; old_csandbox="$FLEET_CODEX_SANDBOX"; }
   FLEET_CODEX_APPROVAL=never FLEET_CODEX_SANDBOX=read-only; export FLEET_CODEX_APPROVAL FLEET_CODEX_SANDBOX
+  # shellcheck disable=SC2034  # cargs is populated + consumed by nameref below
   local -a cargs=()
   fleet_agent_build_args cargs "$provider" "$reviewer" "$reviewer" "$cwd" "$primer" "$prompt" "" "plan"
   _fleet_restore_skip_permissions "$had_skip" "$old_skip"
