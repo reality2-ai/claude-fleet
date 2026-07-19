@@ -131,7 +131,17 @@ Maximise information density.
   agent-to-agent, but **LISTS AND TABLES, NOT DENSE PARAGRAPHS** (Roy, 2026-07-19).
   Scannable structure beats prose at equal information. A wall of paragraphs is
   the failure mode even when every sentence earns its place.
-- RESUME.md / handoff / AGENTS.md: PROSE. A takeover MAY be a human.
+- **ALL DOCUMENTATION: PROSE, and MORE verbose than agent-to-agent** (Roy,
+  2026-07-19). RESUME.md, handoff, AGENTS.md, READMEs, spec BODIES, code
+  comments, commit messages. A takeover MAY be a human; a spec reader IS one.
+  RFC 2119 keywords still apply to documentation — they ADD precision. The dense
+  wire format does NOT: it is for messages between running agents only.
+
+**The compression is for INTER-AI COMMS ONLY.** Anything a human reads — chat
+windows, docs, specs, comments — keeps the verbosity that makes it
+comprehensible. Optimising a token budget against a human reader is a false
+economy: the cost lands as a misunderstanding later, and it is not measurable
+by the fitness function, which only scores agent-to-agent encodings.
 
 Topic-based carve-outs failed twice (v1 wide Auto-Clarity; then "security is
 exempt"). Audience is unambiguous and cannot be argued into swallowing the rule.
