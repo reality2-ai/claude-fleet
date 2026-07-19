@@ -119,7 +119,12 @@ Carve-outs are NARROW (v2, superseding the stock v1 wide carve-out):
 - Order-sensitive sequences: numbered steps, no prose between them.
 - Irreversible actions: the action, the risk, the condition. Three lines.
 
-## 2b. DENSE WIRE FORMAT — agent-to-agent default
+## 2b. GRUNT — the inter-AI wire format (agent-to-agent default)
+
+*Grunt Reference & Update Notation for Teams.* GRUNT is the NAME of the
+inter-AI language; what follows is its grammar. Draft 0.1 proposed a separate
+performative vocabulary — that was REFUTED and dropped (see §2c). The name
+survives and attaches to the register that actually runs.
 
 Roy directive 2026-07-19: inter-AI messages need NOT be human-readable.
 Maximise information density.
@@ -285,3 +290,49 @@ infrastructure — it is available now.
   keys-over-blobs rule applied to the corpus that already exists.
 - The +6 tokens an anchor costs are NOT overhead: an unanchored terse claim is
   an assertion, an anchored one is checkable. Never drop the anchor to save it.
+
+## 2c. GRUNT draft 0.1 — what was dropped and why (2026-07-19)
+
+Draft 0.1 proposed a closed performative set and its own surface syntax. Both
+were REFUTED on measurement and are NOT part of GRUNT.
+
+**§3 performatives KILLED — the set cannot express a PROHIBITION.**
+`ASK TELL DO DONE FAIL NEED GOT UPD` — eight verbs, not one of which prohibits.
+No DENY, no HOLD. And §4's "content words only" excludes `MUST NOT`, which is
+not a content word.
+
+Measured (hive, on a real refutation, `o200k_base`):
+
+    v2 as sent            535 tok   facts 8/8
+    GRUNT under 128 cap    26 tok   facts 0/8   REJECT
+    GRUNT full evidence   106 tok   facts 6/8   REJECT
+                                    lost: MUST NOT, dcee2a9
+                                    POLARITY: 7 negatives before, 0 after
+
+The full-evidence encoding is INSIDE the 128 cap and still loses every negative
+obligation. **The budget was never the binding constraint — the grammar was.**
+A budget with no capability gate creates pressure to drop a `MUST NOT`; this was
+worse, offering no slot to drop it from.
+
+It also mis-encodes real state as its opposite: a HOLD ("never judged, no
+instrument exists") has no fitting verb, and the nearest is `FAIL` — which tells
+a takeover the firmware is broken and invites a "fix" to working code.
+
+**§4 surface syntax DROPPED** — measured +1/+2 tokens WORSE than the §2b sigils
+on draft 0.1's own examples. `; ` separators and `key:` prefixes cost what
+sigils do not.
+
+**§6 fixed numeric cap DROPPED**, **§9 Elixir runtime map DEFERRED** (task #12).
+
+**WHAT SURVIVED and is folded in:**
+1. **Two-layer separation** — transport envelope MUST NOT be tokenized. Not yet
+   true here: routing metadata and payload are one string. Real, owed work.
+2. **Keyed reference + versioned deltas** — `class/subject[/instance]` + `vN`.
+   Partly ours already via §10; formalisation owed.
+3. **Caching** — already load-bearing and now stated: this file rides the cached
+   system prefix, which is WHY sigils need no per-message definition.
+
+**Ruled: "NO META" MUST NOT override the evidence chain.** Draft 0.1 §4 banned
+meta; §2 requires claim/falsifier/file:line/consequence. §2 WINS. Scope,
+mechanism and why-it-holds (`^` lines) are the EVIDENCE, not commentary. "No
+meta" bans restatement, acknowledgement and editorialising only.
