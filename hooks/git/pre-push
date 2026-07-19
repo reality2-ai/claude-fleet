@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
-# PREPUSH_VERSION: 2  (2026-07-19) — fail-closed size guard; secret-DATA filename rule.
+# PREPUSH_VERSION: 3  (2026-07-19) — fail-closed size guard; root-commit range fix.
 # Cite this line when reporting which guard a lane runs. An unversioned gate
 # cannot be audited or skew-detected: android measured TWO versions live across
 # six repos, distinguishable only by sha256 of an untracked file.
@@ -136,8 +136,23 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   [[ -z "${local_sha:-}" || "$local_sha" == "$zero" ]] && continue   # ref deletion → nothing pushed
   if [[ "${remote_sha:-$zero}" == "$zero" ]]; then
     # new branch on the remote: scan commits not on any existing remote ref
-    range="$(git rev-list "$local_sha" --not --remotes 2>/dev/null | tail -1)"
-    [[ -n "$range" ]] && range="${range}^..${local_sha}" || range="$local_sha"
+    # NB the `| tail -1` here is SEMANTICS, not truncation: rev-list is
+    # newest-first, so the last line is the OLDEST unpushed commit — the base of
+    # the range. Do not "fix" it; doing so breaks the range. (Classified with
+    # android, 2026-07-19, after it was grouped with two real truncations.)
+    oldest="$(git rev-list "$local_sha" --not --remotes 2>/dev/null | tail -1)"
+    if [[ -z "$oldest" ]]; then
+      range="$local_sha"
+    elif git rev-parse --verify -q "${oldest}^" >/dev/null 2>&1; then
+      range="${oldest}^..${local_sha}"
+    else
+      # ROOT COMMIT — `${oldest}^` does not resolve, git diff fatals, the error is
+      # swallowed by 2>/dev/null, the added set comes back EMPTY and the push
+      # reports CLEAN. A FAIL-OPEN, and it is reachable on the FIRST PUSH of a new
+      # repo — exactly when the guard matters most. Found by android 2026-07-19.
+      # The empty-tree object gives a real diff that includes the root commit.
+      range="4b825dc642cb6eb9a060e54bf8d69288fbee4904..${local_sha}"
+    fi
   else
     range="${remote_sha}..${local_sha}"
   fi
