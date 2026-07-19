@@ -35,10 +35,44 @@ def _enc():
 def ntok(s: str) -> int:
     return len(_enc().encode(s))
 
+# RFC 2119 polarity pairs, LONGEST FIRST. A negative is a DISTINCT fact from its
+# positive, never a substring of it. Order matters: match "MUST NOT" before "MUST".
+_NEGATIVES = ["MUST NOT", "SHALL NOT", "SHOULD NOT", "MAY NOT", "CANNOT"]
+
+def _present(fact: str, text: str) -> bool:
+    """Boundary-anchored containment.
+
+    Plain `fact in text` was the defect hive found: facts are DECLARED as tokens
+    but were MATCHED as unanchored substrings, so
+      - "MUST" was satisfied by "MUST NOT"  (and vice versa: dropping NOT scored
+        as capability-preserved, ADOPTing a REVERSED SAFETY DIRECTIVE at -37.5%)
+      - "recipe.rs:1749" was satisfied by "recipe.rs:17490" (a WRONG file:line)
+    Trailing boundary excludes ALPHANUMERICS ONLY — not ':'. Excluding ':' was an
+    over-correction caught by regression: it broke the v2 cite anchor
+    @repo@sha:path:line, where a path is LEGITIMATELY followed by ':' (facts_kept
+    fell 4 -> 2 and a previously ADOPTED change flipped to REJECT). Excluding
+    alphanumerics alone still blocks 1749 matching inside 17490, because the
+    extending character is a digit.
+    """
+    import re
+    pat = r"(?<![A-Za-z0-9_])" + re.escape(fact) + r"(?![A-Za-z0-9_])"
+    return re.search(pat, text) is not None
+
+def _polarity_flips(before: str, after: str) -> list[str]:
+    """Any RFC 2119 negative present in BEFORE and absent from AFTER.
+
+    Checked INDEPENDENTLY of the facts list, because the caller cannot be relied
+    on to declare "MUST NOT" as a fact — and the one time they forget is exactly
+    when the tool would bless an inversion. This is the safety backstop.
+    """
+    return [n for n in _NEGATIVES if n in before and n not in after]
+
 def score(before: str, after: str, facts: list[str]) -> dict:
     tb, ta = ntok(before), ntok(after)
-    lost = [f for f in facts if f and f not in after]
-    kept = len(facts) - len(lost)
+    lost = [f for f in facts if f and not _present(f, after)]
+    flips = _polarity_flips(before, after)
+    lost = lost + [f"POLARITY: '{n}' dropped" for n in flips]
+    kept = len(facts) - len([f for f in facts if f and not _present(f, after)])
     delta = ta - tb
     pct = (delta / tb * 100) if tb else 0.0
     # VERDICT: capability is a gate, not a term. No trade-off is offered,
@@ -70,6 +104,16 @@ def selftest() -> int:
         ("genuine win must be adopted",
          "The gate that is located at recipe.rs:1749 MUST refuse the artifact whose hash is d4c65886",
          "@recipe.rs:1749 =MUST refuse d4c65886", "ADOPT"),
+        # --- hive 2026-07-19: the predicate could not see the failure it exists to catch ---
+        ("SAFETY INVERSION must be rejected (hive probe A)",
+         "=MUST NOT flash board B without the Roy gate @d4c65886",
+         "=MUST flash B @d4c65886",               "REJECT — capability LOST"),
+        ("wrong file:line must not score as kept (hive probe B)",
+         "the gate at recipe.rs:1749 MUST refuse d4c65886 now",
+         "@recipe.rs:17490 =MUST d4c65886",       "REJECT — capability LOST"),
+        ("negative kept is still adoptable",
+         "The gate at recipe.rs:1749 MUST NOT accept the artifact d4c65886 under any circumstance",
+         "@recipe.rs:1749 =MUST NOT accept d4c65886", "ADOPT"),
     ]
     fails = 0
     for name, b, a, want in cases:
