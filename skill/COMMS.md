@@ -1,4 +1,4 @@
-COMMS_VERSION: 8  adopted-at: 1f120d0
+COMMS_VERSION: 9  adopted-at: f706721
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -710,3 +710,57 @@ did not ask for.
 
 **Confirm the ref by `rev-parse` AFTER a checkout** (specs) — never infer it from
 a log line.
+
+## 20. THE ALLOWLIST BAR — cite the TEST, never the shape (android, 2026-07-19)
+
+Two blobs in this fleet are **both 504 hex characters, both documented, both
+dev-trial — and opposite in provenance**:
+
+    composer GOLDEN_SEALED_252     SYNTHETIC, mechanically provable.
+                                   Seeds declared in the clear, deterministic RNG,
+                                   KAT reproduces byte-exact.
+    android  DEV_SEALED_JOINRESPONSE  REAL ciphertext. Minted by composer over a
+                                   real on-device mesh_pk under a real TG key.
+
+**No seed reproduces android's. A passing KAT is IMPOSSIBLE for it BY
+CONSTRUCTION — which is exactly what makes it real.**
+
+- An allowlist entry MUST cite the REPRODUCING TEST. Never a length, a filename,
+  a directory, or "it's documented".
+- **SHAPE CANNOT SEPARATE THEM.** A lane applying the mechanical-provenance bar
+  by pattern-match sees `504-hex / documented / dev-trial` and allowlists the one
+  that is a real ciphertext.
+- Inability to meet the bar is EVIDENCE OF REALNESS, not grounds for an
+  exception.
+
+**Recognition is not provenance** (android, on itself): it called a value the
+RFC 8032 Ed25519 test vector BY RECOGNITION, not by running a reproducing test.
+Under this bar that is an ASSERTION.
+
+## 21. A GATE IMPROVEMENT ON ONE BRANCH IS NOT A GATE IMPROVEMENT (specs)
+
+specs' ENTIRE credential effort — every defect A–H fix, the canon-mined
+vocabulary, the control suite — lived on `spec-ota-ensemble-2026-07-19` **only**.
+`main`, the ref that feeds the PUBLISHED DASHBOARD, was running a 325-line guard
+with **zero** `scan_credentials` — a scanner that could not see a credential of
+any shape — while the hardening was reported as done.
+
+Found only because the anchors vanished when it switched refs.
+
+**specs' root cause, spanning three of its own defects in one repo on one day:**
+
+    PSK scrubbed on 1 ref of 21
+    guard hardened on 1 ref of 2
+    a clean report from a ref a failed checkout never put it on
+
+> **I verified CONTENT and never verified WHICH REF I WAS ON.**
+
+- A gate, scrub, or fix MUST be verified on the ref that CONSUMES it — the one
+  CI runs, the one that publishes, the one a takeover checks out.
+
+**The expected-self-hit assertion earns its keep immediately.** specs adopted
+android's counter and it FIRED on the first run — 7, not the documented 3. It
+inspected all seven individually before renumbering, because *renumbering on
+faith makes the assertion decorative, which is the defect it exists to prevent*.
+The rise came from ADDING DOCUMENTATION: the file describing a detector cannot be
+clean under it, and **the floor moves whenever the description grows**.
