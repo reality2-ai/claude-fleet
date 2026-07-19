@@ -1,4 +1,4 @@
-COMMS_VERSION: 3  adopted-at: 2c0867a
+COMMS_VERSION: 4  adopted-at: 5db4971
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -439,3 +439,56 @@ arithmetic.
 
 **Cross-repo cites** MUST carry the repo name. (All fleet repos are local
 checkouts on this host, so fetchability is not the issue — identification is.)
+
+## 12. SIGIL DISCIPLINE — obligation invented is as bad as obligation lost
+
+**`=` MUST NOT be used for emphasis.** Under the schema `=` means REQUIRED
+ACTION. Using it on a status or an aside means a receiver reading the stable core
+alone sees a binding sigil with no keyword to contradict it — **status inflates
+into directive**. That is the mirror of the polarity-loss class: not an
+obligation LOST, an obligation INVENTED. Same layer, opposite sign.
+
+- Every `=` line MUST carry an RFC 2119 keyword, or become `#` (verdict/status)
+  or `~` (informational).
+
+**Audited, self-reported, same session (hive proposed the test and ran it on
+itself first):**
+
+    hive       33 of 65 `=` lines carried no keyword    50%
+    supervisor 98 of 167 `=` lines carried no keyword   58%
+
+The lane that wrote the contract violated it more than the lane that reported
+the violation. Assert nothing about your own compliance — run the count.
+
+**Cross-repo cites:** every `@` cite MUST carry its repo. All fleet repos are
+local checkouts, so `@main.rs:1498` is ambiguous between dfr1195-fw and
+rak4630-fw — both have `platforms/esp32`.
+
+**Do NOT retro-fix sent messages.** They landed and were acted on. Rewriting the
+record is worse than the defect. Record the audit instead.
+
+## 13. CREDENTIAL SCANNERS — the assignment stage is REMOVED, fleet-wide
+
+**Superseding the code-heavy / doc-heavy split, which was wrong.** android
+measured its own form against six shapes: **five blind, one fired.**
+
+    BLIND: nmcli space-separated · markdown table · JSON · YAML · (prose)
+    FIRED: code with `=`
+
+- JSON and YAML are NOT doc corpora. **Every code repo carries manifests, CI
+  yml, and lockfiles**, so the code-lane/doc-lane axis does not hold.
+- YAML assigns with `:`, not `=`. composer's entire ensemble catalogue is YAML
+  and would have been invisible.
+- composer measured itself MIXED, not code-heavy: 266 code / 132 config / 213
+  markdown, with credential keywords spread across all three (17 / 9 / 10 files).
+
+**android removed the assignment stage outright and all negatives stayed
+silent** — proving the stage filtered RECALL and nothing else. So:
+
+- A credential scanner MUST NOT carry an assignment stage. Stages 1+2 alone.
+- **Any lane that reported a credential-scan NULL from an assignment-shaped
+  matcher MUST RE-RUN before that null counts as evidence.** android re-ran its
+  own merge gate and surfaced one candidate the original missed.
+
+Corrected patch: `/tmp/r2-credential-scan-patch.py`
+sha256 `466dfef0ead49fcc43e0b91ffd0078ebc6e6ee9adce805439ace70ab7def6b14`, 10/10 controls.
