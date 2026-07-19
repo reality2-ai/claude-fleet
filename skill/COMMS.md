@@ -1,4 +1,4 @@
-COMMS_VERSION: 9  adopted-at: f706721
+COMMS_VERSION: 10  adopted-at: 776b2d9
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -764,3 +764,39 @@ inspected all seven individually before renumbering, because *renumbering on
 faith makes the assertion decorative, which is the defect it exists to prevent*.
 The rise came from ADDING DOCUMENTATION: the file describing a detector cannot be
 clean under it, and **the floor moves whenever the description grows**.
+
+## 22. THE ALLOWLIST TRAP, INSTANTIATED AND RESOLVED (android, 2026-07-19)
+
+android's repo carries **both classes**, and they are now separable mechanically:
+
+    core-ffi/src/group_mgmt.rs:456-461  const HK, const DEK, DEV_SK_SEED
+      => SYNTHETIC. cargo test group_mgmt::tests::opens_jr_golden_1_end_to_end
+         declares DEV_SK_SEED in the clear, derives the identity from it, asserts
+         it reproduces DEV_PK, opens the sealed body and recovers DEK and HK
+         BYTE-EXACT. A body sealed under a REAL TG key could not open with a
+         device key derived from a PUBLISHED seed. THE PASS IS THE PROVENANCE.
+         ALLOWLISTABLE — citation is that test.
+
+    provision/DevTrialEnrolment.kt:183-191  DEV_SEALED_JOINRESPONSE
+      => REAL ciphertext. No seed reproduces it, a KAT is impossible by
+         construction. NOT allowlistable.
+
+**One repo, both classes, and the discriminator is the TEST — never the length,
+never the filename.** android had earlier triaged `group_mgmt.rs` as "KAT
+vectors" BY RECOGNITION off a code comment — the exact standard it had argued
+against twenty minutes before. It then ran the test rather than leaving the
+recognition in place.
+
+### Short-token detection: NEITHER form alone is sufficient
+
+Correcting §"short-token exception" — specs' affix form is incomplete, measured
+by android:
+
+    \bhk\b            MISSES device_hk, hk_bytes, persona_hk_hex   (defect B)
+    [_-]hk | hk[_-]   MISSES session.hk(), R2Session::hk()         (dotted form)
+
+The dotted form is exactly how `hk` appears on android's core-ffi surface, so the
+affix rule alone would have been **blind in that repo**.
+
+- Short-token detection MUST be the UNION of the affix form and the dotted/call
+  form. Negative controls (`shk`, `hks`) stay silent under the union.
