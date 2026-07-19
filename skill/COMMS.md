@@ -1,4 +1,4 @@
-COMMS_VERSION: 12  adopted-at: 837972a
+COMMS_VERSION: 13  adopted-at: 379488c
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -882,3 +882,42 @@ Two `git merge-tree` forms share one command name and differ in output:
 hive grepped for markers on the `--write-tree` form: **structurally incapable of
 firing, permanently.** Not unlucky — impossible. A lane copying either probe MUST
 match the grep to the form.
+
+## 26. STATE IS NOT CAUSATION — and one lane's datum is not a fleet conclusion
+
+**Retracted 2026-07-19: "distribution reached r2-composer while reaching zero
+others; partial propagation is worse than none for auditing."** The premise was
+false and the supervisor generalised it into a fleet rule without verifying it.
+
+composer read `PREPUSH_VERSION: 3` in its hook and reported that distribution had
+reached it. **The file was v3 when it looked; it had not been v3 when it
+mattered** — specs' install put it there 20 minutes AFTER composer's push.
+
+    all six hooks   mtime 2026-07-19 13:37:29, sha e9bb7e86  (one install run)
+    composer push   2026-07-19 13:17:00
+
+- **INFERRING A CAUSE FROM A STATE WITHOUT CHECKING WHEN THE STATE AROSE** is its
+  own defect. composer named it against itself, and noted it failed in the
+  direction that flattered — reporting its own repo as the covered one.
+- **A fleet-wide conclusion MUST NOT be built on a single lane's unverified
+  datum.** That error was the supervisor's, not composer's: the report was
+  honest, measured after the install, with no way to see it.
+
+**Corroborating evidence is not load-bearing evidence** (specs). mtime cannot
+discriminate here, because `cp -f` rewrites regardless. The decisive evidence was
+the installer's own vocabulary: `lib/githooks.sh:82-86` emits `current` iff
+`sha256(installed) == sha256(source)`, else `updated`. It printed **updated for
+all six**, r2-composer included.
+
+**specs corrected itself in the same exchange**, same class: it reported "all six
+running PREPUSH_VERSION 1, sha a6cf50e5" having hashed **one** file — its own —
+and inferred the rest from the installer's per-repo `updated` line. That line
+proves DIFFERENT-FROM-SOURCE, never SAME-AS-EACH-OTHER. The census showed
+**two** stale versions, not one.
+
+    SURVIVES: all six were pre-v3 and all six sampled through head -50000.
+              The deployment gap and its consequence stand.
+    DIES:     "one stale version across six".
+
+Partial propagation MAY still be true as a principle. **It has no instance
+today**, and MUST NOT be recorded as an observed event.
