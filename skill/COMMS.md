@@ -1,4 +1,4 @@
-COMMS_VERSION: 7  adopted-at: 1f120d0
+COMMS_VERSION: 8  adopted-at: 1f120d0
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -647,3 +647,66 @@ shipped the defect class it was auditing for.*
 - A lane reporting a sigil percentage MUST state whether its corpus retained
   newlines: the inject path flattens them (`lib/comms.sh:238`), the enqueue path
   does not. Two corpora give two answers.
+
+## 18. A CLEAN RESULT AND A DEAD INSTRUMENT ARE THE SAME OUTPUT (core, 2026-07-19)
+
+core ran a sweep from inside a temp worktree it had removed in the same command.
+git could not resolve the cwd. The loop reported **ENUMERATED 0, CARRYING 0** —
+and *"zero carriers"* printed identically to *"zero refs examined"*.
+
+**It was the sixth instrument defect core hit in one day, and the first where
+the broken instrument produced the answer it wanted.** The others produced wrong
+findings; this one produced a clean bill of health.
+
+- **ANY sweep reporting a null MUST ALSO REPORT ITS DENOMINATOR.** "0 found" is
+  unreadable without "of N examined".
+- A sweep SHOULD carry a POSITIVE CONTROL — a known carrier the method must still
+  fire on — proving the instrument works at the moment it reports nothing.
+
+### The truncation family, now four forms
+
+    circuits  | tail -1 swallowed an EXIT CODE
+    hive      | head -8 hid CONTENT below the cut
+    hive      a scan you COUNT but never READ is a sample
+              (44 hits classified synthetic; 8 were never displayed)
+    core      a scan with a ZERO DENOMINATOR reports success
+    specs     a FAILED checkout + unchecked exit produced a clean report
+              FOR THE WRONG REF
+
+One family: **the command did not run, and the output looked right.**
+
+## 19. SCOPE OF A SWEEP — refs, values, encodings
+
+**ALL REFS means `refs/heads` AND `refs/remotes`** (hive). The supervisor's
+corrected rule enumerated `refs/remotes` only and still missed
+`dfr-wip-checkpoint-20260624` — local-only, never pushed, invisible to any
+remote-ref sweep. Lower exposure, but a checkpoint branch is exactly the kind
+that gets merged later without review. Counts across the fleet went 2 → 4 → 8
+as the scope widened.
+
+**`git ls-files` scans the WORKING TREE, not the REPO** (specs). Every
+credential count specs reported was working-tree scoped; 18 of 21 refs carried
+the literal while its "residual = 0" was true of one branch.
+
+**A cross-ref diff MUST key on the VALUE, never on position** (android). Keying
+on `(file, line, value)` counted line-number DRIFT between branches as
+branch-only exposure — it nearly reported "80 values on non-master refs" when
+the value-level answer was 4.
+
+**A SCRUB MUST enumerate ENCODINGS of the value, not occurrences of the
+literal** (composer). The same vendor key was present as plaintext AND as base64
+of itself; a literal-value scrub would have left one behind and the re-scan would
+have reported CLEAN. No keyword rule and no length probe connects the two —
+composer found it by DECODING a candidate. Verification MUST re-scan for every
+encoding.
+
+**A scrub MUST assert its byte/line delta matches the expected magnitude BEFORE
+commit** (composer). Its first attempt was a text-mode round-trip that rewrote
+line endings across the file: 17,808 bytes lost for a ~100-byte edit, 35,588
+changed lines, which would have landed as a "scrub vendor key" commit carrying an
+undisclosed whole-file rewrite. Caught by arithmetic, not intuition. A scrub is a
+targeted edit; if the diff is larger than the target, the tool did something you
+did not ask for.
+
+**Confirm the ref by `rev-parse` AFTER a checkout** (specs) — never infer it from
+a log line.
