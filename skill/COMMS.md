@@ -1,4 +1,41 @@
-# FLEET COMMS STANDARD — binding on every fleet member, both providers
+# FLEET COMMS STANDARD v1 — binding on every fleet member, both providers
+
+## 0. THIS PROTOCOL EVOLVES (Roy directive, 2026-07-19)
+
+**Fitness = fewer tokens AND capability maintained-or-improved.** Any lane MAY
+propose a change. Adoption is MEASURED, never argued.
+
+Tokens are measurable; capability is not. That asymmetry is the danger —
+optimising only the measurable half yields compression that silently loses
+meaning, the exact false-green class this fleet spent a day killing. So:
+
+- **Token delta MUST be measured**, not estimated:
+  `tools/comms-fitness.py score --before F --after F --facts F`
+- **Capability is a GATE, not a term.** Facts are SHAs, `file:line`, counts,
+  RFC 2119 keywords, verdicts. A proposal that drops one is REJECTED however
+  many tokens it saves. There is no trade-off, because a token budget will
+  always argue for dropping "one small fact".
+- A token win is NECESSARY, never SUFFICIENT.
+
+**MEASURED so far** (`o200k_base`):
+| change | delta | facts |
+|---|---|---|
+| prose → dense wire format | **−60.3%** | 5/5 kept |
+| sigils vs the phrase they replace | −1 to −4 tok each | — |
+| abbreviate words that tokenize to 2+ tokens (`falsifier`→`fl`) | −1 to −2 | — |
+| abbreviate 1-token words (`must`→`mt`) | **0** — do not | — |
+| `&` for `and`, `\|` for `or`, arrows | **0** — do not | — |
+
+**Constraints on evolution — these MUST NOT be traded away:**
+1. **The codebook is THIS FILE.** A private notation not written here is lost on
+   restart and unreadable to the opposite provider. Any adopted change MUST land
+   here in the same commit.
+2. **Both providers MUST parse it.** Claude and Codex both receive this file.
+3. **A fresh agent MUST be able to decode from this file alone** — no accumulated
+   session context. Restart is the test.
+4. Version bump on adoption. Cite the version when a decode is ambiguous.
+
+
 
 Applies to agent-to-agent messages, AGENTS.md rules, commit messages carrying
 obligations, RESUME.md handoff conditions, and spec text.
