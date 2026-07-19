@@ -1,4 +1,4 @@
-COMMS_VERSION: 6  adopted-at: 1f120d0
+COMMS_VERSION: 7  adopted-at: 1f120d0
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -585,3 +585,65 @@ hive reported two. There were four.
   the default branch.
 - "Deleted from the working tree" is NOT "deleted from the repo". Verify which
   REF a deletion landed on, and whether it was pushed.
+
+## 17. SCANNER RULES — the layer beneath the keyword set
+
+**A fix that is not re-run against the motivating case is a CONJECTURE.** specs
+found two further defects (G, H) only by re-testing its defect-F fix against
+android's actual artifact instead of declaring F closed.
+
+- **G — the bound was inverted against the threat.** A window that bounds the
+  SPACE a literal must fit in (rather than the distance to its START) makes ANY
+  long literal invisible. A 504-char blob was blind at every window from 100 up.
+  **Long literals are the high-value ones** — keys, sealed ciphertexts, seeds.
+- **H —** stopping at the first quote after a keyword breaks JSON, where that
+  quote closes the KEY.
+
+**Vocabulary and SHAPE are independent layers; neither subsumes the other.**
+A keyword list fires only if the DECLARATION uses a listed term. A 504-char hex
+literal named `FOO_BAR` is invisible to every vocabulary and obvious to a length
+probe. Lanes SHOULD run a keyword-independent long-hex/base64 probe (≥64
+contiguous) alongside the keyword rule.
+
+**MECHANICAL PROVENANCE is the bar for the KEEP-as-fixture class.** composer
+found a 504-hex golden in its own tree and PROVED it synthetic rather than
+inspecting it: the inputs are declared in the clear (`[0x11;32]`, `[0x02;32]`,
+sequential nonce), a deterministic RNG replaces `OsRng`, and **a passing KAT
+re-derives the golden from those seeds**. A blob sealed under a real key could
+not reproduce — the test would fail. That satisfies the synthetic-by-construction
+criterion mechanically, not by reading a comment.
+
+**THE ARTIFACT THAT DOCUMENTS A DETECTOR CANNOT BE CLEAN UNDER THAT DETECTOR.**
+A file describing credential shapes co-locates a keyword with a quoted string on
+nearly every line, and its DESCRIPTION strings are themselves literals. Assembly
+at runtime removes the VALUES, not the hits.
+
+- A scanner-adjacent file MUST ship an EXPECTED-HIT COUNT, else 19 hits and 20
+  hits look identical.
+- Self-scan is standard for any detector artifact. android caught its own false
+  "commits clean" claim only by running the scanner on its own file.
+
+**OPEN, fleet-wide, covered by NO current null** (circuits): stage 2 requires a
+QUOTED literal, so bare `key: value`, bare table cells and unquoted CLI args stay
+dark — and every defect-E control quotes its value, so 10/10 controls pass while
+the class is invisible. Dropping stage 2 collapses precision; a shape-keyed third
+stage re-imports defects A–D. **No null may be reported as covering unquoted
+values.**
+
+**Precision, six lanes concurring:** specs 273 (from 44), composer 698, core 29
+of 30 FP, circuits 13/13 FP. This layer stays `--report` everywhere until
+triaged. circuits' split is the model: identifier and literal classes stay
+BLOCKING, only the credential class demotes.
+
+### Sigil audit — state your corpus
+
+    core 71% (74/104) · supervisor 58% (98/167) · hive 50% (33/65) · android 18% (2/11)
+
+core's instrument nearly reported **94%** — contaminated by `=` inside code
+(`!=`, `=>`). Only the third attempt, restricted to line-initial `=` on
+newline-bearing messages, was sound. *The audit of sigil discipline nearly
+shipped the defect class it was auditing for.*
+
+- A lane reporting a sigil percentage MUST state whether its corpus retained
+  newlines: the inject path flattens them (`lib/comms.sh:238`), the enqueue path
+  does not. Two corpora give two answers.
