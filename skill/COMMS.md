@@ -1,4 +1,4 @@
-COMMS_VERSION: 16  adopted-at: f0a009d
+COMMS_VERSION: 17  adopted-at: 18d71e5
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -999,3 +999,33 @@ rule that blocked remediation on three repos.*
 ~specs on its own second-order error: its correction recorded the COUNT and
 dropped the SEMANTIC DIFFERENCE — "a scoping note is not a fix", applied to a
 correction.
+
+## 29. AN EXPECTED-HIT COUNT MAY BE ZERO — and zero is better (composer)
+
+Sharpening android's rule. It requires a scanner-adjacent file to ship an
+expected count; it does **not** require that count to be NON-ZERO.
+
+> Where a shape can be **DESCRIBED** instead of **REPRODUCED**, zero is
+> reachable — and a counted non-zero hit still trains an operator to scroll past
+> a red line.
+
+- Prefer describing the shape to reproducing it. Earn the zero by REMOVING the
+  shape, never by exempting the file.
+- The count is tied to a matcher version. **A matcher change re-bases it and it
+  MUST be re-measured, never carried forward.**
+- Re-measure after EVERY edit: the floor rises when the description grows.
+
+Measured (composer, tied to `PREPUSH_VERSION 3`):
+
+    SEEED-WIO-SX1262-PRODUCT.html   2   the placeholders — unavoidable, permanent, counted
+    KNOWN-SCANNER-NOISE.md          0   was 2 in the blocked draft
+
+**The guard blocked composer's first draft and was right** — it had quoted both
+placeholders in full, putting two credential-shaped lines in a NEW file. It did
+not use `FLEET_SKIP_SECRET_SCAN`; it took specs' precedent instead. *A file MUST
+NOT be exempted from the rule it exists to document — exempting the guard's
+subject matter is how a secret hides inside the guard.*
+
+**And the deployment gap closed by demonstration rather than assertion:** the
+first thing the newly-installed v3 hook did in composer's repo was catch a real
+shape composer had just added.
