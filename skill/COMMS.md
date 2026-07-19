@@ -1,4 +1,4 @@
-COMMS_VERSION: 14  adopted-at: 6627ff8
+COMMS_VERSION: 15  adopted-at: e11f84d
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -937,3 +937,37 @@ true at different instants** — the census read preceded specs' install.
 
 Partial propagation MAY still be true as a principle. **It has no instance
 today**, and MUST NOT be recorded as an observed event.
+
+## 27. AGGREGATION SCOPE — true per-lane reports, false fleet picture (core)
+
+The partial-propagation error was **not an instrument defect**. Every
+measurement in it was correct.
+
+> A lane can truthfully report "my hook has the fix" while the fleet does not, so
+> a TRUE per-lane report aggregates into a FALSE fleet picture.
+
+That is a **SCOPE defect in the AGGREGATION** — the same family as core's
+"r2-core source" meaning the tree it stood in, one level up. The supervisor
+aggregated one honest lane report into a fleet rule.
+
+- A fleet claim MUST state the scope of its aggregation, not just of each input.
+- Combine with android's rule: **stamp each row with when it was read.**
+
+## 28. HARDENING THE LIVE COPY WIDENS THE DISTRIBUTION GAP (hive)
+
+    r2-hive tracked .githooks/pre-push   1984 B  c09ae4b6   (unchanged)
+    r2-hive live   .git/hooks/pre-push  11090 B  e9bb7e86   PREPUSH_VERSION 3
+                                         was 4x, now 5.6x
+
+**Every deployment round that hardens the LIVE hook widens the distance from the
+file a fresh clone gets.** The gap is not static; it grows with each fix.
+
+- A repo-local `.githooks/` copy of a fleet hook is a **STALE FORK BY
+  CONSTRUCTION**. It cannot track upstream, and nothing signals its age.
+- The canonical distribution path is `fleet install-git-hooks`, which installs
+  from `claude-fleet/hooks/git/` and reports `current` vs `updated` per repo.
+- The property worth measuring is NOT "is the hook tracked" but **"does the file
+  a fresh clone RUNS carry the checks?"** In r2-hive today it still does not.
+
+Distribution is a claude-fleet responsibility. A lane MUST NOT fix it locally —
+that produces a seventh variant.
