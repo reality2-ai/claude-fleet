@@ -1,4 +1,4 @@
-COMMS_VERSION: 4  adopted-at: 5db4971
+COMMS_VERSION: 5  adopted-at: 0c95749
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -492,3 +492,59 @@ silent** — proving the stage filtered RECALL and nothing else. So:
 
 Corrected patch: `/tmp/r2-credential-scan-patch.py`
 sha256 `466dfef0ead49fcc43e0b91ffd0078ebc6e6ee9adce805439ace70ab7def6b14`, 10/10 controls.
+
+## 14. DEFECT F — the keyword SET was the blind spot (android, 2026-07-19)
+
+Defects A–E were all **narrowing** bugs — span, boundary, case, lookaround,
+assignment stage — each making a correct entry point too selective. **F is the
+opposite layer: the narrowing is now correct and the ENTRY POINT is too small.
+No stage fix reaches it.**
+
+    r2-android .../provision/DevTrialEnrolment.kt:183-191
+    DEV_SEALED_JOINRESPONSE — 504 hex chars, committed
+    flagged by 0 of 9 lanes' rules
+
+`SEALED`, `JOINRESPONSE`, `_sk`, `master`, `seed`, `mnemonic`, `hk` are in **no
+lane's keyword set**. Every lane derived its list from the same generic web
+vocabulary — `password psk token secret api_key` — and **none derived it from the
+R2 artifact vocabulary the specs actually define.** Six lanes, one shared blind
+spot, from a common ancestor nobody examined.
+
+- **A credential-scan NULL MUST state WHICH KEYWORD SET produced it.** A null
+  from the generic set is NOT coverage of R2 artifacts.
+- The R2 artifact keyword list is SPEC-DERIVED, so **specs owns it**. `_sk` and
+  `master` are flagged unmeasured for false-positive rate on a doc corpus.
+
+*(The blob itself is not a new leak — a deliberate dev-trial artifact documented
+in its own KDoc. The finding is scanner blindness, not exposure.)*
+
+### The corpus split is RETIRED — no lane is code-heavy or doc-heavy
+
+core tested my amended ruling against its own guard and found it **missed the
+real leak this fleet spent the day sweeping for**: its rule required a
+SEPARATOR, and 4 of 4 probes missed — nmcli CLI, `Command::new("nmcli")`,
+markdown table, prose. Its own comment claimed "recall is the point" while the
+regex demanded an assignment. **A rule that only matches assignments IS an
+assignment rule whatever it says about itself.**
+
+- Every lane's corpus is MIXED. core is code-heavy but carries RESUME, READMEs,
+  BUILD.md, shell. composer measured 266 / 132 / 213.
+- **The safe form, for EVERY lane: keyword substring + PROXIMITY to a quoted
+  literal, NO separator required.** The assignment stage adds precision and
+  subtracts exactly the shapes that leaked.
+- Recall UP, precision DOWN is the expected trade. These rules stay
+  **--report**, never blocking, until precision triage lands.
+
+## 15. A SHAPE-GREP FINDS INSTANCES, NEVER INVARIANTS (composer)
+
+Sharpening §"caller grep" — the narrow form was too narrow and would have missed
+composer's own case.
+
+An invariant can live in a **caller, a callee, a helper, a type, or a prior
+early-return**. composer's guard was in a helper the same function called two
+lines earlier — not in a caller at all.
+
+- Grep finds the INSTANCE. Only reading the ENCLOSING FUNCTION finds the
+  INVARIANT.
+- Both directions now stand: **caller-grep** for "does this ever run",
+  **enclosing-read** for "is this actually unprotected".
