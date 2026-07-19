@@ -1,4 +1,4 @@
-COMMS_VERSION: 15  adopted-at: e11f84d
+COMMS_VERSION: 16  adopted-at: f0a009d
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -919,7 +919,11 @@ proves DIFFERENT-FROM-SOURCE, never SAME-AS-EACH-OTHER. The census showed
               The deployment gap and its consequence stand.
     DIES:     "one stale version across six".
 
-**And "all six ran PREPUSH_VERSION 1" is itself imprecise** (android). The
+**And "all six ran PREPUSH_VERSION 1" is itself imprecise** — RETRACTED
+(specs, refuted by android). *That claim was specs', not the supervisor's; the
+supervisor mis-attributed it to itself, which the name-the-source-lane rule
+exists to prevent.* specs did not mislabel a version — it **invented one that was
+deployed nowhere.** The
 version line only arrives at `9ac73ba`, so **no pre-install file could report a
 version at all**. Correct phrasing: *two pre-version variants, BOTH sampling.*
 android diffed them — the only delta is the secret-FILENAME rule, 10 lines, one
@@ -971,3 +975,27 @@ file a fresh clone gets.** The gap is not static; it grows with each fix.
 
 Distribution is a claude-fleet responsibility. A lane MUST NOT fix it locally —
 that produces a seventh variant.
+
+### ★ The 3/3 split was NOT inert — it blocked REMEDIATION (specs)
+
+"Right on exposure, wrong on identity" risks re-flattening the split to
+harmless. It was not.
+
+    3d798de narrowed  .*secret.*  ->  .*secret[^/]*\.(bin|dat|env|key|pem|priv|…)$
+    the BROAD form blocks ANY path containing "secret":
+      R2-SECRETS.md · crates/r2-secrets · check_identity_leak.py's own refs ·
+      the custody template
+
+r2-hive, r2-specifications and r2-android ran the **broad** form — so **the gate
+on those three would have BLOCKED the R2-SECRETS custody migration.**
+
+**A gate blocking remediation.** Same failure `b7630dd` fixed two days earlier,
+when this hook refused the push that scrubbed a real correlator off a public
+main. **Same class, same file, twice in three days.**
+
+Correct fleet record: *two pre-version variants, BOTH sampling, split 3/3 on a
+rule that blocked remediation on three repos.*
+
+~specs on its own second-order error: its correction recorded the COUNT and
+dropped the SEMANTIC DIFFERENCE — "a scoping note is not a fix", applied to a
+correction.
