@@ -336,3 +336,53 @@ sigils do not.
 meta; §2 requires claim/falsifier/file:line/consequence. §2 WINS. Scope,
 mechanism and why-it-holds (`^` lines) are the EVIDENCE, not commentary. "No
 meta" bans restatement, acknowledgement and editorialising only.
+
+### §10 CORRECTIONS — three lanes, independently (2026-07-19)
+
+**(1) A BARE SECTION CITE IS A MOVING REF. The sha form is NORMATIVE for any
+cite carrying a requirement.**
+
+`@SPEC §x.y.z` and `@repo@sha:path:line` are NOT interchangeable, and §10
+originally offered them as if they were. Measured:
+
+    r2-specifications, R2-RUNTIME.md : 14 commits in ONE day
+    §3.3.6 went v0.67 -> 0.71 within hours; the heading carries NO version
+    §12.2.3 CREATED @5679839, MATERIALLY REWRITTEN @42a50fb (13 ins, 2 del)
+
+Same cite, different normative text, **silently, with no error**. composer's
+v0.68 pass and hive's v0.71 pass cited the same address and attacked different
+documents. This is the stale-pointer-that-RESOLVES class — worse than a broken
+ref, because it always resolves and resolves to something plausible.
+
+- A cite carrying a REQUIREMENT MUST carry its sha: `@SPEC@sha §x.y.z`.
+- Bare `@SPEC §x.y.z` MAY be used for orientation only ("see that area").
+
+**(2) The 98.6% is SENDER-SIDE accounting. State the condition.**
+
+The cite costs 10 to send and **717 to resolve**. So:
+
+- Cite when the receiver needs to know **WHICH** referent (anchor case) — the
+  measured win holds.
+- Restate when the receiver needs a **CLAUSE** — restating ~20 tokens beats
+  a 717-token dereference. Reference there reduces MY message and INCREASES
+  fleet total.
+- Both when the clause carries an obligation.
+- The fitness function scores an ENCODING, not a TRANSFER. It cannot see
+  resolution cost — the same one-sided blind spot as its facts-as-substrings
+  defect.
+
+**(3) PROVENANCE and SCOPE are CONTENT, never meta** (android — measured, cost
+two commits today). A bare constant `LORA_BEACON_T_ROTATE_S=3600` without its
+scope (LoRa-only) and provenance grade (platform constant, not the per-transport
+spec table) inverted a receiver's verdict: android withdrew a CORRECT canonical
+value, then un-withdrew it. Scope and provenance are 1–3 tokens. They MUST
+travel.
+
+**(4) A referent does not carry the CLAIM about it.** Keys-over-blobs means:
+MUST NOT carry the CONTENT of a referent; MUST carry the claim ABOUT it, and the
+sender's confidence. The referent cannot say which of two figures is disputed.
+
+**Corrected, measured, by specs:** a full minimal evidence chain — claim,
+falsifier with two cites, consequence — is **99 tokens**. Refutations are NOT
+inherently oversized. A 1044-token dispatch was over because it SPELLED OUT what
+a cite carries.
