@@ -116,3 +116,39 @@ One claim per line. No connectives. No restatement.
 - Report no number rather than an estimated one. Do not fabricate a measurement
   to satisfy a checkbox.
 - Verify against the SHA, not a moving ref.
+
+### ★ THE EMITTABILITY INVARIANT (specs, 2026-07-19)
+
+**A requirement is real only when a NAMED COMPONENT CAN EMIT IT and a NEGATIVE
+TEST FAILS WITHOUT IT.**
+
+Derived after FOUR phantom gates in one spec, each fix one abstraction level up
+and still unexecutable:
+
+1. An enforcement point that could not enforce — `cmd_ota_sign` takes a firmware
+   path, has no lockfile input, so it cannot evaluate pin state at all.
+2. A per-board KAT with no executable procedure.
+3. `OWED` recorded beside an `Ok` the resolver still returns — an honest label
+   bought the same false green as no label.
+4. A status **nothing can return** — `PARTIAL`/`UNSATISFIED` existed only in the
+   prose that introduced them; the lockfile has two variants, sanction returns
+   `Result<(),String>`.
+
+Note #4 was authored *in the act of ruling that prose is not a gate*. The trap
+survives knowing about it, so apply the test mechanically, not by intuition.
+
+**Before asserting any new status, vocabulary, or requirement, all four MUST
+land together:** typed schema, producer that can emit it, consumer that reads
+it, negative KAT that fails without it. Otherwise fail through the EXISTING
+type (Occam — do not invent vocabulary).
+
+### Mutation-verify your own gates (composer, 2026-07-19)
+
+A passing test proves nothing until you have proved the test can FAIL. composer
+deleted a gate call to confirm the suite caught it — the first mutation attempt
+**silently did not apply** (`python str.replace` arity) and the suite still
+reported ok. That pass was unmutated code and proved nothing.
+
+- You MUST assert the mutation actually landed BEFORE trusting a red-or-green result.
+- After restoring, `cmp` byte-identical.
+- A positive control MUST accompany any `Err` assertion, or the assertion may be vacuous.
