@@ -1,4 +1,4 @@
-COMMS_VERSION: 13  adopted-at: 379488c
+COMMS_VERSION: 14  adopted-at: 6627ff8
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -918,6 +918,22 @@ proves DIFFERENT-FROM-SOURCE, never SAME-AS-EACH-OTHER. The census showed
     SURVIVES: all six were pre-v3 and all six sampled through head -50000.
               The deployment gap and its consequence stand.
     DIES:     "one stale version across six".
+
+**And "all six ran PREPUSH_VERSION 1" is itself imprecise** (android). The
+version line only arrives at `9ac73ba`, so **no pre-install file could report a
+version at all**. Correct phrasing: *two pre-version variants, BOTH sampling.*
+android diffed them — the only delta is the secret-FILENAME rule, 10 lines, one
+hunk; both carry `head -50000` twice. So the sampling exposure applied to all six
+REGARDLESS of variant. The statement was **right on exposure, wrong on identity**.
+
+### A census MUST stamp each row with WHEN it was read (android)
+
+android found one contradiction it could not settle: the census placed
+r2-composer at the pre-version variant while composer reported v3. **Both were
+true at different instants** — the census read preceded specs' install.
+
+> A census without instants cannot survive a partial propagation — which is
+> exactly the condition it exists to detect.
 
 Partial propagation MAY still be true as a principle. **It has no instance
 today**, and MUST NOT be recorded as an observed event.
