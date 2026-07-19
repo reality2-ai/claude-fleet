@@ -357,6 +357,12 @@ documents. This is the stale-pointer-that-RESOLVES class — worse than a broken
 ref, because it always resolves and resolves to something plausible.
 
 - A cite carrying a REQUIREMENT MUST carry its sha: `@SPEC@sha §x.y.z`.
+- **And its PATH, never a bare basename** (android, 2026-07-19). `@R2-BEACON.md:338`
+  matched FIVE files at that sha — including
+  `docs/proposals/R2-BEACON-CLASS-HASH-AXES-SPLIT-PROPOSAL-…md`. A receiver could
+  resolve the cite onto a PROPOSAL and read it as ratified. A sha pins WHEN, not
+  WHICH — it does not disambiguate within a tree. Form is
+  `@repo@sha path/to/file:line`.
 - Bare `@SPEC §x.y.z` MAY be used for orientation only ("see that area").
 
 **(2) The 98.6% is SENDER-SIDE accounting. State the condition.**
