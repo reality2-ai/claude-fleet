@@ -245,6 +245,35 @@ _hs_is_wrapper() {
   return 1
 }
 
+# Is this segment a LOOKUP of a program rather than an INVOCATION of one? (#88)
+#
+# DEFECT (2026-07-20, hit by the supervisor's own pre-flight, and by hive the night
+# before). `command` is in the wrapper list above — correctly, because `command
+# espflash flash …` really does invoke a flasher and must not escape the gate. But
+# that put `command -v espflash` — a pure "is it installed?" query that runs NOTHING
+# — through the same token scan, and it denied.
+#
+# This is the openssl `-verify` lesson recurring one function down: the gate matched
+# the VOCABULARY and not the ACT. A read-only availability check is the opposite of a
+# flash, and blocking it taxes exactly the pre-flight that makes a flash safe. It
+# blocked hive's escalation TO the supervisor and then blocked the supervisor's own
+# artifact verification — a gate whose false positives block the checks that precede
+# the dangerous act is worse than no gate at that moment.
+#
+# NARROW BY CONSTRUCTION: only `command`/`type`/`hash` with a lookup FLAG, or a bare
+# `type`/`which`. `command espflash …` (no flag) still falls through to the scan.
+_hs_is_lookup() {
+  local seg="$1"; local -a t
+  read -ra t <<<"$seg"
+  [[ ${#t[@]} -ge 2 ]] || return 1
+  case "${t[0]##*/}" in
+    command|type|hash)
+      case "${t[1]}" in -v|-V|-p|-t) return 0 ;; esac ;;
+    which|whereis) return 0 ;;
+  esac
+  return 1
+}
+
 # Does command basename $1 (with full segment $2 for arg-context) denote a
 # firmware-flash / firmware-sign / key-mint operation? (probe A9)
 # openssl is DUAL-USE: `dgst` and `pkeyutl` SIGN or VERIFY depending on flags.
@@ -467,6 +496,7 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
       [[ "$base" == git ]] && continue ;;   # git segment = source control, never a runtime flash/mint
     esac
     _hs_is_fleet_msg "$seg" && continue
+    _hs_is_lookup "$seg" && continue      # `command -v espflash` runs nothing (#88)
     _hs_flash_or_mint "$base" "$seg" && return 0
     # look THROUGH a command-wrapper (env/sudo/timeout/nice/bash -c … <flasher>):
     # re-classify every token's basename so the wrapper can't hide the real op.
@@ -490,6 +520,72 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
     done
   done < <(_hs_segments "$c")
   return 1
+}
+
+# --- Per-operation firmware authorization (#88) --------------------------------
+#
+# WHY THIS EXISTS. Before it, the only way past the gate was FLEET_FIRMWARE_GATE=off
+# — blanket, permanent, silent, and leaving no record of what was flashed or on whose
+# say-so. A gate whose sole escape hatch is "turn it off" gets turned off the first
+# time it is inconvenient and never fires again. Observed 2026-07-20: the gate blocked
+# an authorized flash three times in one session, and the honest options were "hand the
+# command to the human" or "disable the gate". Neither is a path a system should push
+# people toward.
+#
+# WHAT IT IS. A single-operation record the principal writes, naming the artifact
+# basename, the target, an expiry, and the expected sha256:
+#
+#     $ws/.fleet/flash-authorization
+#         expires=<unix-epoch>
+#         artifact=<basename>
+#         target=<device or host:device>
+#         sha256=<expected digest>          # audit; see the honest limit below
+#
+# The gate allows a flash ONLY when a live record exists AND the command names BOTH
+# that artifact and that target. It authorizes one operation, not a class, and it
+# stops authorizing when it expires.
+#
+# ★ THE HONEST LIMIT, STATED IN THE FILE RATHER THAN ASSUMED. This raises the bar; it
+# is NOT a boundary against a determined agent, because any process that can read this
+# file can also write it. What it buys is real but narrower than "enforcement":
+#   - no ACCIDENTAL flash — the default is still a hard deny
+#   - one operation per grant, with an expiry, instead of a permanent global off-switch
+#   - an audit trail naming artifact + target + time, so what ran is reconstructable
+#   - forging it requires writing a specific, dated, artifact-named record — a
+#     deliberate and legible act, not a flag flip
+# THE HUMAN REMAINS THE BOUNDARY. Do not describe this as making flashes safe.
+#
+# The sha256 field is RECORDED, not enforced: a remote flash (ssh to another host)
+# gives this hook no way to hash the bytes that will actually be written. Binding is
+# on artifact-name + target, which IS checkable here; the digest exists so a mismatch
+# is discoverable afterwards. Stating which half is enforced matters — a field that
+# looks like a check and is not one is the decorative-gate defect this file already
+# carries two lessons about.
+_hs_authorized() {
+  local c="$1" f="$ws/.fleet/flash-authorization"
+  [[ -r "$f" ]] || return 1
+  local expires="" artifact="" target="" sha256="" k v
+  while IFS='=' read -r k v; do
+    case "$k" in
+      expires)  expires="$v" ;;
+      artifact) artifact="$v" ;;
+      target)   target="$v" ;;
+      sha256)   sha256="$v" ;;
+    esac
+  done < "$f"
+  # every field is REQUIRED — a partial record authorizes nothing. An empty
+  # artifact or target would otherwise substring-match every command.
+  [[ -n "$expires" && -n "$artifact" && -n "$target" ]] || return 1
+  [[ "$expires" =~ ^[0-9]+$ ]] || return 1
+  [[ "$expires" -gt "$(date +%s)" ]] || return 1
+  # the command MUST name both the authorized artifact and the authorized target
+  [[ "$c" == *"$artifact"* ]] || return 1
+  [[ "$c" == *"$target"* ]] || return 1
+  # audit: append-only, never rewritten, so a grant that was used is reconstructable
+  printf '%s\tUSED\tartifact=%s\ttarget=%s\tsha256=%s\n' \
+    "$(date -Is)" "$artifact" "$target" "${sha256:-unrecorded}" \
+    >> "$ws/.fleet/flash-authorization.log" 2>/dev/null || true
+  return 0
 }
 
 hs_path() {   # is this Write/Edit target a key / signature / trust-material artifact?
@@ -517,8 +613,12 @@ case "$tool" in
   Bash)
     c="$(printf '%s' "$payload" | jq -r '.tool_input.command // .input.command // .params.command // .command // ""' 2>/dev/null)"
     [[ -n "$c" ]] || ask
-    [[ "${FLEET_FIRMWARE_GATE:-on}" != "off" ]] && hs_bash "$c" && \
+    if [[ "${FLEET_FIRMWARE_GATE:-on}" != "off" ]] && hs_bash "$c"; then
+      if _hs_authorized "$c"; then
+        allow "firmware op under a live per-operation authorization (see .fleet/flash-authorization)"
+      fi
       deny "firmware flash / firmware sign / key-mint operation — report to the supervisor with the exact artifact + target + authority + reason; do not auto-run"
+    fi
     if bash_safe "$c"; then allow "read-only shell"
     elif checkpointable_git "$c"; then do_checkpoint; allow "auto-checkpointed git op (recover: refs/auto-checkpoint/*)"
     else ask; fi ;;

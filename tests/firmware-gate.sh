@@ -129,6 +129,81 @@ check deny 'fleet send hive "ok" && espflash flash --monitor t.bin'
 check deny 'git commit -m "a; b" ; adafruit-nrfutil dfu serial -pkg x.zip -p /dev/ttyACM0'
 check deny 'fleet send hive "$(espflash flash t.bin)"'
 
+echo "── #88 (a) READ-ONLY LOOKUP — a lookup runs NOTHING ──"
+# DEFECT 2026-07-20. `command` is in the wrapper list — correctly, because
+# `command <flasher> …` really does invoke one and must not escape the gate. But
+# that put `command -v <flasher>` — a pure "is it installed?" query that executes
+# nothing — through the same token scan, and it DENIED.
+#
+# Third instance of the shape this file already carries two lessons about: the gate
+# matched the VOCABULARY, not the ACT (cf. the openssl `-signature` contains `-sign`
+# defect). Impact was the same both times and it is the expensive kind — it blocked
+# hive's escalation TO the supervisor, then the supervisor's own artifact-sha
+# pre-flight, then the attempt to write THIS TEST. A gate whose false positives
+# block the verification that PRECEDES the dangerous act degrades the evidence base
+# it exists to protect.
+check pass 'command -v espflash'
+check pass 'command -v esptool.py || echo ABSENT'
+check pass 'type -p nrfjprog'
+check pass 'which espflash'
+check pass 'command -v espflash; sha256sum firmware.elf'
+# …and the narrowing MUST hold. No lookup flag = a real invocation, still gated.
+check deny 'command espflash flash --port /dev/ttyACM3 fw.elf'
+check deny 'timeout 60 espflash flash --port /dev/ttyACM3 fw.elf'
+
+echo "── #88 (b) PER-OPERATION AUTHORIZATION — deny stays the default ──"
+# Before this, the only way past the gate was FLEET_FIRMWARE_GATE=off: blanket,
+# permanent, silent, no record of what ran or on whose say-so. A gate whose sole
+# escape hatch is "turn it off" gets turned off the first time it is inconvenient
+# and never fires again.
+#
+# ★ WHAT THESE KATs DO AND DO NOT PROVE. They prove the grant is SPECIFIC (one
+# artifact, one target), EXPIRING, and FAIL-CLOSED on every malformed shape. They do
+# NOT prove a boundary against a determined agent — any process that reads the file
+# can write it. The human remains the boundary; this converts a global off-switch
+# into a dated, artifact-named, auditable record. Asserting more than that would be
+# the decorative-gate defect this suite exists to catch.
+AUTH="$WS/.fleet/flash-authorization"
+FLASHCMD='cd ~ && espflash flash --chip esp32s3 --partition-table partitions.csv --port /dev/ttyACM3 r2-dfr1195-SENSOR-fakesensor-ble.elf'
+NOW="$(date +%s)"
+
+rm -f "$AUTH"
+check deny "$FLASHCMD"                                    # no grant at all
+
+grant() {   # expires artifact target
+  printf 'expires=%s\nartifact=%s\ntarget=%s\nsha256=130dc6de\n' "$1" "$2" "$3" > "$AUTH"
+}
+
+grant "$((NOW + 900))" 'r2-dfr1195-SENSOR-fakesensor-ble.elf' '/dev/ttyACM3'
+check pass "$FLASHCMD"                                    # live + matching → allow
+
+grant "$((NOW - 60))"  'r2-dfr1195-SENSOR-fakesensor-ble.elf' '/dev/ttyACM3'
+check deny "$FLASHCMD"                                    # EXPIRED — no standing off-switch
+
+grant "$((NOW + 900))" 'some-other-image.elf'             '/dev/ttyACM3'
+check deny "$FLASHCMD"                                    # wrong artifact — one op, not a class
+
+# Right image, WRONG BOARD is precisely the mis-flash that bricked D4. A grant for
+# one port must never authorize another.
+grant "$((NOW + 900))" 'r2-dfr1195-SENSOR-fakesensor-ble.elf' '/dev/ttyACM0'
+check deny "$FLASHCMD"
+
+# PARTIAL records must authorize NOTHING. An empty artifact or target would
+# substring-match every command — a half-written grant failing OPEN would be worse
+# than no mechanism at all.
+printf 'expires=%s\nartifact=\ntarget=\n' "$((NOW + 900))" > "$AUTH"
+check deny "$FLASHCMD"
+printf 'artifact=r2-dfr1195-SENSOR-fakesensor-ble.elf\ntarget=/dev/ttyACM3\n' > "$AUTH"
+check deny "$FLASHCMD"                                    # no expiry = no grant
+printf 'expires=never\nartifact=r2-dfr1195-SENSOR-fakesensor-ble.elf\ntarget=/dev/ttyACM3\n' > "$AUTH"
+check deny "$FLASHCMD"                                    # unevaluable window = deny
+
+# A live grant for one operation must not carry an UNRELATED one through.
+grant "$((NOW + 900))" 'r2-dfr1195-SENSOR-fakesensor-ble.elf' '/dev/ttyACM3'
+check deny 'nrfjprog --program other.hex --chiperase'
+check deny 'composer ota sign --key k.pem fw.bin'
+rm -f "$AUTH"
+
 echo
 if (( fail )); then echo "✗ firmware-gate: $((n-fail))/$n pass, $fail FAIL"; exit 1; fi
 echo "✓ firmware-gate: $n/$n pass"
