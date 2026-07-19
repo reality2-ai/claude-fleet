@@ -102,8 +102,12 @@ this long? If yes, send the half.
 
 ### NEVER cut
 Code, `file:line`, commit SHAs, exact error strings, config values with units,
-spec section numbers, the falsifier itself. Never invent abbreviations —
-`cfg`/`impl`/`req` tokenize the same as the full word.
+spec section numbers, the falsifier itself.
+
+Abbreviations: MEASURE, never guess — see §0. `cfg`/`impl`/`req`/`neg` save
+NOTHING (the full words are single tokens) and `verified`→`verif` COSTS one.
+A few do pay (`falsifier`→`fl` −2). An unmeasured abbreviation MUST NOT be
+coined, and length MUST NOT be used as the predictor.
 
 ### Compress the PACKAGING, never the EVIDENCE
 Carve-outs are NARROW (v2, superseding the stock v1 wide carve-out):
