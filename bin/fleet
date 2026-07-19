@@ -2147,9 +2147,31 @@ _fleet_parse_msg() {
   [[ -n "$_F_TO" ]] && fleet_require_member_id "$_F_TO"
   fleet_require_member_id "$_F_FROM"
 }
+_fleet_known_recipient() {  # is <id> a lane we could plausibly reach?
+  local to="$1"
+  local f
+  fleet_tmux_has_window "$to" && return 0                        # live or stale window
+  [[ -n "$(fleet_child_get "$to" cwd "")" ]] && return 0         # manifest member
+  f="$(fleet_inbox_file "$to")" 2>/dev/null || return 1
+  [[ -n "$f" && -f "$f" ]] && return 0                           # retired member, has mail history
+  return 1
+}
+
 _fleet_deliver() {   # <kind> <to> <from> <text>
   local kind="$1" to="$2" from="$3" text="$4"
   [[ "$to" == "$from" ]] && die "cannot $kind to self ($to)"
+  # FAIL CLOSED ON AN UNKNOWN RECIPIENT. fleet_require_member_id validates the id
+  # FORMAT (path safety) — it does NOT check membership, so any well-formed string
+  # was accepted: a mailbox got fabricated, "→ queued for 'X'" printed, exit 0, and
+  # the message went nowhere with delivered:false forever. A typo'd lane name was
+  # indistinguishable from a real one, and "queued" was never evidence of delivery.
+  # Measured 2026-07-19: `fleet send nonexistent-lane` returned 0 and created
+  # .fleet/inbox/nonexistent-lane.jsonl. Known-but-stopped lanes still resolve (they
+  # keep a mailbox), so replying to a retired member is unaffected.
+  # Override for a deliberately pre-created lane: FLEET_ALLOW_UNKNOWN_RECIPIENT=1
+  if [[ "${FLEET_ALLOW_UNKNOWN_RECIPIENT:-0}" != "1" ]] && ! _fleet_known_recipient "$to"; then
+    die "unknown recipient '$to' — no window, no manifest entry, no mailbox. Check the id (fleet status), or set FLEET_ALLOW_UNKNOWN_RECIPIENT=1 to pre-create it."
+  fi
   text="$(_fleet_authority_tag "$from")$text"   # provenance prefix (companion → advisory)
   local cap; cap="$(fleet_max_hops)"
   local hop; hop="$(fleet_next_hop "$from")" || {
