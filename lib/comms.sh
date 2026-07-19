@@ -238,7 +238,31 @@ fleet_inject() {
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
   local tag="fleet msg"; [[ "$kind" == "ask" ]] && tag="fleet ask"
   local full
-  full="[$tag from $from · hop $hops/$(fleet_max_hops)] $text"
+  # GRUNT §1 applied (core, 2026-07-19): A FIELD MAY APPEAR IN THE TOKENIZED
+  # PREFIX ONLY IF THE RECEIVING AGENT ACTS ON IT. Everything else belongs in the
+  # JSONL envelope, which is never tokenized.
+  #
+  # `hops` failed that test on four independent checks:
+  #   1. the agent never acts on it — the cap is enforced SEND-side, router-side,
+  #      before transmission (bin/fleet:2179, :2206 `die "hop limit …"`), so the
+  #      receiver has no decision to make;
+  #   2. it stays inspectable — `hops` is still persisted per-message in the inbox
+  #      JSONL alongside ts/to/delivered, so runaway-chain diagnosis is unaffected;
+  #   3. no parser keys on it — fleet-unblock.sh and comms.sh:311 match the
+  #      literal "[fleet msg from …" PREFIX, never the hop substring;
+  #   4. a production path ALREADY omits it — faculty-bg.sh:53 delivers
+  #      "[fleet msg from $from] $text" and claude-bg workers function. That is a
+  #      natural experiment, not an argument: if the field were load-bearing
+  #      agent-side, claude-bg would already be broken.
+  #
+  # Measured (o200k_base): " · hop 1/50" = 6 tokens, 46% of the envelope prefix,
+  # on EVERY message. Small against the register win — the point is that it is the
+  # first concrete instance of the two-layer rule on real infrastructure, and it
+  # makes the two delivery paths agree.
+  #
+  # `from` and `kind` STAY: from is who to answer, kind is ask-vs-FYI, and both
+  # change agent behaviour. They earn their tokens.
+  full="[$tag from $from] $text"
   local tgt="$FLEET_TMUX_SESSION:$to"
 
   # --- INSERT. Default: ATOMIC bracketed paste via a tmux buffer (FLEET_INJECT_PASTE
