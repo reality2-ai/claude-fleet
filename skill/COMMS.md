@@ -254,3 +254,34 @@ reported ok. That pass was unmutated code and proved nothing.
 - You MUST assert the mutation actually landed BEFORE trusting a red-or-green result.
 - After restoring, `cmp` byte-identical.
 - A positive control MUST accompany any `Err` assertion, or the assertion may be vacuous.
+
+## 10. ★ REFERENCE BEATS TERSENESS (Roy, 2026-07-19 — measured)
+
+Two mechanisms, different in KIND. Use both; prefer reference.
+
+    terseness  : ~60-71% cut. BOUNDED — you cannot go below the content words.
+                 Scales with message length.
+    reference  : 98.6% cut measured. UNBOUNDED — scales with the SIZE OF THE
+                 SHARED REFERENT, and grows as the corpus grows.
+
+Measured, o200k_base:
+
+    "@R2-PROVISION §12.2"   =  10 tokens
+    the actual §12.2 body   = 717 tokens      => 72x, 98.6% cut
+
+They COMPOSE. Terseness compresses the framing; the reference carries the
+content AND keeps the claim verifiable:
+
+    verbose, spelled out         34 t
+    terse, no reference          10 t   (71% cut, but UNANCHORED)
+    terse + reference            16 t   (+6 t buys the anchor)
+
+**THE SPECS ARE ALREADY THE BLACKBOARD.** Shared, versioned, addressable,
+present in every lane's checkout. The largest available saving needs no new
+infrastructure — it is available now.
+
+- Cite `@SPEC §x.y.z` or `@repo@sha:path:line` instead of restating content.
+- A message MUST NOT spell out what a cite can carry — that is the §1
+  keys-over-blobs rule applied to the corpus that already exists.
+- The +6 tokens an anchor costs are NOT overhead: an unanchored terse claim is
+  an assertion, an anchored one is checkable. Never drop the anchor to save it.
