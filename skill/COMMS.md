@@ -1,4 +1,6 @@
-# FLEET COMMS STANDARD v2 — binding on every fleet member, both providers
+COMMS_VERSION: 3  adopted-at: 2c0867a
+
+# FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
 ## 0. THIS PROTOCOL EVOLVES (Roy directive, 2026-07-19)
 
@@ -386,3 +388,48 @@ sender's confidence. The referent cannot say which of two figures is disputed.
 falsifier with two cites, consequence — is **99 tokens**. Refutations are NOT
 inherently oversized. A 1044-token dispatch was over because it SPELLED OUT what
 a cite carries.
+
+## 11. SKEW — the codebook itself version-drifts (circuits, 2026-07-19)
+
+COMMS.md is prepended to the primer at agent **START ONLY**
+(`lib/provider.sh:120-132`). A live session keeps its launch-time copy until
+restart or compaction — which is load-driven and uncoordinated across lanes.
+This file took **5 adoption commits in one day**; every one opened a
+mixed-version window of unbounded duration. Skew is the NORMAL state, not an
+edge case.
+
+**PHANTOM GATE #6, found in this very file.** Constraint 4 said "cite the
+version when a decode is ambiguous" — and the file carried **no
+self-identifying version line**. A lane could not cite what nothing told it.
+circuits was the live specimen: three commits stale all afternoon, no way to
+know. Negative test that failed: ask a live lane which COMMS version it runs; it
+could not answer from its prompt. Fixed by the `COMMS_VERSION` line at the top —
+the emitter is now the file itself.
+
+- `COMMS_VERSION` MUST be bumped in the same commit as any adoption.
+
+**IN-BAND REPAIR IS LOAD-BEARING AND IS NOW THE CONTRACT.** What actually kept
+the fleet coherent through five same-day adoptions was pasting the operative
+delta inline ("until then this example IS the spec — work from it"). GRUNT §8
+forbade exactly that mechanism; it is the one that worked.
+
+- An adoption broadcast MUST carry the operative delta INLINE, not only a sha.
+- That delta remains AUTHORITATIVE for a lane until its next injection.
+
+**SKEW-SAFE CORE.** The two closed vocabularies — RFC 2119 keywords and the
+verdict set — are frozen since v1 and therefore version-stable across every skew
+window. **Sigils are the layer that mutates.**
+
+- During any skew window, OBLIGATIONS (MUST / MUST NOT lines) MUST be
+  expressible in the stable core ALONE — never carried solely by a sigil added
+  after v2. This closes the polarity-loss class at the only layer it can occur.
+- A new sigil SHOULD ride with a one-line gloss on first use toward any lane not
+  confirmed re-injected. ~10 tokens, self-expiring.
+
+**Do NOT import GRUNT §8's cost argument.** A COMMS edit costs each lane one
+cache re-write on next start; fleet-scale cost is negligible. Prefix stability
+matters for MEANING, not for cache economics — that argument was killed by
+arithmetic.
+
+**Cross-repo cites** MUST carry the repo name. (All fleet repos are local
+checkouts on this host, so fetchability is not the issue — identification is.)
