@@ -1,4 +1,4 @@
-COMMS_VERSION: 17  adopted-at: 18d71e5
+COMMS_VERSION: 18  adopted-at: 2fbfce9
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -1029,3 +1029,49 @@ subject matter is how a secret hides inside the guard.*
 **And the deployment gap closed by demonstration rather than assertion:** the
 first thing the newly-installed v3 hook did in composer's repo was catch a real
 shape composer had just added.
+
+## 30. ★★ A CONTROL DERIVED FROM THE HYPOTHESIS CAN ONLY CONFIRM THE HYPOTHESIS
+
+core applied hive's target-vs-hypothesis rule to its own 9-control suite and
+found the suite was **entirely hypothesis-derived**: every probe was a shape it
+had invented, or inherited from another lane's finding — nmcli from the
+supervisor naming the real leak, 504-hex from android's blob, the rest from its
+own idea of what a credential looks like.
+
+> **Not one came from its own tree's contents.** So the controls tested whether
+> its regex matches its own hypothesis of a secret. Defect F one layer up: the
+> keyword list AND the controls shared an ancestor, and the ancestor was the lane.
+
+**So it went to the one target it had never used** — the 113 long-hex hits it had
+reported a COUNT for and never read. (Its own "a count is not a classification",
+turned on its own probe output, an hour after quoting it at hive.)
+
+**FOUND:** `r2-core docs/group-mgmt-32-wire-answers.md:201`, a 64-hex
+`device_mesh_sk_seed` — the SECRET-bearing side of the keypair, the class specs'
+vocabulary work deliberately kept IN while leaving `_pk` OUT.
+
+Its provenance was an **ASSERTION**: a prose `derivation` field plus an
+`// ikm=0xaa*32` comment, hardcoded in two tests, **no test deriving it.**
+Exactly the standing android's `DEV_SEALED_JOINRESPONSE` had before it turned out
+to be REAL. *Documented, dev-trial, vector-adjacent, and real are not mutually
+exclusive.*
+
+**Its keyword rule never saw it** — `seed` was not in its vocabulary. Only the
+SHAPE probe caught it, and only because the value was long. That is composer's
+vocabulary-vs-shape claim proven in the field, not argued.
+
+**CLOSED BY REPRODUCING IT, not by allowlisting it:**
+`derive_mesh_key([0xaa;32], pv-1 tg_id)` now yields the published `mesh_pk` AND,
+via `hkdf_expand`, the flagged seed itself. Mutation-verified: master secret
+`0xaa` → `0xab` flips it to FAILED, restore byte-identical under `cmp`.
+
+> **If it had FAILED, that would have been the finding of the day rather than a
+> passing test.**
+
+core and hive hit the same shape from opposite ends: hive picked a control token
+from what it BELIEVED the repo contained; core picked control fixtures from what
+it BELIEVED a secret looked like. **Both inherited the blind spot they were meant
+to detect.**
+
+core claims NO null on the remaining 112. Still unread — stated, because a count
+is what got it here.
