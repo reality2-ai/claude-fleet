@@ -112,6 +112,37 @@ fleet_tmux_has_window() {
   fleet_tmux list-windows -t "$FLEET_TMUX_SESSION" -F '#W' 2>/dev/null | grep -qxF -- "$1"
 }
 
+# Does <id>'s window actually hold a LIVE agent? Distinct from has_window, which
+# only proves a window object exists. Two ways a window outlives its agent:
+# tmux marks the pane dead (remain-on-exit), or the runner wrapper is alive but
+# the agent it spawned has exited. Both must read as NOT alive, or `fleet up`
+# reports a dead lane as running (see the recycle path in fleet_tmux_start_child).
+# Returns 0 only when a descendant process of the pane is a provider binary.
+fleet_tmux_window_alive() {
+  local id="$1" pane_pid dead
+  fleet_tmux_has_window "$id" || return 1
+  dead="$(fleet_tmux list-panes -t "$FLEET_TMUX_SESSION:$id" -F '#{pane_dead}' 2>/dev/null | head -1)"
+  [[ "$dead" == "1" ]] && return 1
+  pane_pid="$(fleet_tmux list-panes -t "$FLEET_TMUX_SESSION:$id" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  [[ -n "$pane_pid" ]] || return 1
+  # walk the pane's process subtree for an actual provider process
+  pgrep -P "$pane_pid" >/dev/null 2>&1 || return 1
+  local p
+  for p in $(pgrep -P "$pane_pid" 2>/dev/null); do
+    case "$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)" in
+      *claude*|*codex*) return 0 ;;
+    esac
+    # one level deeper: run-child.sh wraps the provider
+    local q
+    for q in $(pgrep -P "$p" 2>/dev/null); do
+      case "$(tr '\0' ' ' < "/proc/$q/cmdline" 2>/dev/null)" in
+        *claude*|*codex*) return 0 ;;
+      esac
+    done
+  done
+  return 1
+}
+
 # Is <id>'s pane DEAD — its command exited but the window lingers (only possible
 # under remain-on-exit on)? Structured ground truth via #{pane_dead}, not text
 # scraping. Returns non-zero (treated as "not dead") when tmux/window is absent or
@@ -230,7 +261,21 @@ fleet_tmux_start_child() {
   # window was already spawned by the time registration refused the id.
   fleet_require_member_id "$id"
   fleet_tmux_ensure_session
-  fleet_tmux_has_window "$id" && { warn "child '$id' already has a window"; return 0; }
+  # A WINDOW IS NOT A RUNNING AGENT. This used to `return 0` on window-exists
+  # alone, so a window whose agent had died still counted as up: `fleet up`
+  # printed "started" for every lane while doing nothing, and `fleet restart` of
+  # a pair lane left a dead window that `fleet up` then refused to replace.
+  # Measured 2026-07-19: six codex refuters sat dead for ~an hour reporting
+  # "already running"; the claude lanes' processes were 190915s old after an
+  # `up` that claimed to start them. Presence of a window is not reachability of
+  # an agent — so probe the pane and RECYCLE a dead one instead of reporting it up.
+  if fleet_tmux_has_window "$id"; then
+    if fleet_tmux_window_alive "$id"; then
+      warn "child '$id' already running"; return 0
+    fi
+    warn "child '$id': stale window (agent dead) — recycling"
+    fleet_tmux kill-window -t "$FLEET_TMUX_SESSION:$id" 2>/dev/null || true
+  fi
 
   local rel cwd name pm seed sid provider primer
   rel="$(fleet_child_get "$id" cwd ".")"
