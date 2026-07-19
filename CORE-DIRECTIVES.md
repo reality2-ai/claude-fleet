@@ -143,6 +143,35 @@ method. This governs when the loop **stops**.
   (different instruments, one answer) is convergence and is good. Re-litigating a settled
   decision, or chasing an undemonstrated caution, is circling.
 
+### 3.12 A clean result and a dead instrument look identical
+A scan, gate, or sweep that reports **nothing found** is only evidence if the instrument
+could have found something *and* actually looked at the corpus. Those are **two separate
+liveness properties**, and proving one has repeatedly been mistaken for proving both.
+
+- **A canary tests the MATCHER, not the CORPUS.** A positive control firing proves the
+  detector works. It says nothing about whether the production input was enumerated. A
+  scanner whose file list came back empty passes every canary it has.
+- **Prove BOTH: detector liveness AND input-enumerator liveness.** Report the
+  **denominator** with every null — "0 found" is unreadable without "of N examined".
+- **Zero input MUST fail closed.** Zero files, zero blobs, zero refs, or an enumeration
+  command that errored are **failures**, never clean results. Reference implementation:
+  `r2-hardware scripts/leak_scan.py` — fail-loud on git error, reject zero tracked files,
+  reject zero blobs.
+- **Container and CI jobs MUST establish `safe.directory` before enumeration.** Otherwise
+  `git ls-files` fails *silently* and the tree scan reports clean having read nothing.
+- **Match the probe to the FORM, not the command name.** Two invocations of one tool can
+  signal differently — one prints markers to grep, another signals by exit code. Grepping
+  for markers on the form that does not emit them is structurally incapable of firing.
+- **Never pipe a null-producing scan through `head`/`tail`.** A truncated scan and a clean
+  scan produce the same report; a swallowed exit code produces the same success.
+- **Derive the control from the TARGET, not the hypothesis.** A control chosen from the
+  same assumptions as the claim inherits its blind spot. Derive it from something known to
+  be in *this* corpus, then confirm it fires *here*.
+- **A control is REQUIRED when the result AGREES with you.** Disagreement prompts a
+  re-check by itself; agreement does not. And it is not only agreement that escapes
+  scrutiny — **irrelevance** does too: a surprising number that neither confirms nor
+  threatens your thesis gets recorded and never chased.
+
 ---
 
 ## 4. How it works — the mechanics
