@@ -59,13 +59,29 @@ def _present(fact: str, text: str) -> bool:
     return re.search(pat, text) is not None
 
 def _polarity_flips(before: str, after: str) -> list[str]:
-    """Any RFC 2119 negative present in BEFORE and absent from AFTER.
+    """Compare the COUNT of RFC 2119 negatives, as a CLASS, before vs after.
 
     Checked INDEPENDENTLY of the facts list, because the caller cannot be relied
     on to declare "MUST NOT" as a fact — and the one time they forget is exactly
     when the tool would bless an inversion. This is the safety backstop.
+
+    COUNTED, not membership-tested (hive, 2026-07-19). The first fix moved the
+    defect from substring-blind to COUNT-blind:
+        before "=MUST NOT flash and MUST NOT push @d4c65886"
+        after  "=MUST NOT flash @d4c65886"
+        => "MUST NOT" still present, verdict ADOPT, one obligation SILENTLY GONE
+    Live, not theoretical — fleet messages routinely carry several obligations.
+
+    Counted as a CLASS TOTAL, not per keyword, which also fixes the precision
+    cost hive flagged: MUST NOT -> SHALL NOT is a legal RFC 2119 synonym swap
+    and MUST NOT be rejected. A scorer that rejects legal rewrites gets routed
+    around — the same crying-wolf failure we warned specs about on credentials.
     """
-    return [n for n in _NEGATIVES if n in before and n not in after]
+    nb = sum(before.count(n) for n in _NEGATIVES)
+    na = sum(after.count(n) for n in _NEGATIVES)
+    if na < nb:
+        return [f"{nb} negative obligation(s) before, {na} after"]
+    return []
 
 def score(before: str, after: str, facts: list[str]) -> dict:
     tb, ta = ntok(before), ntok(after)
@@ -114,10 +130,22 @@ def selftest() -> int:
         ("negative kept is still adoptable",
          "The gate at recipe.rs:1749 MUST NOT accept the artifact d4c65886 under any circumstance",
          "@recipe.rs:1749 =MUST NOT accept d4c65886", "ADOPT"),
+        # --- hive round 2: presence-based polarity was COUNT-BLIND ---
+        ("dropping ONE of TWO negatives must be rejected (hive probe H)",
+         "=MUST NOT flash and MUST NOT push @d4c65886",
+         "=MUST NOT flash @d4c65886",             "REJECT — capability LOST"),
+        # facts overridden per-case: the shared list cites recipe.rs/MUST, neither
+        # of which appears here. A control failing on its own harness is a harness
+        # defect, not a finding — caught by running it rather than assuming.
+        ("legal RFC 2119 synonym swap MUST NOT be rejected (hive probe G)",
+         "The operator MUST NOT flash board B @d4c65886 before the gate",
+         "=SHALL NOT flash B @d4c65886",          "ADOPT", ["d4c65886"]),
     ]
     fails = 0
-    for name, b, a, want in cases:
-        got = score(b, a, facts)["verdict"]
+    for case in cases:
+        name, b, a, want = case[:4]
+        case_facts = case[4] if len(case) > 4 else facts
+        got = score(b, a, case_facts)["verdict"]
         ok = got == want
         fails += not ok
         print(f"  [{'PASS' if ok else 'FAIL'}] {name}\n         want={want!r}\n          got={got!r}")
