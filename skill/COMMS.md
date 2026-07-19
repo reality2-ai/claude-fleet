@@ -134,8 +134,28 @@ and still unexecutable:
    prose that introduced them; the lockfile has two variants, sanction returns
    `Result<(),String>`.
 
-Note #4 was authored *in the act of ruling that prose is not a gate*. The trap
-survives knowing about it, so apply the test mechanically, not by intuition.
+Note #4 was authored *in the act of ruling that prose is not a gate*. And #5:
+specs wrote a credential scanner plus its positive control, ran the full tree,
+got a CLEAN result — and `main()` never called `scan_credentials`. Only the
+positive control did. A scanner with no emitter; the clean run was a false green
+because **the layer never executed**. That was minutes after this very invariant
+went fleet-wide, on specs' own evidence.
+
+**The trap survives knowing about it. Five instances, two authored by the lane
+that had just named the class.** So the test is MECHANICAL, never by intuition:
+
+### The caller grep — MANDATORY before reporting any result
+
+Before you report a scan, gate, check, or handler result, GREP FOR ITS CALLER.
+
+- A function whose only caller is its own test is NOT WIRED.
+- A clean result from an unwired layer is a FALSE GREEN, not evidence.
+- `grep -rn 'fn_name' | grep -v 'fn fn_name' | grep -v test` — if that is empty,
+  the thing never ran, whatever the report said.
+
+This is the same instrument that caught the dead BLE observer (`R2ScanHandler`
+defined, never constructed), the phantom `is_fully_pinned` gate (only caller had
+zero callers), and instance #5. It is cheap and it fires.
 
 **Before asserting any new status, vocabulary, or requirement, all four MUST
 land together:** typed schema, producer that can emit it, consumer that reads
