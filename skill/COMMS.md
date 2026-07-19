@@ -1,4 +1,4 @@
-COMMS_VERSION: 5  adopted-at: 0c95749
+COMMS_VERSION: 6  adopted-at: 1f120d0
 
 # FLEET COMMS STANDARD v3 — binding on every fleet member, both providers
 
@@ -548,3 +548,40 @@ lines earlier — not in a caller at all.
   INVARIANT.
 - Both directions now stand: **caller-grep** for "does this ever run",
   **enclosing-read** for "is this actually unprotected".
+
+## 16. A TRUNCATED SCAN IS A SAMPLE, NOT A SCAN (hive, 2026-07-19)
+
+hive's credential null was false — and **not for the reason the corrected rule
+predicted**. Its matcher WOULD have caught the real PSK (a double-quoted literal,
+stage 2 fires). The hit sorted below a `| head -8`.
+
+**A quote-shaped matcher and a truncated pipe produce THE SAME CLEAN REPORT.**
+
+- MUST NOT pipe a gate, a sweep, or any null-producing scan through `head`/`tail`.
+  Count with `wc -l`, or print all.
+- A lane re-running a scan under a corrected rule MUST ALSO check whether its
+  ORIGINAL null was truncated — otherwise the new rule gets credited with closing
+  a gap it never touched.
+
+This was hive's **third** head-truncation false-clean in one session, after it had
+reported the trap to the fleet and after core hit it too. Circuits had separately
+flagged `| tail -1` swallowing EXIT CODES hours earlier; the supervisor fixed the
+exit-code half and not the content half. **The instrument outlives the warning.**
+
+### Sweeps MUST enumerate ALL REFS
+
+A third hole, neither truncation nor keyword: the supervisor's fleet-wide PSK
+sweep checked `origin/main` and `origin/master` **only**.
+
+    r2-core, measured across all remote refs:
+      origin/main                    carries it
+      origin/dfr1195-fw              carries it
+      origin/rak4630-fw              carries it
+      origin/core-freshness-aad-wip  carries it   <- a fourth branch nobody named
+
+hive reported two. There were four.
+
+- A repo-level sweep MUST enumerate `git for-each-ref refs/remotes`, never just
+  the default branch.
+- "Deleted from the working tree" is NOT "deleted from the repo". Verify which
+  REF a deletion landed on, and whether it was pushed.
