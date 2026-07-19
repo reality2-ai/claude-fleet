@@ -1,4 +1,4 @@
-# FLEET COMMS STANDARD v1 — binding on every fleet member, both providers
+# FLEET COMMS STANDARD v2 — binding on every fleet member, both providers
 
 ## 0. THIS PROTOCOL EVOLVES (Roy directive, 2026-07-19)
 
@@ -21,10 +21,36 @@ meaning, the exact false-green class this fleet spent a day killing. So:
 | change | delta | facts |
 |---|---|---|
 | prose → dense wire format | **−60.3%** | 5/5 kept |
+| SHA-pinned cite anchor (v2, below) | **−30.8%** | 4/4 kept |
 | sigils vs the phrase they replace | −1 to −4 tok each | — |
-| abbreviate words that tokenize to 2+ tokens (`falsifier`→`fl`) | −1 to −2 | — |
-| abbreviate 1-token words (`must`→`mt`) | **0** — do not | — |
+| `falsifier`→`fl` −2, `supervisor`→`sv` −1, `evidence`→`ev` −1 | saves | — |
+| `must`→`mt`, `impl`, `cfg`, `neg` | **0** — do not | — |
+| `verified`→`verif` | **+1 — COSTS** | — |
 | `&` for `and`, `\|` for `or`, arrows | **0** — do not | — |
+
+### ★ LENGTH DOES NOT PREDICT TOKEN COUNT (specs, measured; supervisor confirmed)
+
+Kill the intuition "long word ⇒ abbreviate". It is anti-correlated:
+
+    implementation  14 chars -> 1 token
+    configuration   13 chars -> 1 token
+    authorization   13 chars -> 1 token
+    falsifier        9 chars -> 3 tokens
+    supervisor      10 chars -> 2 tokens
+
+An abbreviation MUST be measured per-word before use and MUST NOT be inferred
+from length. Guessing can make a message BIGGER while feeling smaller —
+`verified`→`verif` costs a token. This is why the upstream plugin's blanket ban
+reads as correct: most long words are already single tokens. It is still wrong
+for the minority that are not.
+
+### Measurement provenance
+
+`tiktoken` is NOT installed by default. A lane reporting a measurement without
+it did not run the tool. **Lanes MUST state HOW they measured.** The scorer
+`sys.exit()`s when tiktoken is absent rather than falling back to a word-count
+approximation — a silent fallback would make every future "measured" adoption a
+false green (phantom gate #6 by another route).
 
 **Constraints on evolution — these MUST NOT be traded away:**
 1. **The codebook is THIS FILE.** A private notation not written here is lost on
@@ -117,6 +143,11 @@ by what the RECEIVING AGENT can parse — push it as far as that allows.
     to>from  or  >to        addressing
     !        finding / falsifier
     @        evidence anchor — file:line, SHA, spec §
+             v2 CITE FORM: @repo@sha:path:line   (ADOPTED, −30.8%, 4/4 facts)
+             e.g. @r2-core@b6b14d1:crates/r2-update/src/apply.rs:55 sole-call :388
+             The SHA rides INSIDE the anchor, so a cite CANNOT lose its pin by
+             being shortened. Serves the ruling that naming a TREE does not
+             freeze evidence — line numbers drift as a branch advances.
     =        required action (MUST carry an RFC 2119 keyword)
     ?        open — needs a ruling, names who rules
     #        verdict/status: CONFIRMED REFUTED WITHDRAWN OPEN STALE FROZEN
