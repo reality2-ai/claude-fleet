@@ -30,7 +30,7 @@ export FLEET_TMUX_USER_SCOPE=off
 # The fixtures treat manifest children without an explicit provider as Claude and
 # assert against the Claude stub. Do not inherit a caller's Codex fleet default.
 export FLEET_AGENT_PROVIDER=claude
-SOCK="smoke$$"; export FLEET_TMUX_SOCKET="$SOCK" FLEET_TMUX_SESSION="$SOCK"
+SOCK="fleet-smoke-${TMP##*.}"; export FLEET_TMUX_SOCKET="$SOCK" FLEET_TMUX_SESSION="$SOCK"
 cleanup() { command tmux -L "$SOCK" kill-server 2>/dev/null || true; rm -rf "$TMP"; }
 trap cleanup EXIT
 
@@ -105,6 +105,8 @@ export FLEET_STUB_LOG="$TMP/alpha.fresh.log"; : > "$FLEET_STUB_LOG"
 sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins.out" 2>/dev/null
 hasline "alpha has a tmux window" "$TMP/wins.out" "alpha"
+lacks   "startup removes the bootstrap window" "$TMP/wins.out" "__fleet_root"
+lacks   "default startup does not multiply agents" "$TMP/wins.out" "alpha-codex"
 hasline "fresh start passes the seed prompt" "$FLEET_STUB_LOG" "seedwork"
 lacks   "fresh start does NOT --resume"      "$FLEET_STUB_LOG" "--resume"
 FLEET_WORKSPACE="$WS2" "$FLEET" status > "$TMP/status2.out" 2>&1
@@ -135,7 +137,7 @@ command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_beta_resume
 hasline "codex resume starts beta while alpha is live" "$TMP/wins_beta_resume.out" "beta"
 hasline "codex resume passes resume subcommand" "$FLEET_CODEX_STUB_LOG" "resume"
 hasline "codex resume passes the session id" "$FLEET_CODEX_STUB_LOG" "sid-BETA-CODEX"
-has "codex resume includes fleet doctrine primer" "$FLEET_CODEX_STUB_LOG" "Treat every non-trivial claim as a conjecture"
+has "codex resume includes fleet doctrine primer" "$FLEET_CODEX_STUB_LOG" "Seek one concrete falsifier"
 
 # --- 5. down tears the window down ------------------------------------------
 section "5. down"
@@ -161,12 +163,12 @@ wait "$holder" 2>/dev/null || true
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 export FLEET_STUB_LOG="$TMP/alpha.autopair.claude.log"; : > "$FLEET_STUB_LOG"
 export FLEET_CODEX_STUB_LOG="$TMP/alpha.autopair.codex.log"; : > "$FLEET_CODEX_STUB_LOG"
-"$FLEET" up --no-supervisor alpha > "$TMP/up_pair.out" 2>&1
+"$FLEET" up --no-supervisor --pairs alpha > "$TMP/up_pair.out" 2>&1
 sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_up_pair.out" 2>/dev/null
 hasline "fleet up starts the base worker" "$TMP/wins_up_pair.out" "alpha"
-hasline "fleet up starts opposite-provider companion by default" "$TMP/wins_up_pair.out" "alpha-codex"
-has "auto-pair prompt identifies adversarial pair role" "$FLEET_CODEX_STUB_LOG" "ADVERSARIAL PAIR PROGRAMMER"
+hasline "fleet up --pairs starts opposite-provider companion" "$TMP/wins_up_pair.out" "alpha-codex"
+has "auto-pair prompt identifies adversarial pair role" "$FLEET_CODEX_STUB_LOG" "read-only refuter/standby"
 has "auto-pair codex twin is read-only" "$FLEET_CODEX_STUB_LOG" "read-only"
 has "auto-pair state records base member" "$WS2/.fleet/state/alpha-codex.json" "\"companion_for\": \"alpha\""
 has "auto-pair state records standby role" "$WS2/.fleet/state/alpha-codex.json" "\"role\": \"standby\""
@@ -178,11 +180,11 @@ has "pairs command shows standby role" "$TMP/pairs_alpha.out" "standby"
 "$FLEET" pair-send alpha "PAIR-FYI" > "$TMP/pair_send.out" 2>&1 || true
 has "pair-send writes base inbox" "$WS2/.fleet/inbox/alpha.jsonl" "PAIR-FYI"
 has "pair-send writes companion inbox" "$WS2/.fleet/inbox/alpha-codex.jsonl" "PAIR-FYI"
-"$FLEET" supervise > "$TMP/supervise_pair.out" 2>&1
+"$FLEET" supervise --pair > "$TMP/supervise_pair.out" 2>&1
 sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_supervisor_pair.out" 2>/dev/null
 hasline "supervise starts primary supervisor" "$TMP/wins_supervisor_pair.out" "supervisor"
-hasline "supervise starts supervisor provider companion" "$TMP/wins_supervisor_pair.out" "supervisor-codex"
+hasline "supervise --pair starts supervisor provider companion" "$TMP/wins_supervisor_pair.out" "supervisor-codex"
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 
 # --- 8. mixed-provider launch, pair, handoff, and refute --------------------
@@ -207,15 +209,41 @@ has "doctor flags missing repo-local RESUME.md" "$TMP/doctor_resume_missing.out"
 "$FLEET" init-resume --force alpha > "$TMP/init_resume.out" 2>&1
 assert "init-resume scaffolds repo RESUME.md" test -f "$WS2/repoA/RESUME.md"
 has "RESUME.md template has takeover fields" "$WS2/repoA/RESUME.md" "## Next Actions"
+has "RESUME.md template records GitHub sync" "$WS2/repoA/RESUME.md" "## GitHub Sync"
+FLEET_RESUME_CHECK=on FLEET_RESUME_MAX_BYTES=32 "$FLEET" doctor --quiet > "$TMP/doctor_resume_large.out" 2>/dev/null || true
+has "doctor bounds oversized RESUME.md context" "$TMP/doctor_resume_large.out" "compact it to one authoritative current state"
 FLEET_RESUME_CHECK=on "$FLEET" doctor --quiet > "$TMP/doctor_resume_todo.out" 2>/dev/null || true
 has "doctor flags unfilled RESUME.md placeholders" "$TMP/doctor_resume_todo.out" "TODO placeholders"
+
+# GitHub synchronization is locally checkable without network: missing upstream
+# and commits ahead of the remote-tracking ref are both operational faults.
+git -C "$WS2/repoA" init -q
+git -C "$WS2/repoA" config user.email smoke@test
+git -C "$WS2/repoA" config user.name smoke
+git -C "$WS2/repoA" config commit.gpgsign false
+git -C "$WS2/repoA" add RESUME.md
+git -C "$WS2/repoA" commit -qm baseline
+git -C "$WS2/repoA" remote add origin https://github.com/example/fleet-smoke.git
+FLEET_RESUME_CHECK=off "$FLEET" doctor --quiet > "$TMP/doctor_no_upstream.out" 2>/dev/null || true
+has "doctor flags GitHub branch without upstream" "$TMP/doctor_no_upstream.out" "has no upstream"
+smoke_branch="$(git -C "$WS2/repoA" symbolic-ref --short HEAD)"
+git -C "$WS2/repoA" update-ref "refs/remotes/origin/$smoke_branch" HEAD
+git -C "$WS2/repoA" branch --set-upstream-to "origin/$smoke_branch" >/dev/null
+printf 'verified increment\n' > "$WS2/repoA/sync.txt"
+git -C "$WS2/repoA" add sync.txt
+git -C "$WS2/repoA" commit -qm increment
+FLEET_RESUME_CHECK=off "$FLEET" doctor --quiet > "$TMP/doctor_ahead.out" 2>/dev/null || true
+has "doctor flags local commits ahead of GitHub" "$TMP/doctor_ahead.out" "commit(s) ahead"
+# Simulate the remote-tracking update performed by a successful push so later
+# doctor assertions are not polluted by this deliberate fixture.
+git -C "$WS2/repoA" update-ref "refs/remotes/origin/$smoke_branch" HEAD
 printf '\nHANDOFF-SENTINEL: repo-local state wins over private transcript.\n' >> "$WS2/repoA/RESUME.md"
 
 "$FLEET" pair --provider codex --id alpha-duet alpha > "$TMP/pair.out" 2>&1
 sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_pair.out" 2>/dev/null
 hasline "pair creates per-repo companion window" "$TMP/wins_pair.out" "alpha-duet"
-has "pair prompt identifies adversarial pair role" "$FLEET_CODEX_STUB_LOG" "ADVERSARIAL PAIR PROGRAMMER"
+has "pair prompt identifies adversarial pair role" "$FLEET_CODEX_STUB_LOG" "read-only refuter/standby"
 has "pair state records base member" "$WS2/.fleet/state/alpha-duet.json" "\"companion_for\": \"alpha\""
 has "pair state records standby role" "$WS2/.fleet/state/alpha-duet.json" "\"role\": \"standby\""
 "$FLEET" failover --all --dry-run alpha > "$TMP/failover_dry.out" 2>&1
@@ -249,7 +277,7 @@ command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_refute.out"
 hasline "refute creates reviewer window" "$TMP/wins_refute.out" "alpha-review"
 has "refute forces codex read-only sandbox" "$FLEET_CODEX_STUB_LOG" "--sandbox"
 hasline "refute uses read-only sandbox" "$FLEET_CODEX_STUB_LOG" "read-only"
-has "refute prompt is adversarial" "$FLEET_CODEX_STUB_LOG" "REFUTATION"
+has "refute prompt is adversarial" "$FLEET_CODEX_STUB_LOG" "independent read-only refuter"
 has "refute state records target" "$WS2/.fleet/state/alpha-review.json" "\"refutes\": \"alpha\""
 
 # --- 8b. authority guard: a read-only companion/refuter may NOT run lifecycle
@@ -418,7 +446,10 @@ case "$DID" in d0*) ok "decision add prints a short sortable id ($DID)";; *) no 
 assert "decision record persisted as <id>.json" test -f "$WS2/.fleet/decisions/$DID.json"
 has  "record carries provenance (raised_by)" "$WS2/.fleet/decisions/$DID.json" "\"raised_by\": \"supervisor\""
 has  "record carries waiting agent"          "$WS2/.fleet/decisions/$DID.json" "\"waiting\": \"alpha\""
-has  "record starts open"                    "$WS2/.fleet/decisions/$DID.json" "\"status\": \"open\""
+has  "record starts open"                    "$WS2/.fleet/decisions/$DID.json" "\"state\": \"open\""
+has  "record separates evidential confidence" "$WS2/.fleet/decisions/$DID.json" "\"confidence\": \"open\""
+has  "open gate holds operational action"    "$WS2/.fleet/decisions/$DID.json" "\"action\": \"hold\""
+has  "record names reversal authority"       "$WS2/.fleet/decisions/$DID.json" "\"authority\": \"supervisor\""
 has  "state change appended to log.jsonl"    "$WS2/.fleet/decisions/log.jsonl" "\"event\":\"add\""
 "$FLEET" decisions > "$TMP/dec_open.out" 2>&1
 has  "decisions lists the open decision"     "$TMP/dec_open.out" "#$DID"
@@ -429,27 +460,78 @@ assert "decisions --json is valid JSON array" jq -e 'type=="array"' "$TMP/dec_js
 DID2="$("$FLEET" decision add "Second open gate" 2>/dev/null)"
 : > "$WS2/.fleet/inbox/alpha.jsonl" 2>/dev/null || true
 "$FLEET" decide "$DID" "ship it" > "$TMP/dec_decide.out" 2>&1
-has  "decide confirms the answer"            "$TMP/dec_decide.out" "answered"
+has  "decide confirms ratification"          "$TMP/dec_decide.out" "ratified/go"
 has  "answered record stores the answer"     "$WS2/.fleet/decisions/$DID.json" "\"answer\": \"ship it\""
 has  "answered record sets answered_ts"      "$WS2/.fleet/decisions/$DID.json" "\"answered_ts\":"
+has  "ratification sets mechanical latch"    "$WS2/.fleet/decisions/$DID.json" "\"state\": \"ratified\""
 has  "answer routed to waiting agent's inbox" "$WS2/.fleet/inbox/alpha.jsonl" "ship it"
-has  "answer state change logged"            "$WS2/.fleet/decisions/log.jsonl" "\"event\":\"answer\""
+has  "ratification state change logged"      "$WS2/.fleet/decisions/log.jsonl" "\"event\":\"ratify\""
+# Same answer is idempotent; a different answer is a hard failure and cannot
+# overwrite the latch. This is the core anti-vacillation regression.
+"$FLEET" decide "$DID" "ship it" > "$TMP/dec_repeat.out" 2>&1
+has  "identical re-ratification is idempotent" "$TMP/dec_repeat.out" "unchanged"
+if "$FLEET" decide "$DID" "wait instead" > "$TMP/dec_reverse.out" 2>&1; then
+  no "contradictory re-answer is refused"
+else
+  ok "contradictory re-answer is refused"
+fi
+has  "refusal explains explicit reversal path" "$TMP/dec_reverse.out" "revoke"
+assert "refused re-answer leaves original intact" jq -e '.answer=="ship it" and .action=="go"' "$WS2/.fleet/decisions/$DID.json"
+# Any worker may challenge evidence, but a challenge cannot change the command.
+FLEET_CHILD_ID=alpha "$FLEET" decision challenge "$DID" "new timing concern" --evidence bench-17 > "$TMP/dec_challenge.out" 2>&1
+has  "challenge reports epistemic-only wound" "$TMP/dec_challenge.out" "operational latch remains ratified/go"
+assert "challenge preserves operational latch" jq -e '.confidence=="wounded" and .action=="go" and .answer=="ship it"' "$WS2/.fleet/decisions/$DID.json"
 "$FLEET" decisions > "$TMP/dec_open2.out" 2>&1
 lacks "answered decision no longer in open list" "$TMP/dec_open2.out" "#$DID "
 has   "other open decision still listed"         "$TMP/dec_open2.out" "#$DID2"
 "$FLEET" decisions --all > "$TMP/dec_all.out" 2>&1
 has  "--all includes the answered decision"  "$TMP/dec_all.out" "#$DID"
+# Replacement gets a new immutable id. Ratifying it retires (never overwrites)
+# its predecessor, and the bounded current view exposes only active state.
+DID3="$("$FLEET" decision add "Replacement course" --for alpha --supersedes "$DID" 2>/dev/null)"
+"$FLEET" decide "$DID3" "wait for rotation" > "$TMP/dec_successor.out" 2>&1
+assert "ratified successor retires predecessor" jq -e --arg id "$DID3" '.state=="superseded" and .superseded_by==$id' "$WS2/.fleet/decisions/$DID.json"
+"$FLEET" decisions --current --for alpha --json > "$TMP/dec_current.json"
+assert "current view includes active successor" jq -e --arg id "$DID3" 'any(.id==$id and .state=="ratified")' "$TMP/dec_current.json"
+assert "current view excludes superseded record" jq -e --arg id "$DID" 'all(.id!=$id)' "$TMP/dec_current.json"
+# Local actor provenance enforces named authority (not cryptographic identity).
+if FLEET_CHILD_ID=alpha "$FLEET" decision revoke "$DID3" "I changed my mind" > "$TMP/dec_bad_revoke.out" 2>&1; then
+  no "non-authority revoke is refused"
+else
+  ok "non-authority revoke is refused"
+fi
+has "revoke refusal names authority" "$TMP/dec_bad_revoke.out" "only by authority 'supervisor'"
+"$FLEET" decision revoke "$DID3" "benchmark falsified assumption" --evidence bench-17 > "$TMP/dec_revoke.out" 2>&1
+assert "authority revoke is explicit refuted/hold" jq -e '.state=="revoked" and .confidence=="refuted" and .action=="hold"' "$WS2/.fleet/decisions/$DID3.json"
+# Scope and bound keep takeover context finite.
+DID4="$("$FLEET" decision add "Android-only gate" --scope android 2>/dev/null)"
+DID5="$("$FLEET" decision add "Alpha gate" --scope alpha 2>/dev/null)"
+"$FLEET" decisions --current --for alpha --max 1 --json > "$TMP/dec_bounded.json"
+assert "current view is bounded" jq -e 'length==1' "$TMP/dec_bounded.json"
+assert "current view applies scope" jq -e --arg id "$DID4" 'all(.id!=$id)' "$TMP/dec_bounded.json"
+assert "current view keeps newest applicable gate" jq -e --arg id "$DID5" 'any(.id==$id)' "$TMP/dec_bounded.json"
+"$FLEET" decisions --current --for alpha --max 1 > "$TMP/dec_bounded_human.out" 2>&1
+has "bounded view discloses omitted active decisions" "$TMP/dec_bounded_human.out" "absence here is not revocation"
+# Fresh workers receive the same generated ledger view; transcript/RESUME text
+# therefore cannot become an accidental competing source of current commands.
+export FLEET_CODEX_STUB_LOG="$TMP/dec_primer.log"; : > "$FLEET_CODEX_STUB_LOG"
+command tmux -L "$SOCK" set-environment -t "$SOCK" FLEET_CODEX_STUB_LOG "$FLEET_CODEX_STUB_LOG"
+"$FLEET" dispatch --provider codex latchprobe "inspect latch context" repoA > "$TMP/dec_dispatch.out" 2>&1
+sleep 0.5
+has "worker primer states decision precedence" "$FLEET_CODEX_STUB_LOG" "Ledger below controls operational choices"
+has "worker primer injects bounded current view" "$FLEET_CODEX_STUB_LOG" "#$DID2 [OPEN/HOLD]"
+"$FLEET" down latchprobe >/dev/null 2>&1 || true
 # the --watch view renders (bounded to one iteration so it terminates)
 FLEET_DECISIONS_WATCH_ITERS=1 FLEET_DECISIONS_WATCH_SECS=1 "$FLEET" decisions --watch > "$TMP/dec_watch.out" 2>&1
 has  "decisions --watch renders the ledger"  "$TMP/dec_watch.out" "fleet decisions"
-# the persistent tmux window is spawned by 'up' and is non-fatal / toggleable
+# Current decisions live in brief/primers; the extra tmux pane is opt-in.
 "$FLEET" up --no-supervisor --no-pairs alpha >/dev/null 2>&1; sleep 0.5
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/dec_wins.out" 2>/dev/null
-hasline "fleet up spawns the decisions window (default on)" "$TMP/dec_wins.out" "decisions"
+lacks "fleet up skips redundant decisions window by default" "$TMP/dec_wins.out" "decisions"
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
-FLEET_DECISIONS_WINDOW=off "$FLEET" up --no-supervisor --no-pairs alpha >/dev/null 2>&1; sleep 0.5
+FLEET_DECISIONS_WINDOW=on "$FLEET" up --no-supervisor --no-pairs alpha >/dev/null 2>&1; sleep 0.5
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/dec_wins_off.out" 2>/dev/null
-lacks "FLEET_DECISIONS_WINDOW=off skips the window" "$TMP/dec_wins_off.out" "decisions"
+hasline "FLEET_DECISIONS_WINDOW=on adds the optional pane" "$TMP/dec_wins_off.out" "decisions"
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 
 # --- 11. pre-push MAC-value scan --------------------------------------------

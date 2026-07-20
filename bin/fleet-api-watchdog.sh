@@ -14,11 +14,17 @@
 # live auto-retry (Claude's own backoff changes the pane; a "retrying…" countdown is left alone).
 # After a nudge the pane changes, so it won't be re-nudged until it's stuck again.
 #
-# Run detached:  nohup claude-fleet/bin/fleet-api-watchdog.sh >/tmp/fleet-api-watchdog.log 2>&1 &
+# Run detached from the fleet workspace (or set FLEET_WORKSPACE):
+#   nohup claude-fleet/bin/fleet-api-watchdog.sh >/tmp/fleet-api-watchdog.log 2>&1 &
 # Stop:          pkill -f fleet-api-watchdog.sh
-# Tune: FLEET_API_WATCHDOG_INTERVAL=75  FLEET_TMUX_SESSION=fleet  FLEET_API_NUDGE="try again"
+# Tune: FLEET_API_WATCHDOG_INTERVAL=75 FLEET_API_NUDGE="try again"
 set -uo pipefail
-SESSION="${FLEET_TMUX_SESSION:-fleet}"
+TOOL_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/common.sh
+source "$TOOL_ROOT/lib/common.sh" 2>/dev/null || exit 1
+fleet_load_paths || exit 1
+SESSION="$FLEET_TMUX_SESSION"
+SOCKET="$FLEET_TMUX_SOCKET"
 INTERVAL="${FLEET_API_WATCHDOG_INTERVAL:-75}"
 NUDGE="${FLEET_API_NUDGE:-try again}"
 # Exponential backoff on the stuck-pane nudge: don't poke a persistently rate-limited
@@ -36,13 +42,13 @@ SIG='temporarily (limiting|unavailable)|rate.?limit|Overloaded|overloaded_error|
 RETRYING='[Rr]etrying|retry in|auto-?retry|backoff'
 
 declare -A last nudged wait
-echo "fleet-api-watchdog: session=$SESSION interval=${INTERVAL}s nudge='$NUDGE' backoff=${BACKOFF}x cap=${MAXWAIT}t (covers supervisor)"
+echo "fleet-api-watchdog: socket=$SOCKET session=$SESSION interval=${INTERVAL}s nudge='$NUDGE' backoff=${BACKOFF}x cap=${MAXWAIT}t (covers supervisor)"
 while true; do
   sleep "$INTERVAL"
-  tmux has-session -t "$SESSION" 2>/dev/null || continue
+  tmux -L "$SOCKET" has-session -t "$SESSION" 2>/dev/null || continue
   while IFS= read -r w; do
     [[ -n "$w" ]] || continue
-    tail="$(tmux capture-pane -p -t "$SESSION:$w" 2>/dev/null | grep -vE '^[[:space:]]*$' | tail -n 6)"
+    tail="$(tmux -L "$SOCKET" capture-pane -p -t "$SESSION:$w" 2>/dev/null | grep -vE '^[[:space:]]*$' | tail -n 6)"
     if printf '%s' "$tail" | grep -qiE "$EXHAUSTED"; then
       nudged[$w]=0
     elif printf '%s' "$tail" | grep -qiE "$SIG" && ! printf '%s' "$tail" | grep -qiE "$RETRYING"; then
@@ -51,9 +57,9 @@ while true; do
           wait[$w]=$(( ${wait[$w]:-0} - 1 ))             # backing off — skip this tick
         else
           n=$(( ${nudged[$w]:-0} + 1 )); nudged[$w]=$n
-          tmux send-keys -t "$SESSION:$w" -l "$NUDGE" 2>/dev/null
-          sleep 0.4; tmux send-keys -t "$SESSION:$w" Enter 2>/dev/null
-          sleep 0.3; tmux send-keys -t "$SESSION:$w" Enter 2>/dev/null   # 2nd Enter: harmless no-op if 1st landed
+          tmux -L "$SOCKET" send-keys -t "$SESSION:$w" -l "$NUDGE" 2>/dev/null
+          sleep 0.4; tmux -L "$SOCKET" send-keys -t "$SESSION:$w" Enter 2>/dev/null
+          sleep 0.3; tmux -L "$SOCKET" send-keys -t "$SESSION:$w" Enter 2>/dev/null   # 2nd Enter: harmless no-op if 1st landed
           d=1; for ((k=1; k<n; k++)); do d=$(( d * BACKOFF )); done       # BACKOFF^(n-1)
           (( d > MAXWAIT )) && d=$MAXWAIT
           wait[$w]=$d
@@ -64,5 +70,5 @@ while true; do
       nudged[$w]=0; wait[$w]=0                            # recovered/changed → reset backoff
     fi
     last[$w]="$tail"
-  done < <(tmux list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null)
+  done < <(tmux -L "$SOCKET" list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null)
 done

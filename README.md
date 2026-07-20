@@ -144,6 +144,13 @@ it leaves `settings.local.json`, where your permissions live, untouched. Use
 `fleet init --no-hooks <ws>` to scaffold without writing settings, then install
 later with `fleet install-hooks [--all|--claude|--codex] [<ws>|--user]`.
 
+Each workspace is isolated automatically. Its canonical path produces a stable
+tmux socket/session and systemd unit name, so fleets in different folders can
+run concurrently even when their child ids match. Run commands inside the
+desired workspace (or set `FLEET_WORKSPACE`); `fleet identity` shows the
+resolved names. `.fleet/env` may still set explicit `FLEET_TMUX_SOCKET`,
+`FLEET_TMUX_SESSION`, or `FLEET_SERVICE_NAME` overrides.
+
 ## Quick start
 
 **Guided (recommended for a new workspace)** — `fleet wizard` discovers the repos
@@ -176,12 +183,11 @@ fleet attach api                            # drop into a member's tmux window
 ```
 
 After a reboot, `fleet up` brings the whole suite back, resuming each member's
-conversation. By default it also starts an opposite-provider companion for each
-manifest worker when that provider CLI is available, so each repo gets a
-Claude/Codex pair. The supervisor is paired too (`supervisor` +
-`supervisor-codex`) so control does not depend on Claude credits alone. Use
-`fleet up --no-pairs` or `FLEET_PAIR_ON_UP=off` for the old single-agent startup
-mode.
+conversation. Default topology is deliberately small: one supervisor and one
+writer per manifest repo. Use `fleet up --pairs` (or `FLEET_PAIR_ON_UP=on`) only
+when persistent opposite-provider read-only standbys are worth the extra agents.
+On-demand `fleet refute`, `fleet pair`, `fleet handoff`, and `fleet failover`
+remain available without making every startup a debate between permanent twins.
 
 In `fleet status`, `STATE` is derived honestly from the transcript
 (live / idle / dead / failed), `WIN` shows a live tmux window, `CLAIMS` counts
@@ -321,14 +327,13 @@ edge cases, and propose concrete patches or tests for the writer to apply. They
 do not edit the shared working tree unless `fleet handoff` promotes them to the
 sole takeover writer.
 
-This also simplifies failover: when Claude hits a hard usage limit,
-`fleet handoff core --stop-source` finds the already-running Codex twin, restarts
-it as the takeover writer if it was read-only, and stops the source lane so both
-engines are never writers in the same repo at once.
+Failover stays explicit: when Claude hits a hard usage limit,
+`fleet handoff core --stop-source` promotes an existing standby or starts the
+opposite provider as takeover writer, and stops the source lane so both engines
+are never writers in the same repo at once.
 
-Because adversarial pair programming is now the default operating mode,
-`fleet up` starts these read-only standbys automatically. Tune with
-`FLEET_PAIR_ON_UP=off`, `FLEET_PAIR_PERMISSION_MODE=plan`,
+Persistent adversarial pair programming is opt-in with `fleet up --pairs` or
+`FLEET_PAIR_ON_UP=on`. Tune it with `FLEET_PAIR_PERMISSION_MODE=plan`,
 `FLEET_PAIR_RESUME_LINES`, `FLEET_PAIR_GIT_LINES`, and
 `FLEET_PAIR_MAX_CLAIMS`. The companion launch prompt is deliberately compact so
 large `RESUME.md` files do not hit tmux/CLI argument limits.
@@ -357,7 +362,9 @@ event logging, worktree isolation, and a later mobile/web hive.
 
 Every implementation worker is expected to maintain `<repo>/RESUME.md` as the
 durable takeover record. The file should be updated after each meaningful turn
-and before the worker goes idle with:
+and before the worker goes idle. Keep one concise authoritative current state,
+not an ever-growing diary or multiple competing "current" sections. The generated
+decision ledger outranks RESUME prose for operational choices. Include:
 
 - current objective
 - last verified state, with commands/results
@@ -365,13 +372,17 @@ and before the worker goes idle with:
 - changed files / claims
 - blockers, risks, and open decisions
 - branch/commit and any "do not assume" notes
+- applicable decision IDs and GitHub upstream/push state
 
 Use `fleet init-resume [id]` to scaffold the file for one member, or
 `fleet init-resume` for every manifest child. `fleet handoff` includes this file
 ahead of transcript excerpts, and `fleet doctor` reports managed non-adversary
 workers whose `RESUME.md` is missing, empty, still full of `TODO` placeholders,
-or stale. Tune with `FLEET_RESUME_FILE`, `FLEET_RESUME_CHECK=off`,
-`FLEET_RESUME_TODO_CHECK=off`, and `FLEET_RESUME_STALE_SECS`.
+stale, or over 64 KiB. It also reports GitHub-backed branches with no upstream or
+local commits ahead of upstream. Tune with `FLEET_RESUME_FILE`,
+`FLEET_RESUME_CHECK=off`, `FLEET_RESUME_TODO_CHECK=off`,
+`FLEET_RESUME_STALE_SECS`, `FLEET_RESUME_MAX_BYTES`, and
+`FLEET_GITHUB_SYNC_CHECK=off`.
 
 ## Commands
 
@@ -391,8 +402,8 @@ fleet doctor [--quiet]       # self-check the oversight wire from ground truth
 fleet tokens                 # per-member live context size vs the ceiling (needs a live window)
 
 # lifecycle (tmux)
-fleet up [--no-supervisor] [--no-pairs] [id]
-                                  # start suite + supervisor + provider pairs
+fleet up [--no-supervisor] [--pairs] [id]
+                                  # one writer/repo + supervisor; pairs are opt-in
 fleet down [id]                   # stop the suite / one member
 fleet restart <id>                # restart one member
 fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]
@@ -416,10 +427,12 @@ fleet send <to> "<msg>"      # brief FYI into a member's thread (no reply)
 fleet broadcast "<msg>"      # brief FYI to every member
 fleet supervise              # start (or point you to) the supervisor session
 
-# decision ledger — durable home for decisions waiting on the human
-fleet decision add "<question>" [--for <agent>] [--options "a|b|c"] [--raised-by <who>]
-                             # record an open decision; prints its id (no tmux needed)
-fleet decide <id> "<answer>" # answer it + route the answer back to the waiting agent
+# decision ledger — durable gates + mechanically latched operational choices
+fleet decision add "<question>" [--for <agent>] [--options "a|b|c"] [--authority <who>]
+fleet decide <id> "<answer>"                     # ratify once; contradictory re-answer fails
+fleet decision challenge <id> "<claim>"          # wound confidence, keep operational latch
+fleet decision revoke <id> "<reason>"            # named authority explicitly invalidates
+fleet decisions --current [--for <scope>]         # bounded authoritative takeover view
 
 # remote control (tmux + Claude login)
 fleet remote-control [on|off] [id]   # enable/disable Claude /remote-control on member(s)
@@ -526,26 +539,45 @@ knowledge layer — every decision is a provenance-bearing record.
 fleet decision add "Ship simple USB pairing now, or wait for key rotation?" \
       --for specs --options "ship|wait"      # → prints an id, e.g. d001
 fleet decisions                              # open decisions, oldest-first
-fleet decide d001 "ship it"                  # answer + route it back to 'specs'
+fleet decide d001 "ship it"                  # ratify + route it back to 'specs'
+fleet decisions --current --for specs        # bounded authoritative state
+fleet decision challenge d001 "rotation test regressed" --evidence bench-17
+# latch still says ship; reversal must be explicit:
+fleet decision revoke d001 "bench-17 falsified the assumption"
+# or: fleet decision add "Replacement" --supersedes d001; fleet decide d002 "..."
 ```
 
 - **Storage** is durable under `<workspace>/.fleet/decisions/`: one
   `<id>.json` per decision plus an append-only `log.jsonl` recording every state
   change. Ids are short and sortable (`d001`, `d002`, …).
-- **`fleet decision add`** creates an open decision. `--for <agent>` is who's
-  blocked waiting on the answer; `--raised-by` defaults to the caller. Prints the id.
+- **`fleet decision add`** creates an open `hold` gate. `--for <agent>` is who's
+  blocked; `--scope`, `--authority`, `--evidence`, `--falsifier`, and
+  `--supersedes` make applicability and provenance explicit. Prints the id.
 - **`fleet decisions`** lists OPEN decisions, oldest-first, one per line
   (`#<id> · <age> · [waiting: <agent>] · <question>  (<options>)`). Add `--all`
-  for history, `--json` for machine output, `--watch` for a self-refreshing pane.
-  Works with just `bash` + `jq` — no tmux.
-- **`fleet decide <id> "<answer>"`** marks it answered and routes the answer back
-  to the waiting agent over the normal `fleet send` path, so it unblocks. If no
-  agent is waiting (or tmux is absent), the answer is simply recorded.
+  for history, `--current` for active ratified latches plus open gates, `--for`
+  to scope the generated view, `--max` to bound it, `--json` for machine output,
+  and `--watch` for a self-refreshing pane. No tmux is needed.
+- **`fleet decide`** ratifies once and routes the answer. Repeating the identical
+  answer is idempotent; a different answer is refused rather than overwriting history.
+- **`fleet decision challenge`** appends evidence and changes only epistemic state
+  to `wounded`; operational `hold|go|done` remains latched.
+- **`fleet decision revoke`** is restricted to the record's named authority.
+  Replacement can instead use a new immutable ID with `--supersedes`; the old
+  latch is retired only when its successor is ratified. Actor identity here is
+  local provenance and policy enforcement, not cryptographic authentication.
 
-**`decisions` tmux window.** `fleet up` also spawns a persistent **`decisions`**
-window running `fleet decisions --watch`, so the open gate list is always in
-view. It's gated by `FLEET_DECISIONS_WINDOW` (default **on**; set `off` to skip)
-and made strictly non-fatal — if it can't spawn, `fleet up` continues normally.
+Workers must not set or claim another actor identity to defeat the authority check,
+and must not mint a successor merely to escape a decision. A concrete falsifier is
+recorded as a challenge and escalated to the authority. Explicit newer human
+instruction and independent safety gates still apply. Decision action `done` means
+"the chosen action is done"; it is not evidence that implementation, tests, review,
+commit, or push have completed.
+
+**Optional `decisions` tmux window.** Current decisions are already included in
+`fleet brief` and every worker primer, so no redundant pane runs by default. Set
+`FLEET_DECISIONS_WINDOW=on` to add a persistent window running
+`fleet decisions --current --watch`. It is strictly non-fatal.
 `FLEET_DECISIONS_WATCH_SECS` sets the refresh interval; `FLEET_DECISIONS_WINDOW_ALL=on`
 makes the pane show history too.
 
@@ -560,13 +592,13 @@ after editing it; the primer is applied at launch.)
 ## The supervisor
 
 `fleet up` starts a dedicated **supervisor** window — an agent session primed with
-the role in `skill/SUPERVISOR.md` — alongside the members. By default it also
-starts an opposite-provider backup supervisor lane (`supervisor-codex` when the
-primary is Claude), so the control plane survives Claude usage-credit exhaustion.
-Start or jump to it directly with:
+the role in `skill/SUPERVISOR.md` — alongside the members. One active coordinating
+lane is the default; add an opposite-provider warm standby only when its resilience
+benefit justifies another agent. Start or jump to it directly with:
 
 ```sh
 fleet supervise            # start it (or tell you it's already up)
+fleet supervise --pair     # optionally add a silent opposite-provider standby
 fleet attach supervisor    # drop into it
 ```
 

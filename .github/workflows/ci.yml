@@ -45,4 +45,6 @@ jobs:
         run: shellcheck -S style --exclude=SC1090,SC1091,SC2317,SC2034,SC2030,SC2031,SC2015,SC2018,SC2019,SC2010,SC2126 tests/*.sh
 
       - name: Smoke test
-        run: tests/smoke.sh
+        run: |
+          tests/smoke.sh
+          tests/multi-workspace.sh

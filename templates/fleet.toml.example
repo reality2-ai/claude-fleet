@@ -20,8 +20,8 @@ max_hops     = 6
 # workspace. List them in dependency order (foundational repos first); the tmux
 # windows follow this order, with the supervisor first.
 # `fleet up` starts an opposite-provider companion for each worker by default
-# when that provider CLI is available. Use `fleet up --no-pairs` or
-# FLEET_PAIR_ON_UP=off for single-agent startup.
+# when explicitly requested. Use `fleet up --pairs` or FLEET_PAIR_ON_UP=on to
+# keep persistent opposite-provider standbys; default startup is one writer per repo.
 #
 #   id              stable name (also the tmux window name)
 #   cwd             working dir, relative to the workspace root (or absolute)

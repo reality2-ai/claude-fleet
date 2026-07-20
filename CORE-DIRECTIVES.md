@@ -142,6 +142,14 @@ method. This governs when the loop **stops**.
 - **Tell re-derivation from circling.** Independent re-derivation for confidence
   (different instruments, one answer) is convergence and is good. Re-litigating a settled
   decision, or chasing an undemonstrated caution, is circling.
+- **Separate confidence from command, then latch the command.** A challenge may move a
+  ratified decision from epistemically *survived* to *wounded* without changing its
+  operational `hold|go|done` state. Never overwrite a ratified answer. Course changes
+  require an authority-recorded revocation with evidence or a separately identified,
+  ratified successor. Never impersonate the authority or mint a successor merely to
+  escape the latch. Generated ledger state outranks transcript and handoff prose;
+  explicit newer human instruction and independent safety gates still apply. `done`
+  is an action choice, not proof that implementation or verification finished.
 
 ### 3.12 A clean result and a dead instrument look identical
 A scan, gate, or sweep that reports **nothing found** is only evidence if the instrument
@@ -209,9 +217,12 @@ artifacts) is **hard-denied and escalated to a human**, even under skip-permissi
 ### 4.4 The failsafe substrate — git
 The refutation discipline only compounds if results are durable and auditable:
 - **Commit + push at every verified increment** — local-only work dies with the session.
-  Prefer checkpointing a risky change to the remote over blocking on permission.
+  Prefer checkpointing a risky change to the remote over blocking on permission. Before
+  idle/done, verify the branch has an upstream and no local commits remain ahead; surface
+  a push/gate failure explicitly. This never authorizes force-push or bypassing a gate.
 - **Stage named paths, never `git add -A`** — add-all sweeps in secrets and scratch you
-  won't notice until it's pushed.
+  won't notice until it's pushed. Named paths must still be files you intentionally
+  changed for the current task; never absorb pre-existing user/peer/unrelated dirt.
 - **Branch before committing to a shared line.**
 - **The commit message records *why*** — the problem, the approach, what's verified
   ("survived the 3-lens"). It's the only surviving record of intent mid-bisect.

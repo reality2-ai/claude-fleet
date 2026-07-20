@@ -9,47 +9,95 @@ set -o pipefail
 : "${TOOL_ROOT:?TOOL_ROOT must be set by bin/fleet}"
 
 # --- workspace + state discovery --------------------------------------------
-# A workspace is any directory that holds a `.fleet/` state dir. The CLI finds
-# it via, in order: $FLEET_WORKSPACE, then walking up from $PWD.
+# A workspace is a directory with `.fleet/fleet.toml`. The CLI finds it via
+# $FLEET_WORKSPACE, then walks up from $PWD. A manifest-less legacy `.fleet/`
+# is only a fallback, so stale nested runtime directories cannot shadow a real
+# parent fleet.
 fleet_find_workspace() {
   if [[ -n "${FLEET_WORKSPACE:-}" ]]; then
     printf '%s\n' "$FLEET_WORKSPACE"; return 0
   fi
-  local d="$PWD"
+  local d="$PWD" fallback=""
   while [[ "$d" != "/" ]]; do
-    [[ -d "$d/.fleet" ]] && { printf '%s\n' "$d"; return 0; }
+    if [[ -f "$d/.fleet/fleet.toml" ]]; then printf '%s\n' "$d"; return 0; fi
+    [[ -z "$fallback" && -d "$d/.fleet" ]] && fallback="$d"
     d="$(dirname "$d")"
   done
+  [[ -n "$fallback" ]] && { printf '%s\n' "$fallback"; return 0; }
   return 1
+}
+
+# Stable, readable, path-scoped identity. The checksum prevents same-named
+# workspaces in different parent directories from sharing a tmux server.
+fleet_workspace_identity() {
+  local workspace="${1:-${WORKSPACE:-}}" base slug sum _
+  [[ -n "$workspace" ]] || return 1
+  base="${workspace##*/}"
+  slug="$(printf '%s' "$base" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//; s/-$//' | cut -c1-24)"
+  [[ -n "$slug" ]] || slug="workspace"
+  read -r sum _ < <(printf '%s' "$workspace" | cksum)
+  printf 'fleet-%s-%s\n' "$slug" "$sum"
+}
+
+fleet_configure_identity() {
+  local auto previous
+  auto="$(fleet_workspace_identity "$WORKSPACE")" || return 1
+  FLEET_WORKSPACE_ID="$auto"
+
+  previous="${_FLEET_AUTO_TMUX_SESSION:-}"
+  if [[ -z "${FLEET_TMUX_SESSION:-}" || "${FLEET_TMUX_SESSION:-}" == "$previous" ]]; then
+    FLEET_TMUX_SESSION="$auto"; _FLEET_AUTO_TMUX_SESSION="$auto"
+  fi
+  previous="${_FLEET_AUTO_TMUX_SOCKET:-}"
+  if [[ -z "${FLEET_TMUX_SOCKET:-}" || "${FLEET_TMUX_SOCKET:-}" == "$previous" ]]; then
+    FLEET_TMUX_SOCKET="$auto"; _FLEET_AUTO_TMUX_SOCKET="$auto"
+  fi
+  previous="${_FLEET_AUTO_TMUX_UNIT:-}"
+  if [[ -z "${FLEET_TMUX_UNIT:-}" || "${FLEET_TMUX_UNIT:-}" == "$previous" ]]; then
+    FLEET_TMUX_UNIT="fleet-tmux-$auto"; _FLEET_AUTO_TMUX_UNIT="$FLEET_TMUX_UNIT"
+  fi
+  previous="${_FLEET_AUTO_SERVICE_NAME:-}"
+  if [[ -z "${FLEET_SERVICE_NAME:-}" || "${FLEET_SERVICE_NAME:-}" == "$previous" ]]; then
+    FLEET_SERVICE_NAME="$auto.service"; _FLEET_AUTO_SERVICE_NAME="$FLEET_SERVICE_NAME"
+  fi
+  export FLEET_WORKSPACE_ID FLEET_TMUX_SESSION FLEET_TMUX_SOCKET FLEET_TMUX_UNIT FLEET_SERVICE_NAME
 }
 
 # Resolve workspace + derived dirs into globals. `need_init=1` errors if absent.
 # shellcheck disable=SC2120  # $1 is optional (defaults to 1); most callers pass none
 fleet_load_paths() {
-  local need_init="${1:-1}"
-  if ! WORKSPACE="$(fleet_find_workspace)"; then
+  local need_init="${1:-1}" found
+  if ! found="$(fleet_find_workspace)"; then
     if [[ "$need_init" == "1" ]]; then
       die "no .fleet/ found. Run 'fleet init <workspace>' first, or set FLEET_WORKSPACE."
     fi
     return 1
   fi
+  if ! WORKSPACE="$(cd -P "$found" 2>/dev/null && pwd)"; then
+    [[ "$need_init" == "1" ]] && die "fleet workspace does not exist: $found"
+    return 1
+  fi
+  FLEET_WORKSPACE="$WORKSPACE"
   STATE_DIR="$WORKSPACE/.fleet"
   MANIFEST="$STATE_DIR/fleet.toml"
   RUN_DIR="$STATE_DIR/run"
   CHILDSTATE_DIR="$STATE_DIR/state"
   LOG_FILE="$STATE_DIR/log/fleet.log"
-  export WORKSPACE STATE_DIR MANIFEST RUN_DIR CHILDSTATE_DIR LOG_FILE
+  export FLEET_WORKSPACE WORKSPACE STATE_DIR MANIFEST RUN_DIR CHILDSTATE_DIR LOG_FILE
   # Per-workspace config: source .fleet/env if present — persistent FLEET_* settings
   # for this workspace (e.g. the liveness hardening), so they survive restarts/reboot
   # without relying on the launching shell's environment. It is the user's own file in
-  # their own workspace (trusted). Read at call time, so it overrides call-time-read
-  # FLEET_* vars; it cannot override source-time lib defaults (e.g. FLEET_TMUX_SESSION).
+  # their own workspace (trusted). Read at call time before workspace identity is
+  # finalized, so explicit FLEET_TMUX_* values still override automatic isolation.
   # NB: if/fi (not `&& source`) so an ABSENT env file doesn't make this function return
   # non-zero — under `set -e` that would abort every caller.
   if [[ -f "$STATE_DIR/env" ]]; then
     # shellcheck disable=SC1090
     source "$STATE_DIR/env"
   fi
+  # Do not let a sourced env redirect this invocation after discovery.
+  FLEET_WORKSPACE="$WORKSPACE"
+  fleet_configure_identity
   return 0
 }
 
@@ -285,7 +333,7 @@ fleet_safe_lock() {
   local line=''
   IFS= read -r line <&"${_FLEET_LOCK_R}" 2>/dev/null || line=''
   if [[ "$line" != "LOCKED" ]]; then
-    exec {_FLEET_LOCK_W}>&- 2>/dev/null || true
+    { exec {_FLEET_LOCK_W}>&-; } 2>/dev/null || true
     wait "$_FLEET_LOCK_PID" 2>/dev/null || true
     unset _FLEET_LOCK_W _FLEET_LOCK_R _FLEET_LOCK_PID
     return 1
@@ -296,8 +344,10 @@ fleet_safe_lock() {
 # Release the lock held by fleet_safe_lock (idempotent).
 fleet_safe_unlock() {
   [[ -n "${_FLEET_LOCK_W:-}" ]] || return 0
-  exec {_FLEET_LOCK_W}>&- 2>/dev/null || true    # close holder stdin -> it releases + exits
-  exec {_FLEET_LOCK_R}<&- 2>/dev/null || true
+  # Redirection on a bare `exec` persists in the caller. Keep stderr suppression
+  # on a command group or every later diagnostic in this CLI disappears.
+  { exec {_FLEET_LOCK_W}>&-; } 2>/dev/null || true  # close stdin -> holder exits
+  { exec {_FLEET_LOCK_R}<&-; } 2>/dev/null || true
   wait "${_FLEET_LOCK_PID}" 2>/dev/null || true
   unset _FLEET_LOCK_W _FLEET_LOCK_R _FLEET_LOCK_PID
 }

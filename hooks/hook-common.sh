@@ -30,15 +30,11 @@ if [[ -z "$PROVIDER" ]]; then
   if [[ -n "${CODEX_HOME:-}" || "$HOOK_JSON" == *'"thread_id"'* ]]; then PROVIDER="codex"; else PROVIDER="claude"; fi
 fi
 
-# locate the workspace (.fleet) by walking up from the session cwd; if none,
-# this session isn't under a fleet workspace — do nothing.
-FLEET_WORKSPACE=""
-_d="$CWD"
-while [[ "$_d" != "/" ]]; do
-  [[ -d "$_d/.fleet" ]] && { FLEET_WORKSPACE="$_d"; break; }
-  _d="$(dirname "$_d")"
-done
+# Use the CLI's manifest-aware discovery. This skips stale nested `.fleet/`
+# runtime directories and selects the same parent workspace as every command.
+FLEET_WORKSPACE="$(cd "$CWD" 2>/dev/null && unset FLEET_WORKSPACE && fleet_find_workspace)"
 [[ -z "$FLEET_WORKSPACE" ]] && exit 0
+export FLEET_WORKSPACE
 fleet_load_paths 0 || exit 0
 # shellcheck source=../lib/registry.sh
 source "$TOOL_ROOT/lib/registry.sh" 2>/dev/null || exit 0

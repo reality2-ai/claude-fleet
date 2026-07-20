@@ -25,7 +25,33 @@ WS2="$TMP/ws2"; mkdir -p "$WS2/.fleet/state"
 ( export FLEET_WORKSPACE="$WS2"; fleet_load_paths
   [[ -z "${FLEET_SENTINEL_ABC:-}" ]] ) && ok "absent .fleet/env is a clean no-op" || no "absent env errored"
 
-section "2. window_activity wiring into fleet_last_activity"
+section "2. workspace identity isolates concurrent fleets"
+identity_for() {
+  (
+    unset FLEET_TMUX_SESSION FLEET_TMUX_SOCKET FLEET_TMUX_UNIT FLEET_SERVICE_NAME
+    unset _FLEET_AUTO_TMUX_SESSION _FLEET_AUTO_TMUX_SOCKET _FLEET_AUTO_TMUX_UNIT _FLEET_AUTO_SERVICE_NAME
+    export FLEET_WORKSPACE="$1"
+    fleet_load_paths
+    printf '%s|%s|%s|%s\n' "$FLEET_WORKSPACE_ID" "$FLEET_TMUX_SOCKET" "$FLEET_TMUX_SESSION" "$FLEET_SERVICE_NAME"
+  )
+}
+WA="$TMP/a/project"; WB="$TMP/b/project"
+mkdir -p "$WA/.fleet" "$WB/.fleet" "$WA/nested/.fleet"
+: > "$WA/.fleet/fleet.toml"; : > "$WB/.fleet/fleet.toml"
+IDA="$(identity_for "$WA")"; IDB="$(identity_for "$WB")"; IDA2="$(identity_for "$WA")"
+[[ "$IDA" != "$IDB" ]] && ok "same-named workspaces get different fleet identities" || no "workspace identities collided"
+[[ "$IDA" == "$IDA2" ]] && ok "one workspace keeps a stable fleet identity" || no "workspace identity was unstable"
+[[ "${IDA%%|*}" =~ ^fleet-[a-z0-9-]+$ ]] && ok "derived identity is tmux/systemd safe" || no "unsafe derived identity: $IDA"
+NESTED="$(cd "$WA/nested" && unset FLEET_WORKSPACE && fleet_find_workspace)"
+[[ "$NESTED" == "$WA" ]] && ok "manifest-less nested .fleet does not shadow its parent fleet" || no "nested discovery chose '$NESTED'"
+(
+  unset _FLEET_AUTO_TMUX_SESSION _FLEET_AUTO_TMUX_SOCKET _FLEET_AUTO_TMUX_UNIT _FLEET_AUTO_SERVICE_NAME
+  export FLEET_WORKSPACE="$WA" FLEET_TMUX_SESSION=custom-session FLEET_TMUX_SOCKET=custom-socket
+  fleet_load_paths
+  [[ "$FLEET_TMUX_SESSION" == custom-session && "$FLEET_TMUX_SOCKET" == custom-socket ]]
+) && ok "explicit tmux identity overrides are preserved" || no "explicit tmux identity was replaced"
+
+section "3. window_activity wiring into fleet_last_activity"
 # shellcheck disable=SC1091
 for lib in manifest registry provider tmux comms transport faculty; do source "$ROOT/lib/$lib.sh"; done
 export WORKSPACE="$TMP/ws3" STATE_DIR="$TMP/ws3/.fleet"

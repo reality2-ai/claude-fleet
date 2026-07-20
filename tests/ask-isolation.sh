@@ -19,6 +19,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export TOOL_ROOT="$ROOT"
 
 pass=0; fail=0
 _grn=$'\033[32m'; _red=$'\033[31m'; _rst=$'\033[0m'
@@ -128,7 +129,6 @@ reject_case "codex/nonexistent cwd"  codex  "$XLOG" "$NX"
 # ============================================================================
 section "B. resumed fork cannot mutate the writer's live checkout (cwd isolation)"
 # ----------------------------------------------------------------------------
-export TOOL_ROOT="$ROOT"
 export FLEET_TMUX_USER_SCOPE=off
 # Hermetic provider choice: never inherit the developer's SUP_PROVIDER or global
 # fleet default and accidentally run a real/different provider than the Claude stub.

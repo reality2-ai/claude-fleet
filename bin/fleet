@@ -73,16 +73,18 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet install-service         install a per-user systemd unit so the fleet
                                   auto-starts on boot + resumes  [systemd; needs linger]
   fleet status                  table of all known sessions (live/idle/dead, task, claims)
+                                  (each workspace gets an isolated fleet automatically)
+  fleet identity                show this workspace's fleet, socket, session, and service ids
   fleet brief                   triage: what needs you, who's waiting at their prompt, who's working
   fleet conflicts               files being edited by more than one live session
   fleet tasks [--json]          read the shared task ledger a lane is asked to cite into
   fleet logs [id]               tail the aggregate event log, or summarise one child
 
-  fleet up [--no-supervisor] [--no-pairs] [id]
-                                  start the suite + supervisor in tmux; by
-                                  default also starts opposite-provider read-only twins
-                                  when the opposite CLI exists  [needs tmux]
-  fleet supervise               start (or point you to) the supervisor session
+  fleet up [--no-supervisor] [--pairs] [id]
+                                  start one writer per repo + one supervisor;
+                                  --pairs opts into persistent read-only twins [needs tmux]
+  fleet supervise [--pair]      start (or point you to) the supervisor session;
+                                  --pair adds an opposite-provider warm standby
   fleet order                   arrange tmux windows: supervisor, then manifest order
   fleet down [id]               stop the suite (or one child), marked intentional
   fleet restart <id>            force-restart one child (honours intensity breaker)
@@ -120,12 +122,13 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet broadcast --file <path> same, body read out of band (--file - reads stdin)
   fleet inbox [id]              read a mailbox (full answers + audit trail)
 
-  fleet decision add "<question>" [--for <agent>] [--options "a|b|c"] [--raised-by <who>]
+  fleet decision add "<question>" [--for <agent>] [--options "a|b|c"] [--authority <who>]
                                   record a decision waiting on you; prints its id
-  fleet decisions [--all] [--json] [--watch]
-                                  list OPEN decisions oldest-first (--all: history;
-                                  --watch: self-refreshing pane view). No tmux needed.
-  fleet decide <id> "<answer>"  answer a decision + route it back to the waiting agent
+  fleet decision challenge <id> "<claim>"  wound confidence without changing the latch
+  fleet decision revoke <id> "<reason>"    authority-only explicit invalidation
+  fleet decide <id> "<answer>"             ratify once; a different re-answer is refused
+  fleet decisions [--all|--current] [--for <scope>] [--max N] [--json] [--watch]
+                                  list open gates, history, or bounded active latches
 
   fleet help | version
 EOF
@@ -392,6 +395,13 @@ _render_hooks_json() {
 }
 
 # ----------------------------------------------------------------------------
+cmd_identity() {
+  fleet_load_paths
+  printf 'workspace=%s\nid=%s\nsocket=%s\nsession=%s\nservice=%s\n' \
+    "$WORKSPACE" "$FLEET_WORKSPACE_ID" "$FLEET_TMUX_SOCKET" \
+    "$FLEET_TMUX_SESSION" "$FLEET_SERVICE_NAME"
+}
+
 cmd_status() {
   fleet_load_paths
   [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
@@ -498,30 +508,7 @@ cmd_tasks() {
   fleet_load_paths
   local json=0
   [[ "${1:-}" == "--json" ]] && json=1
-
-  # Resolve against the .fleet that actually HOLDS THE MANIFEST, not merely the first
-  # .fleet on the way up. fleet_load_paths stops at any .fleet directory, and
-  # claude-fleet carries one with no fleet.toml in it — so the SUPERVISOR, running from
-  # claude-fleet, resolved to a different STATE_DIR than every worker repo, and would
-  # have read a permanently-empty ledger while each lane read the real one. Measured
-  # 2026-07-20: root/r2-core/r2-android all resolved to R2/.fleet, claude-fleet did not.
-  #
-  # Two lanes reading different ledgers under one name is worse than no command at all:
-  # the cite still resolves, and it resolves to the wrong document. That is the
-  # stale-pointer-that-RESOLVES class from COMMS.md §10, arriving through a path lookup.
-  #
-  # NOTE the general walk-up defect is NOT fixed here — see fleet task #123. Changing
-  # fleet_load_paths globally at this point would be an unmeasured change to every
-  # command's path resolution, which is precisely the move this fleet spent two days
-  # refusing. Scoped fix now, tracked defect for the real one.
-  local ledger_dir="" _d="$PWD"
-  while [[ -n "$_d" ]]; do
-    [[ -f "$_d/.fleet/fleet.toml" ]] && { ledger_dir="$_d/.fleet"; break; }
-    [[ "$_d" == "/" ]] && break
-    _d="${_d%/*}"; [[ -z "$_d" ]] && _d="/"
-  done
-  [[ -n "$ledger_dir" ]] || ledger_dir="$STATE_DIR"
-  local f="$ledger_dir/tasks.json"
+  local f="$STATE_DIR/tasks.json"
 
   if [[ ! -f "$f" ]]; then
     # NOT an empty ledger — an ABSENT export. Say which, on stderr, and fail.
@@ -656,7 +643,20 @@ cmd_brief() {
     printf '\n%s● WORKING%s  (no action needed)\n' "$c_grn" "$c_reset"
     for p in "${working[@]}"; do printf '   • %s\n' "$p"; done
   fi
-  (( ${#attention[@]} || ${#confs[@]} || ${#waiting[@]} )) || printf '\n  All members are working or quiet — nothing waiting on you.\n'
+  # One bounded control-plane view replaces a permanently running decisions
+  # pane. This is generated from records, never copied from agent prose.
+  local decision_json decision_count=0 decision_open_count=0
+  decision_json="$(_fleet_decisions_current_json "" "${FLEET_BRIEF_DECISIONS_MAX:-8}" 2>/dev/null || printf '[]')"
+  decision_count="$(printf '%s' "$decision_json" | jq -r 'length' 2>/dev/null || echo 0)"
+  [[ "$decision_count" =~ ^[0-9]+$ ]] || decision_count=0
+  decision_open_count="$(printf '%s' "$decision_json" | jq -r '[.[] | select((.state // .latch_state // .status // "open")=="open")] | length' 2>/dev/null || echo 0)"
+  [[ "$decision_open_count" =~ ^[0-9]+$ ]] || decision_open_count=0
+  if (( decision_count > 0 )); then
+    printf '\n%s◆ AUTHORITATIVE DECISIONS%s  (bounded current view)\n' "$c_bold" "$c_reset"
+    _fleet_decisions_current_print "" "${FLEET_BRIEF_DECISIONS_MAX:-8}" 0 | sed 's/^/   /'
+  fi
+  (( ${#attention[@]} || ${#confs[@]} || ${#waiting[@]} || decision_open_count )) \
+    || printf '\n  All members are working or quiet — nothing waiting on you.\n'
 }
 
 # ----------------------------------------------------------------------------
@@ -719,6 +719,8 @@ fleet_start_supervisor() {
   # always apply the supervisor role prompt — including on resume (so doc updates
   # take effect when recycled); --append-system-prompt composes with --resume.
   local primer; primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
+  primer+=$'\n\n=== Current authoritative decisions (bounded) ===\n'
+  primer+="$(_fleet_decisions_current_print "" "${FLEET_SUPERVISOR_DECISIONS_MAX:-12}" 0 2>/dev/null || printf '(decision ledger unavailable)')"
   local sid=""; [[ -f "$RUN_DIR/supervisor.session" ]] && sid="$(<"$RUN_DIR/supervisor.session")"
   local prompt=""
   if [[ -n "$sid" ]]; then
@@ -747,6 +749,8 @@ fleet_start_supervisor_companion() {
   fleet_tmux_ensure_session
   local primer prompt sid exitfile
   primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
+  primer+=$'\n\n=== Current authoritative decisions (bounded) ===\n'
+  primer+="$(_fleet_decisions_current_print "" "${FLEET_SUPERVISOR_DECISIONS_MAX:-12}" 0 2>/dev/null || printf '(decision ledger unavailable)')"
   prompt="You are the $provider backup supervisor lane for this fleet — a SILENT warm standby, NOT a second narrator. The primary 'supervisor' does the active coordination; you receive the same fleet traffic it sends, but do NOT restate, summarize, re-relay, or echo that traffic — repeating the primary's own messages back is noise, not signal. Stay warm and ready. Speak ONLY when you hold INDEPENDENT signal the primary does not: (a) fleet GROUND TRUTH (fleet status/doctor, git ls-remote, RESUME.md) DIVERGES from what the primary reported — then surface the divergence WITH the evidence; (b) you catch provider exhaustion, a file conflict, or a RESUME-health problem the primary appears to have missed; (c) you are explicitly asked (fleet ask / pair-ask) or promoted on failover. If the Claude supervisor is exhausted or unavailable, THEN take over and coordinate fully from ground truth using fleet commands. Otherwise stay quiet. Never assume private Claude transcript state; verify from the repo and fleet commands."
   local _sf; sid=""; _sf="$(fleet_run_path "$id" .session)" && [[ -f "$_sf" ]] && sid="$(<"$_sf")"
   [[ -n "$sid" && -n "${FLEET_RESUME_NUDGE-carry on}" ]] && prompt="${FLEET_RESUME_NUDGE-carry on}"
@@ -761,6 +765,12 @@ fleet_start_supervisor_companion() {
 }
 
 cmd_supervise() {
+  local pair=0
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --pair|--pairs) pair=1; shift ;;
+    -h|--help) die "usage: fleet supervise [--pair]" ;;
+    *) die "unknown supervise option '$1'" ;;
+  esac; done
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
   fleet_has_tmux || die "tmux required for the supervisor session. Run: sudo apt install tmux"
   if fleet_tmux_has_window supervisor; then
@@ -768,19 +778,21 @@ cmd_supervise() {
   else
     fleet_start_supervisor; info "supervisor session started."
   fi
-  if [[ "${FLEET_SUPERVISOR_PAIR:-on}" != "off" && "${FLEET_PAIR_ON_UP:-on}" != "off" ]]; then
+  if [[ "$pair" == 1 || "${FLEET_SUPERVISOR_PAIR:-off}" == on ]]; then
     fleet_start_supervisor_companion
   fi
   info "attach with:  fleet attach supervisor"
 }
 
 cmd_up() {
-  local no_sup=0 no_pairs=0
+  local no_sup=0 start_pairs=0
+  [[ "${FLEET_PAIR_ON_UP:-off}" == on ]] && start_pairs=1
   while [[ $# -gt 0 ]]; do
     case "${1:-}" in
       --no-supervisor) no_sup=1; shift ;;
-      --no-pairs|--single|--single-agent) no_pairs=1; shift ;;
-      -h|--help) die "usage: fleet up [--no-supervisor] [--no-pairs] [id]" ;;
+      --pairs|--with-pairs) start_pairs=1; shift ;;
+      --no-pairs|--single|--single-agent) start_pairs=0; shift ;;
+      -h|--help) die "usage: fleet up [--no-supervisor] [--pairs] [id]" ;;
       *) break ;;
     esac
   done
@@ -803,20 +815,21 @@ cmd_up() {
     fi
     faculty_mount "$id"; started=$(( started + 1 ))
     info "up: started '$id'"
-    if [[ "${FLEET_PAIR_ON_UP:-on}" != "off" && "$no_pairs" == 0 ]]; then
+    if [[ "$start_pairs" == 1 ]]; then
       _fleet_start_companion "$id" "" "" up
     fi
   done
   (( started == 0 )) && warn "nothing started (check id / manifest)"
   if [[ -z "$only" && "$no_sup" == 0 ]]; then
     fleet_start_supervisor && info "up: started 'supervisor'"
-    if [[ "${FLEET_SUPERVISOR_PAIR:-on}" != "off" && "${FLEET_PAIR_ON_UP:-on}" != "off" && "$no_pairs" == 0 ]]; then
+    if [[ "$start_pairs" == 1 && "${FLEET_SUPERVISOR_PAIR:-on}" != off ]]; then
       fleet_start_supervisor_companion
     fi
   fi
-  # Persistent decision-ledger pane. Gated by FLEET_DECISIONS_WINDOW (default on)
+  # Optional decision-ledger pane. Current state is already in fleet brief and
+  # every worker primer, so a permanent pane is off by default.
   # and made strictly non-fatal: wrapped so a failure here can never break startup.
-  if [[ "${FLEET_DECISIONS_WINDOW:-on}" != "off" ]]; then
+  if [[ "${FLEET_DECISIONS_WINDOW:-off}" == on ]]; then
     if ( fleet_start_decisions_window ) 2>/dev/null; then
       fleet_tmux_has_window decisions 2>/dev/null && info "up: started 'decisions' window"
     else
@@ -912,20 +925,20 @@ cmd_install_service() {
   [[ -f "$tmpl" ]] || die "missing template: $tmpl"
   local bin="$TOOL_ROOT/bin/fleet"
   local dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-  local unit="$dir/fleet.service"
+  local unit="$dir/$FLEET_SERVICE_NAME"
   mkdir -p "$dir"
   sed -e "s|__WORKSPACE__|$WORKSPACE|g" -e "s|__FLEET_BIN__|$bin|g" "$tmpl" > "$unit"
   systemctl --user daemon-reload 2>/dev/null || true
-  systemctl --user enable fleet.service >/dev/null 2>&1 || warn "could not enable fleet.service"
+  systemctl --user enable "$FLEET_SERVICE_NAME" >/dev/null 2>&1 || warn "could not enable $FLEET_SERVICE_NAME"
   info "installed user service: $unit"
   info "  workspace: $WORKSPACE"
   if [[ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != "yes" ]]; then
     warn "lingering is OFF — the service won't start until you log in, and the fleet"
     warn "won't survive logout. Enable it once with:  loginctl enable-linger $USER"
   fi
-  info "start now:     systemctl --user start fleet.service"
-  info "stop:          systemctl --user stop fleet.service    (runs 'fleet down')"
-  info "disable boot:  systemctl --user disable fleet.service"
+  info "start now:     systemctl --user start $FLEET_SERVICE_NAME"
+  info "stop:          systemctl --user stop $FLEET_SERVICE_NAME    (runs 'fleet down')"
+  info "disable boot:  systemctl --user disable $FLEET_SERVICE_NAME"
 }
 
 cmd_restart() {
@@ -1116,7 +1129,7 @@ _fleet_limited_lines() {
 
 _fleet_member_claims() {
   local id="$1"
-  fleet_state_get "$id" '.claims[]?' "" 2>/dev/null | _fleet_limited_lines "${FLEET_HANDOFF_MAX_CLAIMS:-80}" || true
+  fleet_state_get "$id" '.claims[]?' "" 2>/dev/null | _fleet_limited_lines "${FLEET_HANDOFF_MAX_CLAIMS:-20}" || true
 }
 
 fleet_resume_filename() { printf '%s\n' "${FLEET_RESUME_FILE:-RESUME.md}"; }
@@ -1127,12 +1140,14 @@ _fleet_resume_path() {
 }
 
 _fleet_resume_excerpt() {
-  local cwd="$1" max="${2:-${FLEET_RESUME_LINES:-220}}" f
+  local cwd="$1" max="${2:-${FLEET_RESUME_LINES:-60}}" bytes="${FLEET_RESUME_EXCERPT_BYTES:-6000}" f
   f="$(_fleet_resume_path "$cwd")"
   [[ -f "$f" ]] || return 0
-  [[ "$max" =~ ^[0-9]+$ ]] || max=220
+  [[ "$max" =~ ^[0-9]+$ ]] || max=60
+  [[ "$bytes" =~ ^[0-9]+$ ]] || bytes=6000
   (( max <= 0 )) && return 0
-  sed -n "1,${max}p" "$f" 2>/dev/null || true
+  (( bytes > 0 )) || return 0
+  sed -n "1,${max}p" "$f" 2>/dev/null | head -c "$bytes" || true
 }
 
 _fleet_resume_template() {
@@ -1145,6 +1160,10 @@ Last updated: TODO (UTC)
 ## Current Objective
 ${task:-TODO}
 
+## Authoritative Current State
+- Decision latch IDs governing this work: TODO (or "none").
+- One current interpretation only; move superseded narrative out of this file.
+
 ## Last Verified State
 - TODO: what was checked against ground truth, with command/output summary.
 
@@ -1156,6 +1175,9 @@ ${task:-TODO}
 
 ## Verification
 - TODO: tests/builds/checks run, exact commands, and result.
+
+## GitHub Sync
+- TODO: branch, upstream, pushed commit, and ahead=0 check (or exact push blocker).
 
 ## Blockers / Risks
 - TODO: decisions needed, known risks, flaky checks, unresolved questions.
@@ -1170,16 +1192,45 @@ EOF
 _fleet_resume_contract() {
   local fn; fn="$(fleet_resume_filename)"
   cat <<EOF
-Maintain a repo-local $fn as the durable handoff record for this worker. Update it
-after each meaningful turn and before going idle with enough detail that another
-agent can take over without your private transcript: current objective, last
-verified state, next actions, changed files, verification commands/results,
-blockers/risks, branch/commit, and any "do not assume" notes.
+Keep repo-local $fn as one concise current snapshot: objective; verified facts;
+next action; task-owned changes; checks; blockers; decision IDs; branch/upstream/
+push. Update after meaningful work and before idle. No diary or competing current
+sections. Ledger wins conflicts. Never hide unpushed commits.
 EOF
 }
 
+_fleet_git_sync_problem() {
+  local id="$1" cwd="$2" origin upstream ahead branch
+  [[ "${FLEET_GITHUB_SYNC_CHECK:-on}" == off ]] && return 0
+  git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  origin="$(git -C "$cwd" remote get-url origin 2>/dev/null || true)"
+  if [[ -z "$origin" ]]; then
+    printf '%s: git repo has no origin remote; verified work has no GitHub recovery target\n' "$id"
+    return 0
+  fi
+  # This requirement is specifically for GitHub-backed repos. Leave other remote
+  # schemes to workspace policy rather than mislabelling them GitHub.
+  [[ "$origin" == *github.com* ]] || return 0
+  branch="$(git -C "$cwd" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  if [[ -z "$branch" ]]; then
+    printf '%s: git HEAD is detached; cannot keep a branch synchronized with GitHub\n' "$id"
+    return 0
+  fi
+  upstream="$(git -C "$cwd" rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)"
+  if [[ -z "$upstream" ]]; then
+    printf '%s: branch %s has no upstream; push with -u so GitHub synchronization is checkable\n' "$id" "$branch"
+    return 0
+  fi
+  ahead="$(git -C "$cwd" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+  [[ "$ahead" =~ ^[0-9]+$ ]] || ahead=0
+  if (( ahead > 0 )); then
+    printf '%s: branch %s is %s commit(s) ahead of %s; non-force-push verified increments before idle/done\n' \
+      "$id" "$branch" "$ahead" "$upstream"
+  fi
+}
+
 _fleet_resume_status_problem() {
-  local id="$1" cwd="$2" role f mt act delta stale
+  local id="$1" cwd="$2" role f mt act delta stale bytes max_bytes
   [[ "${FLEET_RESUME_CHECK:-on}" == "off" ]] && return 0
   fleet_is_supervisor_id "$id" && return 0
   role="$(fleet_state_get "$id" '.role' "")"
@@ -1192,6 +1243,15 @@ _fleet_resume_status_problem() {
   fi
   if [[ ! -s "$f" ]]; then
     printf '%s: %s is empty\n' "$id" "$(fleet_resume_filename)"
+    return 0
+  fi
+  max_bytes="${FLEET_RESUME_MAX_BYTES:-65536}"
+  [[ "$max_bytes" =~ ^[0-9]+$ ]] || max_bytes=65536
+  bytes="$(wc -c < "$f" 2>/dev/null || echo 0)"; bytes="${bytes//[[:space:]]/}"
+  [[ "$bytes" =~ ^[0-9]+$ ]] || bytes=0
+  if (( max_bytes > 0 && bytes > max_bytes )); then
+    printf '%s: %s is %s bytes (> %s); compact it to one authoritative current state and archive history elsewhere\n' \
+      "$id" "$(fleet_resume_filename)" "$bytes" "$max_bytes"
     return 0
   fi
   if [[ "${FLEET_RESUME_TODO_CHECK:-on}" != "off" ]] && grep -qE '(^|[^[:alnum:]_])TODO([^[:alnum:]_]|$)' "$f" 2>/dev/null; then
@@ -1212,7 +1272,7 @@ _fleet_resume_status_problem() {
 }
 
 _fleet_transcript_excerpt() {
-  local id="$1" max="${2:-24}" cwd sid provider tf out
+  local id="$1" max="${2:-24}" cwd sid provider tf out bytes="${FLEET_TRANSCRIPT_EXCERPT_BYTES:-6000}"
   cwd="$(fleet_state_get "$id" '.cwd' "")"
   sid="$(fleet_state_get "$id" '.session_id' "")"
   provider="$(_fleet_id_provider "$id")"
@@ -1234,7 +1294,8 @@ _fleet_transcript_excerpt() {
     | sed 's/[[:space:]][[:space:]]*/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//' \
     | awk 'NF' \
     | tail -n "$max" || true)"
-  printf '%s\n' "$out"
+  [[ "$bytes" =~ ^[0-9]+$ ]] || bytes=6000
+  (( bytes > 0 )) && printf '%s\n' "$out" | head -c "$bytes" || true
 }
 
 _fleet_git_context() {
@@ -1244,13 +1305,13 @@ _fleet_git_context() {
     return 0
   fi
   branch="$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  status="$(git -C "$cwd" status --short 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
+  status="$(git -C "$cwd" status --short 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-40}" || true)"
   if [[ -n "$ref" ]]; then
-    stat="$(git -C "$cwd" diff --stat "$ref" -- 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
-    names="$(git -C "$cwd" diff --name-only "$ref" -- 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
+    stat="$(git -C "$cwd" diff --stat "$ref" -- 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-40}" || true)"
+    names="$(git -C "$cwd" diff --name-only "$ref" -- 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-40}" || true)"
   else
-    stat="$(git -C "$cwd" diff --stat 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
-    names="$(git -C "$cwd" diff --name-only 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-120}" || true)"
+    stat="$(git -C "$cwd" diff --stat 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-40}" || true)"
+    names="$(git -C "$cwd" diff --name-only 2>/dev/null | head -n "${FLEET_HANDOFF_GIT_LINES:-40}" || true)"
   fi
   printf 'branch: %s\n' "${branch:-unknown}"
   printf 'status --short:\n%s\n' "${status:-  (clean or unavailable)}"
@@ -1260,13 +1321,14 @@ _fleet_git_context() {
 
 _fleet_handoff_prompt() {
   local from="$1" to="$2" source_provider="$3" target_provider="$4" task_override="$5"
-  local cwd task claims excerpt gitctx resume resume_path
+  local cwd task claims excerpt gitctx resume resume_path decision_ctx
   cwd="$(_fleet_id_cwd "$from")"
   task="$(fleet_state_get "$from" '.current_task' "")"
   [[ -n "$task_override" ]] && task="$task_override"
   claims="$(_fleet_member_claims "$from")"
   resume="$(_fleet_resume_excerpt "$cwd")"
   resume_path="$(_fleet_resume_path "$cwd")"
+  decision_ctx="$(_fleet_decisions_current_print "$from" "${FLEET_HANDOFF_DECISIONS_MAX:-12}" 0 2>/dev/null || true)"
   excerpt="$(_fleet_transcript_excerpt "$from" "${FLEET_HANDOFF_EXCERPT_LINES:-28}")"
   gitctx="$(_fleet_git_context "$cwd")"
   cat <<EOF
@@ -1277,13 +1339,13 @@ conversation state directly. Treat this packet as orientation, then verify
 against ground truth in the working tree before acting.
 
 Takeover rules:
-- You are the sole writer for this repo after this handoff. Do not assume the
-  source member is still active.
-- First inspect the repo state yourself: run git status and read the relevant files.
-- Continue the source member's current task if it is still valid.
-- Preserve any useful progress; do not assume the transcript excerpt is complete.
-- If the handoff is ambiguous, report the smallest concrete question to the supervisor.
-- Keep normal fleet etiquette: ask the owning peer for repo-specific context when needed.
+- You are sole writer now. Verify git/files/tests; packet is orientation, not truth.
+- Preserve valid progress. Continue task only if ground truth and latches support it.
+- Ledger beats RESUME/transcript. Challenge does not reverse RATIFIED action;
+  authority revocation/successor required. Never impersonate authority.
+- Newer explicit human instruction and safety gates still apply.
+- done is an action, not proof of tests/review/commit/push.
+- Ambiguous? Send supervisor one smallest evidence-backed question.
 
 Source member: $from
 Source provider: $source_provider
@@ -1291,6 +1353,9 @@ Target provider: $target_provider
 Working directory: $cwd
 Current task:
 ${task:-  (none recorded)}
+
+Current authoritative decisions (bounded):
+${decision_ctx:-  (no active latches or open gates)}
 
 Repo-local takeover state ($resume_path):
 ${resume:-  (missing or empty; treat this as a handoff-quality problem and reconstruct from git/fleet state)}
@@ -1319,22 +1384,14 @@ _fleet_refute_prompt() {
   excerpt="$(_fleet_transcript_excerpt "$target" "${FLEET_REFUTE_EXCERPT_LINES:-20}")"
   gitctx="$(_fleet_git_context "$cwd" "$diff_ref")"
   cat <<EOF
-You are "$reviewer", an INDEPENDENT cross-model adversarial reviewer.
-
-Target member: $target
-Target provider: $target_provider
-Your provider: $reviewer_provider
-Working directory: $cwd
+Role: "$reviewer", independent read-only refuter.
+Target: $target ($target_provider). You: $reviewer_provider. Repo: $cwd.
 Lens: ${lens:-correctness, security, edge cases, regressions, and missing tests}
 
-Your job is REFUTATION, not approval. Do not edit files, commit, flash hardware,
-or take over implementation. Read the live code and git state, then try to find
-concrete ways the target's work is wrong, incomplete, insecure, or insufficiently
-tested. Prefer a short list of real, reproducible findings over speculation.
-
-For each finding, report: severity, evidence with file paths, reproduction or
-failure scenario, and a one-line mitigation. If a class is genuinely sound, say
-so plainly and name what evidence supports that.
+Never edit, commit, flash, or take over. Verify live code/git. Seek concrete
+counterexamples, not approval or speculative lists. Each finding: severity; path;
+reproduction/failure; smallest fix. If none survives, name checks run and strongest
+untested attack.
 
 Claim or task to attack:
 $claim_text
@@ -1360,33 +1417,14 @@ _fleet_companion_prompt() {
   resume_path="$(_fleet_resume_path "$cwd")"
   gitctx="$(FLEET_HANDOFF_GIT_LINES="${FLEET_PAIR_GIT_LINES:-8}" _fleet_git_context "$cwd")"
   cat <<EOF
-You are "$companion", a $companion_provider ADVERSARIAL PAIR PROGRAMMER and
-FAIL-OVER STANDBY for "$base" ($base_provider).
+Role: "$companion", $companion_provider read-only refuter/standby for "$base"
+($base_provider writer). Repo: $cwd.
 
-You work in the SAME repo as "$base": $cwd.
-
-Mission:
-- Your primary job is to question "$base": challenge assumptions, look for
-  counterexamples, attack test gaps, security risks, edge cases, and weak
-  architectural choices.
-- Pair actively, but stay read-only while "$base" is the writer. Do not edit
-  files, commit, reformat, apply patches, or otherwise modify the working tree.
-- Treat "$base" as the sole writer for this repo until an explicit fleet handoff
-  promotes you to takeover writer.
-- Stay fail-over ready: keep enough situational awareness to take over cleanly if
-  "$base" hits a hard provider limit, but do not take over on your own.
-
-Operating protocol:
-- Start with: git status, read $resume_path, inspect relevant changed files.
-- Use fleet ask/send for coordination:
-    fleet ask $base "specific question"
-    fleet send $base "brief status / finding"
-- If you find a problem, report concrete evidence: file path, failure mode,
-  severity, and the smallest fix.
-- If changes are needed, describe the exact patch or test for "$base" to apply.
-- Watch $resume_path and ask "$base" to update it if takeover state is missing,
-  stale, or misleading.
-- If a handoff promotes you, re-check git status and $resume_path before writing.
+Never edit, commit, reformat, or take over until explicit handoff. Check git,
+$resume_path, changed code, tests, security and edge cases. Send only evidenced
+findings: severity, path, failure, smallest patch/test. Stay takeover-ready; do not
+self-promote. Commands: fleet ask $base "question"; fleet send $base "finding".
+After promotion, re-check git and RESUME before writing.
 
 Base member: $base
 Base provider: $base_provider
@@ -2044,7 +2082,7 @@ cmd_doctor() {
   for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] || continue; seen["$id"]=1; ids+=("$id"); done
   while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen["$id"]=1; ids+=("$id"); }; done < <(fleet_state_ids)
   local -A MAN=(); for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && MAN["$id"]=1; done
-  local -A RESUME_CHECKED=()
+  local -A RESUME_CHECKED=() GIT_SYNC_CHECKED=()
 
   # --- hook drift: deployed .git/hooks/pre-push vs source-of-truth -----------
   # THE check that would have caught this class. The git hooks were hand-copied once and
@@ -2150,6 +2188,12 @@ cmd_doctor() {
         [[ -n "$rel" ]] && { cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"; }
       fi
       if [[ -n "$cwd" && "$cwd" != "null" ]]; then
+        if [[ -z "${GIT_SYNC_CHECKED[$cwd]:-}" ]]; then
+          GIT_SYNC_CHECKED["$cwd"]=1
+          local git_sync_problem
+          git_sync_problem="$(_fleet_git_sync_problem "$id" "$cwd")"
+          [[ -n "$git_sync_problem" ]] && problems+=("$git_sync_problem")
+        fi
         role="$(fleet_state_get "$id" '.role' "")"
         if [[ "$id" != "supervisor" && "$role" != "adversary" ]]; then
           resume_key="$cwd"
@@ -2255,6 +2299,8 @@ _fleet_known_recipient() {  # is <id> a lane we could plausibly reach?
   local f
   fleet_tmux_has_window "$to" && return 0                        # live or stale window
   [[ -n "$(fleet_child_get "$to" cwd "")" ]] && return 0         # manifest member
+  f="$(fleet_state_path "$to")" 2>/dev/null || f=""
+  [[ -n "$f" && -f "$f" ]] && return 0                           # known ad-hoc/retired lane
   f="$(fleet_inbox_file "$to")" 2>/dev/null || return 1
   [[ -n "$f" && -f "$f" ]] && return 0                           # retired member, has mail history
   return 1
@@ -2550,6 +2596,7 @@ main() {
       else fleet_install_commands "${1:-$PWD}"; fi ;;
     install-git-hooks) cmd_install_git_hooks "$@" ;;
     install-service) cmd_install_service "$@" ;;
+    identity|id) cmd_identity "$@" ;;
     status|ls) cmd_status "$@" ;;
     tokens|load) cmd_tokens "$@" ;;
     compact)   cmd_compact "$@" ;;
@@ -2583,7 +2630,10 @@ main() {
     decision)
       case "${1:-}" in
         add|"") shift || true; cmd_decision_add "$@" ;;
-        *) die "usage: fleet decision add \"<question>\" [--for <agent>] [--options \"a|b|c\"] [--raised-by <who>]" ;;
+        challenge) shift; cmd_decision_challenge "$@" ;;
+        revoke) shift; cmd_decision_revoke "$@" ;;
+        decide|ratify) shift; cmd_decide "$@" ;;
+        *) die "usage: fleet decision {add|challenge|revoke|decide} ..." ;;
       esac ;;
     decisions) cmd_decisions "$@" ;;
     decide)    cmd_decide "$@" ;;

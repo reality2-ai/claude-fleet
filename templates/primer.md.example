@@ -42,3 +42,7 @@
    a change in a repo you don't own (e.g. an `api` contract change that breaks
    `web`), flag it (message the owner, or escalate to the supervisor) so the
    change lands in the right order.
+5. **Keep GitHub synchronized.** After each verified increment, stage only named
+   paths you intentionally changed for this task—never user/peer/unrelated dirt—
+   commit, and non-force-push the branch to its upstream. Before idle or done,
+   verify it is not ahead. Report push blockers; never force-push or bypass gates.

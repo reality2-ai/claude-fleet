@@ -1,6 +1,6 @@
 # Claude fleet — per-user systemd unit for boot auto-start.
-# Installed (rendered) to ~/.config/systemd/user/fleet.service by
-# `fleet install-service`. With lingering enabled (loginctl enable-linger),
+# Installed under a workspace-scoped unit name by `fleet install-service`.
+# With lingering enabled (loginctl enable-linger),
 # the per-user manager starts at boot, so this brings the fleet up before any
 # login and `fleet up` resumes every agent's recorded session.
 [Unit]

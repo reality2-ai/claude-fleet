@@ -3,17 +3,17 @@
 # All functions degrade gracefully (return non-zero) when tmux is absent, so
 # Tier-1 monitoring works without it.
 
-FLEET_TMUX_SESSION="${FLEET_TMUX_SESSION:-fleet}"
+FLEET_TMUX_SESSION="${FLEET_TMUX_SESSION:-}"
 # The fleet runs on its OWN tmux socket (server), not the user's default one.
 # This isolates it from any personal tmux the user runs, and — crucially — means
 # the server is always spawned fresh by us, so it actually lands in the
 # per-user systemd unit below instead of joining a pre-existing server that
 # might sit in a login-session cgroup. Change in lockstep on all hosts.
-FLEET_TMUX_SOCKET="${FLEET_TMUX_SOCKET:-fleet}"
+FLEET_TMUX_SOCKET="${FLEET_TMUX_SOCKET:-}"
 # Transient per-user systemd unit that owns the tmux server (see
 # fleet_tmux_ensure_session). One per tmux session name so distinct fleets don't
 # collide.
-FLEET_TMUX_UNIT="${FLEET_TMUX_UNIT:-fleet-tmux-$FLEET_TMUX_SESSION}"
+FLEET_TMUX_UNIT="${FLEET_TMUX_UNIT:-}"
 
 fleet_has_tmux() { command -v tmux >/dev/null 2>&1; }
 
@@ -40,6 +40,12 @@ fleet_tmux_session_exists() {
 fleet_tmux_server_running() {
   fleet_has_tmux || return 1
   fleet_tmux list-sessions >/dev/null 2>&1
+}
+
+# Keep bootstrap lifetime independent of prompt-construction time. A real window
+# removes it immediately after a successful spawn.
+fleet_tmux_drop_placeholder() {
+  fleet_tmux kill-window -t "$FLEET_TMUX_SESSION:__fleet_root" 2>/dev/null || true
 }
 
 # True when the tmux server can be parked in the per-user systemd manager
@@ -78,9 +84,9 @@ fleet_tmux_install_server_hooks() {
 fleet_tmux_ensure_session() {
   fleet_has_tmux || die "tmux is not installed (needed for 'up/down/restart'). Run: sudo apt install tmux"
   fleet_tmux_session_exists && { fleet_tmux_install_server_hooks; return 0; }
-  # A detached, placeholder-free session; the first child replaces window 0 once
-  # __fleet_root's keepalive command exits.
-  local -a srv=(tmux -L "$FLEET_TMUX_SOCKET" new-session -d -s "$FLEET_TMUX_SESSION" -n __fleet_root "true; sleep 1")
+  # The timeout only cleans up an abandoned failed launch. A successful first
+  # window explicitly removes the bootstrap.
+  local -a srv=(tmux -L "$FLEET_TMUX_SOCKET" new-session -d -s "$FLEET_TMUX_SESSION" -n __fleet_root "sleep 300")
   # A server is already up on our socket (typically the durable systemd unit, kept
   # alive by the watchdog sessions) but lacks the 'fleet' session — just create the
   # session in it. Re-running systemd-run here would fail ("unit already exists") and
@@ -232,16 +238,19 @@ fleet_tmux_new_agent_window() {
   # use" = the fleet-fix window's index; it tracked that window as it moved (12 → 11).
   # With the empty component tmux resolves session-only and allocates the next unused
   # index. Same fix as cmd_ask (8ac37cc). See tests/window-alloc.sh.
+  local spawn_rc=0
   if [[ "$size" =~ ^[0-9]+$ && "$max" =~ ^[0-9]+$ && "$size" -gt "$max" ]]; then
     argvfile="$(fleet_write_agent_argv_file "$id" "$arr_name")"
     fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "$id" -c "$cwd" \
       -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
-      "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "$TOOL_ROOT/lib/run-argv-file.sh" "$argvfile"
+      "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "$TOOL_ROOT/lib/run-argv-file.sh" "$argvfile" || spawn_rc=$?
   else
     fleet_tmux new-window -t "$FLEET_TMUX_SESSION:" -n "$id" -c "$cwd" \
       -e "FLEET_CHILD_ID=$id" -e "FLEET_AGENT_PROVIDER=$provider" \
-      "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${argv[@]}"
+      "$TOOL_ROOT/lib/run-child.sh" "$exitfile" -- "${argv[@]}" || spawn_rc=$?
   fi
+  (( spawn_rc == 0 )) || return "$spawn_rc"
+  fleet_tmux_drop_placeholder
   # opt-in hardening: keep a crashed worker's window as a DEAD pane (a visible
   # corpse + its exit code) instead of letting it vanish — so #{pane_dead} liveness
   # and reap can SEE the crash rather than the window silently disappearing. Default

@@ -10,14 +10,13 @@
 # typing, and is provider-neutral (same tag on Codex panes). Makes NO API calls, so it survives
 # an account-wide rate-limit. The human's own session is not a fleet window regardless.
 #
-# Run as a fleet-server session:
-#   tmux -L fleet new-session -d -s r2-unblock "<path>/fleet-unblock.sh >/tmp/fleet-unblock.log 2>&1"
-# Stop:  tmux -L fleet kill-session -t r2-unblock
-# Tune:  FLEET_UNBLOCK_INTERVAL=120  FLEET_UNBLOCK_SKIP="win1 win2"  FLEET_TMUX_SOCKET/SESSION
+# Run from the fleet workspace, or set FLEET_WORKSPACE.
+# Tune: FLEET_UNBLOCK_INTERVAL=120 FLEET_UNBLOCK_SKIP="win1 win2"
 set -uo pipefail
 TOOL_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-export FLEET_TMUX_SOCKET="${FLEET_TMUX_SOCKET:-fleet}"
-export FLEET_TMUX_SESSION="${FLEET_TMUX_SESSION:-fleet}"
+# shellcheck source=../lib/common.sh
+source "$TOOL_ROOT/lib/common.sh" 2>/dev/null || exit 1
+fleet_load_paths || exit 1
 # shellcheck source=../lib/registry.sh
 source "$TOOL_ROOT/lib/registry.sh" 2>/dev/null || true
 # shellcheck source=../lib/tmux.sh
@@ -25,7 +24,7 @@ source "$TOOL_ROOT/lib/tmux.sh"      2>/dev/null || true
 # shellcheck source=../lib/comms.sh
 source "$TOOL_ROOT/lib/comms.sh"     2>/dev/null || true
 
-SESSION="${FLEET_TMUX_SESSION:-fleet}"
+SESSION="$FLEET_TMUX_SESSION"
 INTERVAL="${FLEET_UNBLOCK_INTERVAL:-120}"
 SKIP=" ${FLEET_UNBLOCK_SKIP:-} "
 
