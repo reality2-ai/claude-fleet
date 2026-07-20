@@ -11,9 +11,27 @@ set -uo pipefail
 FLEET="$(cd "$(dirname "$0")" && pwd)/fleet"
 INTERVAL="${FLEET_WATCHDOG_INTERVAL:-240}"
 SKIP="${FLEET_WATCHDOG_SKIP:-supervisor R2}"
+# Self-check the oversight wire each cycle and escalate a one-line digest to the
+# supervisor — but edge-triggered (only when the digest CHANGES), like the idle
+# nudge's prev-suppression, so a persistent fault isn't re-reported every tick.
+# Disable with FLEET_WATCHDOG_DOCTOR=off.
 prev=""
+prev_doctor=""
 while true; do
   sleep "$INTERVAL"
+
+  if [[ "${FLEET_WATCHDOG_DOCTOR:-on}" != "off" ]]; then
+    doctor_out="$("$FLEET" doctor --quiet 2>/dev/null)"; doctor_rc=$?
+    if [[ "$doctor_rc" -ne 0 ]]; then
+      if [[ "$doctor_out" != "$prev_doctor" ]]; then    # edge-triggered: only on change
+        "$FLEET" send supervisor "[doctor] oversight-wire check failed: ${doctor_out}" >/dev/null 2>&1
+      fi
+      prev_doctor="$doctor_out"
+    else
+      prev_doctor=""   # recovered → re-arm so the next fault is reported
+    fi
+  fi
+
   now="$("$FLEET" status 2>/dev/null | awk 'NR>1 && $2=="idle"{print $1}' | tr '\n' ' ')"
   for c in $now; do
     case " $SKIP " in *" $c "*) continue ;; esac
