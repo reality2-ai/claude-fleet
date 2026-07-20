@@ -2236,7 +2236,18 @@ _fleet_parse_msg() {
   # picked by whichever agent is calling and was previously never checked, so validate
   # here: the single boundary every messaging command funnels through. An EMPTY _F_TO
   # is left to the callers' usage message rather than pre-empted with "invalid id".
-  [[ -n "$_F_TO" ]] && fleet_require_member_id "$_F_TO"
+  # _F_TO MAY be a comma-separated list (multi-recipient send). Validate EACH id, so
+  # the single boundary every messaging command funnels through keeps doing its job —
+  # a list must not smuggle an unvalidated component past the path/tmux checks. Commands
+  # that accept only one recipient still see the raw string and reject a list themselves.
+  if [[ -n "$_F_TO" ]]; then
+    local _v_list=() _v
+    IFS=',' read -r -a _v_list <<< "$_F_TO"
+    for _v in "${_v_list[@]}"; do
+      _v="${_v#"${_v%%[![:space:]]*}"}"; _v="${_v%"${_v##*[![:space:]]}"}"
+      fleet_require_member_id "$_v"
+    done
+  fi
   fleet_require_member_id "$_F_FROM"
 }
 _fleet_known_recipient() {  # is <id> a lane we could plausibly reach?
@@ -2324,13 +2335,50 @@ cmd_pair_ask() {
   (( asked > 0 )) || die "pair '$pair' has no ask target other than '$from'"
 }
 
+# MULTI-RECIPIENT SEND — the protocol promised it and the transport did not deliver it.
+#
+# COMMS.md's line protocol defines `to>from` addressing, and every lane writes headers
+# like `to>supervisor to>hive to>core`. `fleet send` took ONE recipient. Those header
+# lines were BODY TEXT: they routed nothing, and the message reached only the id named
+# in the command.
+#
+# NOTHING REPORTED IT. One arrow line appeared, addressed to the peer actually named,
+# and it looked exactly like success. composer found this in its own traffic — its
+# urgent "every lane check your parser" correction reached the supervisor ALONE, four
+# lanes never saw it — and android then found the same defect across EVERY message it
+# sent today: each one opened `>supervisor >hive >core >composer >all` and each one
+# was a single `pair-send supervisor`. Its confirmations to hive and core, its
+# withdrawal of a null hive was building on, all supervisor-only.
+#
+# ★ THE SCHEMA INVITED THE ERROR AND THE TRANSPORT COULD NOT REFUSE IT. That is a
+# protocol-versus-transport gap, not six lanes making the same mistake — and the
+# delivery confirmation was TRUE while the addressing was FICTION, which is why it
+# survived a whole session of lanes checking their arrow lines.
+#
+# Fixed on the transport side: a comma-separated list sends to each id, one delivery
+# and one arrow line each. The rule that goes with it, and it is in AGENTS.md now:
+# `to>` lines in a body are DOCUMENTATION OF INTENT, NEVER ROUTING. A message is
+# delivered to exactly the recipients named in the COMMAND.
 cmd_send() {
   _fleet_parse_msg "$@"
-  [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet send <to> \"<msg>\" [--from <id>]"
+  [[ -n "$_F_TO" && -n "$_F_TEXT" ]] || die "usage: fleet send <to>[,<to>...] \"<msg>\" [--from <id>]"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
-  _fleet_guard_messaging msg "$_F_FROM" "$_F_TO"   # authority before operational checks
   fleet_has_tmux || die "tmux required. Run: sudo apt install tmux"
-  _fleet_deliver msg "$_F_TO" "$_F_FROM" "$_F_TEXT"
+
+  local _to_list=() _t
+  IFS=',' read -r -a _to_list <<< "$_F_TO"
+  # Guard EVERY recipient before delivering to ANY of them, so a rejected id cannot
+  # leave a half-sent message: a partial multicast is worse than a refused one,
+  # because the sender sees some arrows and reads it as success.
+  for _t in "${_to_list[@]}"; do
+    _t="${_t#"${_t%%[![:space:]]*}"}"; _t="${_t%"${_t##*[![:space:]]}"}"
+    [[ -n "$_t" ]] || die "empty recipient in list '$_F_TO'"
+    _fleet_guard_messaging msg "$_F_FROM" "$_t"
+  done
+  for _t in "${_to_list[@]}"; do
+    _t="${_t#"${_t%%[![:space:]]*}"}"; _t="${_t%"${_t##*[![:space:]]}"}"
+    _fleet_deliver msg "$_t" "$_F_FROM" "$_F_TEXT"
+  done
 }
 
 cmd_ask() {
