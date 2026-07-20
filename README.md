@@ -243,6 +243,9 @@ A resumed session reopens **idle at its prompt**, so `fleet up` nudges each
 resumed member to pick its work back up — by default with `carry on`. Override
 per child with `resume_nudge = "…"` in `fleet.toml`, or globally with
 `FLEET_RESUME_NUDGE`; set either to `""` to leave members idle on resume.
+Set `FLEET_START_NUDGE="carry on"` when fresh sessions should receive the same
+nudge after their seed. `FLEET_SUPERVISOR_PERMISSION_MODE=bypassPermissions`
+lets the supervisor run unattended when the workspace explicitly opts into it.
 
 ## Portability — version your config
 
@@ -276,6 +279,10 @@ model           = "..."         # --model
 sandbox         = "read-only"   # --sandbox (read-only | workspace-write | …)
 approval_policy = "on-request"  # --ask-for-approval
 ```
+
+Codex `permission_mode = "plan"` means autonomous read-only review:
+`--sandbox read-only --ask-for-approval never`. It can investigate without a
+human prompt, while the sandbox remains the write boundary.
 
 `provider` is also settable fleet-wide with `FLEET_AGENT_PROVIDER=codex`, and the
 binary / model / profile / sandbox / approval via `FLEET_CODEX_BIN` ·

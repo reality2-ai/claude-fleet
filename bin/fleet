@@ -723,14 +723,15 @@ fleet_start_supervisor() {
   primer+=$'\n\n=== Current authoritative decisions (bounded) ===\n'
   primer+="$(_fleet_decisions_current_print "" "${FLEET_SUPERVISOR_DECISIONS_MAX:-12}" 0 2>/dev/null || printf '(decision ledger unavailable)')"
   local sid=""; [[ -f "$RUN_DIR/supervisor.session" ]] && sid="$(<"$RUN_DIR/supervisor.session")"
-  local prompt=""
+  local prompt="${FLEET_START_NUDGE:-}"
   if [[ -n "$sid" ]]; then
     # nudge the resumed supervisor to re-survey the fleet (see fleet_tmux_start_child)
     local nudge="${FLEET_RESUME_NUDGE-carry on}"
     [[ -n "$nudge" ]] && prompt="$nudge"
   fi
+  local pm="${FLEET_SUPERVISOR_PERMISSION_MODE:-}"
   local -a cargs=()
-  fleet_agent_build_args cargs "$provider" supervisor fleet-supervisor "$WORKSPACE" "$primer" "$prompt" "$sid" ""
+  fleet_agent_build_args cargs "$provider" supervisor fleet-supervisor "$WORKSPACE" "$primer" "$prompt" "$sid" "$pm"
   local exitfile="$RUN_DIR/supervisor.exit"; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   fleet_tmux_new_agent_window supervisor "$WORKSPACE" "$exitfile" "$provider" cargs
   fleet_state_ensure supervisor "$WORKSPACE" true
@@ -756,7 +757,9 @@ fleet_start_supervisor_companion() {
   local _sf; sid=""; _sf="$(fleet_run_path "$id" .session)" && [[ -f "$_sf" ]] && sid="$(<"$_sf")"
   [[ -n "$sid" && -n "${FLEET_RESUME_NUDGE-carry on}" ]] && prompt="${FLEET_RESUME_NUDGE-carry on}"
   local -a cargs=()
-  fleet_agent_build_args cargs "$provider" "$id" fleet-supervisor-codex "$WORKSPACE" "$primer" "$prompt" "$sid" ""
+  # A supervisor companion is a refuter/standby, not a writer. Plan maps to a
+  # read-only sandbox with approval=never, so it can investigate unattended.
+  fleet_agent_build_args cargs "$provider" "$id" fleet-supervisor-codex "$WORKSPACE" "$primer" "$prompt" "$sid" "plan"
   exitfile="$(fleet_run_path "$id" .exit)" || return 1; rm -f "$exitfile"; mkdir -p "$RUN_DIR"
   fleet_tmux_new_agent_window "$id" "$WORKSPACE" "$exitfile" "$provider" cargs
   fleet_state_ensure "$id" "$WORKSPACE" true

@@ -94,7 +94,9 @@ fleet_codex_add_common_flags() {
     case "$pm" in
       bypassPermissions) argv+=(--dangerously-bypass-approvals-and-sandbox); sandbox=""; approval="" ;;
       acceptEdits)       sandbox="${sandbox:-workspace-write}"; approval="${approval:-on-request}" ;;
-      plan)              sandbox="${sandbox:-read-only}"; approval="${approval:-untrusted}" ;;
+      # A read-only reviewer must be able to inspect without waiting for a human.
+      # The sandbox, not an approval prompt, is the write boundary.
+      plan)              sandbox="${sandbox:-read-only}"; approval="${approval:-never}" ;;
     esac
   fi
 

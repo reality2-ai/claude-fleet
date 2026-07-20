@@ -302,9 +302,13 @@ fleet_tmux_start_child() {
     local nudge; nudge="$(fleet_child_get "$id" resume_nudge "${FLEET_RESUME_NUDGE-carry on}")"
     [[ -n "$nudge" ]] && prompt="$nudge"
     fleet_log resume "$id" "session=$sid${nudge:+ nudge=$nudge}"
-  elif [[ -n "$seed" ]]; then
+  else
     prompt="$seed"
-    fleet_log start "$id" "fresh seed"
+    if [[ -n "${FLEET_START_NUDGE:-}" ]]; then
+      [[ -n "$prompt" ]] && prompt+=$'\n\n'
+      prompt+="$FLEET_START_NUDGE"
+    fi
+    [[ -n "$prompt" ]] && fleet_log start "$id" "fresh seed/nudge"
   fi
 
   local -a agent_args=()

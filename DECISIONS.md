@@ -95,3 +95,29 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **Evidence:** Seven-repository `.git/hooks/commit-msg` inspection; `lib/githooks.sh`,
   `hooks/git/commit-msg`, and the positive/negative installer tests in `tests/smoke.sh`.
 - **Supersedes:** None
+
+### D-20260721-04 — Autonomous writers and automatic refuters in the R2 fleet
+
+- **Kind:** Decision
+- **Date:** 2026-07-21
+- **Scope:** Fleet startup, permissions, and refutation topology
+- **Outcome:** The R2 workspace starts its Claude lanes with explicit autonomous
+  permissions, automatically starts Codex refuters, and sends `carry on` on fresh and
+  resumed starts. Codex refuters operate unattended inside a read-only sandbox with
+  approval set to `never`.
+- **Decision-maker:** Roy
+- **Authority basis:** Explicit user correction after the simplified fleet was tested
+- **Context:** The migration disabled automatic pairs, replaced the first-start action
+  prompt with an idle seed, and left autonomy partly implicit. The supervisor Codex
+  companion also lacked the non-interactive flags already applied to worker refuters.
+- **Rationale:** Independent writers and refuters are intentional fleet capabilities;
+  removing them changed behaviour rather than merely shortening instructions.
+- **Alternatives:** On-demand-only refuters and prompt-gated lanes were rejected for this
+  workspace. Restoring long prompts was unnecessary because permissions, topology, and
+  continuation are separate compact controls.
+- **Expected consequences:** `fleet up` uses more agent lanes but resumes useful work
+  without permission stalls; Codex refuters can inspect freely but cannot write.
+- **Evidence:** Roy's 2026-07-21 correction; `.fleet/env`; `lib/provider.sh`,
+  `lib/tmux.sh`, `bin/fleet`, and `tests/smoke.sh`.
+- **Supersedes:** The unrecorded 2026-07-21 local choice to make persistent refuters
+  opt-in for the R2 workspace

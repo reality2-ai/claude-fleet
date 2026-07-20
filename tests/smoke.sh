@@ -101,13 +101,14 @@ export FLEET_WORKSPACE="$WS2"
 # --- 3. lifecycle: fresh start ----------------------------------------------
 section "3. lifecycle (fresh start)"
 export FLEET_STUB_LOG="$TMP/alpha.fresh.log"; : > "$FLEET_STUB_LOG"
-"$FLEET" up --no-supervisor alpha > "$TMP/up1.out" 2>&1
+FLEET_START_NUDGE="carry on" "$FLEET" up --no-supervisor alpha > "$TMP/up1.out" 2>&1
 sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins.out" 2>/dev/null
 hasline "alpha has a tmux window" "$TMP/wins.out" "alpha"
 lacks   "startup removes the bootstrap window" "$TMP/wins.out" "__fleet_root"
 lacks   "default startup does not multiply agents" "$TMP/wins.out" "alpha-codex"
 hasline "fresh start passes the seed prompt" "$FLEET_STUB_LOG" "seedwork"
+hasline "fresh start appends configured carry-on nudge" "$FLEET_STUB_LOG" "carry on"
 lacks   "fresh start does NOT --resume"      "$FLEET_STUB_LOG" "--resume"
 FLEET_WORKSPACE="$WS2" "$FLEET" status > "$TMP/status2.out" 2>&1
 has "status shows a live window for alpha" "$TMP/status2.out" "alpha"
@@ -180,11 +181,17 @@ has "pairs command shows standby role" "$TMP/pairs_alpha.out" "standby"
 "$FLEET" pair-send alpha "PAIR-FYI" > "$TMP/pair_send.out" 2>&1 || true
 has "pair-send writes base inbox" "$WS2/.fleet/inbox/alpha.jsonl" "PAIR-FYI"
 has "pair-send writes companion inbox" "$WS2/.fleet/inbox/alpha-codex.jsonl" "PAIR-FYI"
-"$FLEET" supervise --pair > "$TMP/supervise_pair.out" 2>&1
+: > "$FLEET_STUB_LOG"; : > "$FLEET_CODEX_STUB_LOG"
+FLEET_START_NUDGE="carry on" FLEET_SUPERVISOR_PERMISSION_MODE=bypassPermissions \
+  "$FLEET" supervise --pair > "$TMP/supervise_pair.out" 2>&1
 sleep 0.6
 command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_supervisor_pair.out" 2>/dev/null
 hasline "supervise starts primary supervisor" "$TMP/wins_supervisor_pair.out" "supervisor"
 hasline "supervise --pair starts supervisor provider companion" "$TMP/wins_supervisor_pair.out" "supervisor-codex"
+hasline "fresh supervisor receives carry-on nudge" "$FLEET_STUB_LOG" "carry on"
+hasline "supervisor can opt into autonomous permission mode" "$FLEET_STUB_LOG" "bypassPermissions"
+hasline "supervisor refuter uses read-only sandbox" "$FLEET_CODEX_STUB_LOG" "read-only"
+hasline "supervisor refuter never waits for approval" "$FLEET_CODEX_STUB_LOG" "never"
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
 
 # --- 8. mixed-provider launch, pair, handoff, and refute --------------------
