@@ -1293,7 +1293,9 @@ _fleet_transcript_excerpt() {
     | awk 'NF' \
     | tail -n "$max" || true)"
   [[ "$bytes" =~ ^[0-9]+$ ]] || bytes=6000
-  (( bytes > 0 )) && printf '%s\n' "$out" | head -c "$bytes" || true
+  if (( bytes > 0 )); then
+    head -c "$bytes" <<<"$out" || true
+  fi
 }
 
 _fleet_git_context() {
