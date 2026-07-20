@@ -31,8 +31,9 @@ implementation. Read `README.md`; running state lives in `RESUME.md`.
 ## Control invariants
 
 - The fleet ledger controls live gates; durable repo rulings live in `DECISIONS.md`.
-  Read it before changing established behaviour; append ratified outcomes with rationale
-  and evidence, and append later reviews without rewriting history.
+  Read it before changing established behaviour. Record key rulings and consequential
+  agent choices with the real decision-maker, authority basis, rationale, and evidence;
+  append later reviews without rewriting history.
   Challenge changes confidence only; authority revoke or successor changes action.
   Never impersonate authority. Newer explicit human instruction and safety gates apply.
 - `RESUME.md` is one concise current takeover snapshot, not diary. Handoffs are bounded
