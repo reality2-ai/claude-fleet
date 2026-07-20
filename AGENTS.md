@@ -29,6 +29,26 @@ running state.
   `RESUME.md`.
 - **Codex twins are read-only** adversarial pair-programmers and failover standbys unless a
   `fleet handoff` promotes one to sole writer.
+- **The manifest is the source of authority (Roy ruled 2026-07-20).** Membership and writership
+  come from `.fleet/fleet.toml` and from nothing else — not from what directories exist, not from
+  what happens to be checked out, and not from a listing of the workspace. There are six members:
+  `specs`, `core`, `hive`, `composer`, `android`, `circuits`. If a tree is not in the manifest it
+  does not thereby lack a writer; see the worktree rule below before concluding anything about it.
+- **Read the manifest with a parser, never with an ad-hoc grep.** `lib/manifest.sh` handles the
+  file correctly, and so does Python's `tomllib`; both return all six members. A hand-written
+  regex does not necessarily: the `circuits` block uses a tab between key and `=`
+  (`id⇥= "circuits"`), so a pattern like `id *=` silently returns five. The supervisor made
+  exactly that mistake and generalised the result into a claim about the fleet's own tooling,
+  which was false — the tooling was never broken. **A roster is evidence only if it came from the
+  loader.** The failure is silent and it shrinks the roster, which is the direction that makes a
+  missing lane look like a lane that does not exist.
+- **A worktree inherits its parent repo's writer.** `dfr1195-fw` and `rak4630-fw` are **branches
+  of `r2-core`**, not separate repositories — `cat .git` in either returns
+  `gitdir: …/r2-core/.git/worktrees/…`. They share one object store with `r2-core`, which is why
+  a commit made on one is visible to a sweep run in the other, and why one lane's firmware launch
+  can appear inside another lane's history analysis. `core`'s writership therefore extends to
+  every branch of `r2-core` unless a carve-out is recorded here. **Do not infer that an
+  unlisted tree is unowned**; check whether it is a worktree first.
 
 ## 3. Working principles (inherited from `r2-specifications/AGENTS.md`)
 

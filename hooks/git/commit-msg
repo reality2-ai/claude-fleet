@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# commit-msg — append the session trailer when it is absent (fleet task #119).
+#
+# FLEET_COMMITMSG_VERSION: 1
+#
+# WHY THIS EXISTS, AND WHY A HOOK IS THE ONLY THING THAT COVERS IT
+#
+# The session trailer (Claude-Session / Co-Authored-By) is added by the COMMIT
+# TEMPLATE. That means it is per-commit-PATH, not per-commit: `git commit -m` and
+# `git commit -F` both bypass the template entirely, and the resulting commit is
+# untrailered with no warning and no error.
+#
+# This was established from inside rather than inferred. circuits produced a
+# "sandwich" positive control: within one session id and 2.3 minutes, a tagged
+# commit, then two hand-committed scratch controls, then another tagged commit.
+# The untagged pair sits BETWEEN two tagged ones, which rules out "the session
+# stopped emitting" and leaves only "these two took a different commit path".
+#
+# The scale of what is missing, measured as the longest single run of consecutive
+# untagged commits per object store:
+#
+#   specs 957  ·  core 734  ·  dfr1195-fw-composer-p1 730
+#   hive  436  ·  composer 335  ·  android 157
+#
+# A 957-commit untagged run is an attribution blind spot that NO per-day rate can
+# show, because every such rate is an average taken across it.
+#
+# A commit-msg hook is the only intervention that covers all three paths, because
+# it runs after the message has been assembled regardless of how it was assembled.
+#
+# ★ IT APPENDS. IT MUST NEVER REJECT.
+#
+# A hook that refuses an untrailered commit is a gate whose false positives block
+# work, and this fleet has now watched that exact shape twice in three days: the
+# pre-push guard refused the push that scrubbed a real correlator off a public
+# main, and its over-broad secret rule would have blocked the R2-SECRETS custody
+# migration on three repos. A gate whose false positives block REMEDIATION is
+# worse than no gate at that moment. So this hook has no failure mode that costs
+# a commit: if anything is wrong it leaves the message untouched and exits 0.
+#
+# Disable with FLEET_SKIP_TRAILER=1 for one commit.
+
+set -uo pipefail
+
+[[ "${FLEET_SKIP_TRAILER:-}" == "1" ]] && exit 0
+
+MSG_FILE="${1:-}"
+[[ -n "$MSG_FILE" && -f "$MSG_FILE" && -w "$MSG_FILE" ]] || exit 0
+
+# A merge/squash/fixup message is git's own construction — leave it alone.
+case "${2:-}" in merge|squash|commit) exit 0 ;; esac
+
+# ── what we would add ────────────────────────────────────────────────────────
+# Sourced from the environment so a takeover, a cron run, or a non-Claude engine
+# does not get a hardcoded identity stamped into its commits. NO VALUE, NO WRITE:
+# an absent id must leave the message untouched rather than emit a placeholder,
+# because a fabricated trailer is worse than a missing one — it makes an
+# unattributable commit LOOK attributed, which is the false-green shape.
+SESSION_URL="${CLAUDE_SESSION_URL:-}"
+COAUTHOR="${CLAUDE_COAUTHOR:-}"
+[[ -n "$SESSION_URL" || -n "$COAUTHOR" ]] || exit 0
+
+# ── is a trailer already present? ────────────────────────────────────────────
+# ANCHOR PLUS PAYLOAD SHAPE, never the anchor alone. android measured why: a
+# commit body line beginning with the literal text `Claude-Session:` — its own
+# prose describing this very rule — matched a bare `^Claude-Session:` test. The
+# anchored and unanchored counts then differed by ZERO while both were poisoned.
+# Requiring a URL or a session_ id after the anchor kills that.
+has_session() { grep -Eq '^Claude-Session:[[:space:]]*(https?://|session_)' "$MSG_FILE"; }
+has_coauthor() { grep -Eq '^Co-Authored-By:[[:space:]]*.+<.+@.+>' "$MSG_FILE"; }
+
+need_session=0; need_coauthor=0
+[[ -n "$SESSION_URL" ]] && ! has_session  && need_session=1
+[[ -n "$COAUTHOR"    ]] && ! has_coauthor && need_coauthor=1
+(( need_session || need_coauthor )) || exit 0
+
+# Strip the comment block git appends, so the trailer lands on the real message
+# and not below a wall of '#' lines. Work on a temp file and move it into place,
+# so a failure part-way through cannot leave a truncated commit message.
+tmp="$(mktemp 2>/dev/null)" || exit 0
+trap 'rm -f "$tmp"' EXIT
+
+grep -v '^#' "$MSG_FILE" > "$tmp" 2>/dev/null || { exit 0; }
+
+# A trailer block must be separated from the body by exactly one blank line.
+# Trim trailing blanks first so repeated hook runs cannot accumulate them.
+while [[ -s "$tmp" ]] && [[ -z "$(tail -n1 "$tmp")" ]]; do
+  sed -i '$d' "$tmp" 2>/dev/null || break
+done
+
+# An empty message means the commit is going to be aborted by git anyway; do not
+# write a trailer into it, or `git commit` on an empty message would silently
+# become a commit whose entire content is our trailer.
+[[ -s "$tmp" ]] || exit 0
+
+printf '\n' >> "$tmp"
+(( need_coauthor )) && printf 'Co-Authored-By: %s\n' "$COAUTHOR"    >> "$tmp"
+(( need_session  )) && printf 'Claude-Session: %s\n' "$SESSION_URL" >> "$tmp"
+
+cat "$tmp" > "$MSG_FILE" 2>/dev/null || true
+exit 0

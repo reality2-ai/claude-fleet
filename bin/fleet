@@ -75,6 +75,7 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet status                  table of all known sessions (live/idle/dead, task, claims)
   fleet brief                   triage: what needs you, who's waiting at their prompt, who's working
   fleet conflicts               files being edited by more than one live session
+  fleet tasks [--json]          read the shared task ledger a lane is asked to cite into
   fleet logs [id]               tail the aggregate event log, or summarise one child
 
   fleet up [--no-supervisor] [--no-pairs] [id]
@@ -468,6 +469,97 @@ _conflict_set() {
   done
 }
 _child_has_conflict() { [[ -n "${CHILD_CONFLICT[$1]:-}" ]]; }
+
+# fleet tasks — READ the shared task ledger (#118).
+#
+# Lanes are routinely asked to cite findings into this ledger ("that is #115(b)",
+# "filed as #121") and until now had NO command to read it. Citation ran one way:
+# the supervisor could write an id, and the lane it was addressed to could not look
+# up what the id said. A cite into a ledger the recipient cannot open is an opaque
+# token, not a reference — the opposite of what §10 of COMMS.md claims a cite buys.
+#
+# The ledger itself lives in the supervisor's session, not on disk, so this command
+# reads an EXPORT the supervisor writes to $STATE_DIR/tasks.json. That keeps the
+# supervisor the single writer — which is the property that makes an id stable and
+# therefore worth citing — while giving every lane a read path.
+#
+# DELIBERATELY MINIMAL, and all six lanes backed this shape: a full dump, read-only,
+# no filter flags, no search, no lane-side write. A lane that can read the ledger can
+# grep it. Every filter flag would be one more thing that can silently return a wrong
+# subset, which is the exact defect class this fleet spent 2026-07-19/20 chasing —
+# and a filter that returns nothing is indistinguishable from a ledger with nothing
+# in it, the zero-denominator problem in a new place.
+#
+# STALENESS IS REPORTED, NEVER HIDDEN. The export is a snapshot; if it is missing or
+# old, this says so rather than printing an empty list. An absent file that reads as
+# "no tasks" is the absent-file-passes-every-must-be-0-check defect, and it would land
+# here first.
+cmd_tasks() {
+  fleet_load_paths
+  local json=0
+  [[ "${1:-}" == "--json" ]] && json=1
+
+  # Resolve against the .fleet that actually HOLDS THE MANIFEST, not merely the first
+  # .fleet on the way up. fleet_load_paths stops at any .fleet directory, and
+  # claude-fleet carries one with no fleet.toml in it — so the SUPERVISOR, running from
+  # claude-fleet, resolved to a different STATE_DIR than every worker repo, and would
+  # have read a permanently-empty ledger while each lane read the real one. Measured
+  # 2026-07-20: root/r2-core/r2-android all resolved to R2/.fleet, claude-fleet did not.
+  #
+  # Two lanes reading different ledgers under one name is worse than no command at all:
+  # the cite still resolves, and it resolves to the wrong document. That is the
+  # stale-pointer-that-RESOLVES class from COMMS.md §10, arriving through a path lookup.
+  #
+  # NOTE the general walk-up defect is NOT fixed here — see fleet task #123. Changing
+  # fleet_load_paths globally at this point would be an unmeasured change to every
+  # command's path resolution, which is precisely the move this fleet spent two days
+  # refusing. Scoped fix now, tracked defect for the real one.
+  local ledger_dir="" _d="$PWD"
+  while [[ -n "$_d" ]]; do
+    [[ -f "$_d/.fleet/fleet.toml" ]] && { ledger_dir="$_d/.fleet"; break; }
+    [[ "$_d" == "/" ]] && break
+    _d="${_d%/*}"; [[ -z "$_d" ]] && _d="/"
+  done
+  [[ -n "$ledger_dir" ]] || ledger_dir="$STATE_DIR"
+  local f="$ledger_dir/tasks.json"
+
+  if [[ ! -f "$f" ]]; then
+    # NOT an empty ledger — an ABSENT export. Say which, on stderr, and fail.
+    warn "no task ledger export at $f"
+    warn "the ledger lives in the supervisor's session; ask it to run 'fleet tasks-export'."
+    warn "this is NOT 'zero tasks' — it is 'no snapshot has been written'."
+    return 1
+  fi
+
+  # A stale snapshot is still readable, but the reader MUST be told its age, so a
+  # cite resolved against it can be graded. Currency is a separate axis from content:
+  # a correct-looking answer from a three-day-old export is the failure mode.
+  local age_s="" stamp=""
+  stamp="$(jq -r '.exported_at // empty' "$f" 2>/dev/null || true)"
+  if [[ -n "$stamp" ]]; then
+    local now epoch
+    now="$(date +%s)"; epoch="$(date -d "$stamp" +%s 2>/dev/null || echo "")"
+    [[ -n "$epoch" ]] && age_s=$(( now - epoch ))
+  fi
+
+  if (( json )); then
+    cat "$f"
+    [[ -n "$age_s" ]] && (( age_s > 86400 )) && \
+      warn "export is $(( age_s / 3600 ))h old (exported_at $stamp) — verify before citing it"
+    return 0
+  fi
+
+  local n
+  n="$(jq -r '.tasks | length' "$f" 2>/dev/null || echo 0)"
+  printf '%stask ledger%s — %s task(s)' "$c_bold" "$c_reset" "$n"
+  [[ -n "$stamp" ]] && printf ', exported %s' "$stamp"
+  printf '\n\n'
+  jq -r '.tasks[] | "  #\(.id)\t[\(.status)]\t\(.title)"' "$f" 2>/dev/null \
+    | column -t -s $'\t' 2>/dev/null || jq -r '.tasks[] | "  #\(.id) [\(.status)] \(.title)"' "$f"
+  if [[ -n "$age_s" ]] && (( age_s > 86400 )); then
+    printf '\n'; warn "export is $(( age_s / 3600 ))h old — verify against the supervisor before citing it"
+  fi
+}
 
 cmd_conflicts() {
   fleet_load_paths
@@ -2415,6 +2507,7 @@ main() {
     compact)   cmd_compact "$@" ;;
     brief)     cmd_brief "$@" ;;
     conflicts) cmd_conflicts "$@" ;;
+    tasks)     cmd_tasks "$@" ;;
     logs|log)  cmd_logs "$@" ;;
     up)        cmd_up "$@" ;;
     supervise|supervisor) cmd_supervise "$@" ;;
