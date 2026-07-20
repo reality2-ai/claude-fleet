@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
-# PREPUSH_VERSION: 3  (2026-07-19) — fail-closed size guard; root-commit range fix.
+# PREPUSH_VERSION: 4  (2026-07-20) — non-commit refs fail closed; R2 artifact filenames
+#   (tg_sk/_sk/sealed/mnemonic/joinresponse); bypass no longer advertised on block.
 # Cite this line when reporting which guard a lane runs. An unversioned gate
 # cannot be audited or skew-detected: android measured TWO versions live across
 # six repos, distinguishable only by sha256 of an untracked file.
@@ -9,8 +10,12 @@
 # here at the git layer regardless of who (human or fleet agent) initiated it.
 #
 # Never auto-FAILS open: on any internal error it lets the push proceed only if
-# it found nothing; a real match always blocks (exit 1). Bypass (rare, deliberate):
-#   FLEET_SKIP_SECRET_SCAN=1 git push …
+# it found nothing; a real match always blocks (exit 1).
+#
+# FLEET_SKIP_SECRET_SCAN=1 disables this scan entirely, before any check, with no
+# trace in the output. It exists for a human operator with a reason. FLEET AGENTS
+# ARE FORBIDDEN TO SET IT — if this hook blocks you, hold and report. It is
+# deliberately not mentioned in the block message; see the note at the exit path.
 # Chains to a repo-local hook if one pre-existed (saved as pre-push.local).
 set -uo pipefail
 
@@ -59,8 +64,14 @@ scan_range() {  # $1 = git rev range or single sha
   # i.e. the entire R2-SECRETS custody migration (2026-07-19). Real secret CONTENT in any
   # file is still caught by the value scan (2) + MAC scan (3); this line catches secret DATA
   # FILES (tg_secret.bin / secret.env / *.key …), which is what it was for.
-  printf '%s\n' "$names" | grep -qiE '(^|/)(\.env(\..*)?$|.*\.pem$|.*\.key$|.*\.priv(\.bin)?$|id_rsa$|id_ed25519$|.*secret[^/]*\.(bin|dat|env|key|pem|priv|p12|pfx|jks|keystore)$|tg_priv)' \
-    && findings+="  • a secret-bearing filename (.env/.key/.pem/.priv/id_rsa/tg_priv…)\n"
+  # VOCABULARY — the generic web set (secret/key/priv/env) plus the R2 ARTIFACT set.
+  # The generic set alone carried `tg_priv` and NOT `tg_sk`, so a real 32-byte
+  # trust-group secret key at provisioned/tg_sk.bin was invisible to this line
+  # (core, 2026-07-20). `_sk` is the secret-bearing half of a keypair and appears in
+  # no generic wordlist; `sealed`/`joinresponse`/`mnemonic` are R2 artifact names.
+  # Anchored to a separator or extension so `task.bin`/`disk.dat` do not match.
+  printf '%s\n' "$names" | grep -qiE '(^|/)(\.env(\..*)?$|.*\.pem$|.*\.key$|.*\.priv(\.bin)?$|id_rsa$|id_ed25519$|.*secret[^/]*\.(bin|dat|env|key|pem|priv|p12|pfx|jks|keystore)$|tg_priv|tg_sk|[._-]sk\.(bin|dat|key|hex|b64)$|(mnemonic|seed[._-]?phrase|sealed|joinresponse)[^/]*\.(bin|dat|json|txt|hex|b64)$)' \
+    && findings+="  • a secret-bearing filename (.env/.key/.pem/.priv/id_rsa/tg_priv/tg_sk/*_sk.bin/mnemonic/sealed…)\n"
 
   # 2) high-signal secret VALUES in added content
   printf '%s\n' "$added" | grep -qE '[0-9]{8,10}:[A-Za-z0-9_-]{35}'      && findings+="  • a Telegram-bot-token pattern\n"
@@ -134,6 +145,25 @@ scan_range() {  # $1 = git rev range or single sha
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   [[ -z "${local_sha:-}" || "$local_sha" == "$zero" ]] && continue   # ref deletion → nothing pushed
+
+  # NON-COMMIT REF — FAIL CLOSED.
+  #
+  # Sibling of the root-commit fail-open below, same mechanism, left live when that
+  # one was fixed. A ref pointing at a BLOB or TAG makes every enumerator here fatal:
+  # `git diff <blob>` exits 129, the error is swallowed by 2>/dev/null, `added` comes
+  # back EMPTY and the push reports CLEAN. rc=0 is an EMPTY SCAN, not a clean one —
+  # a zero-denominator inside the gate itself. Measured independently in r2-core and
+  # r2-composer, 2026-07-20: the SAME BYTES block as a commit and pass as a blob.
+  # This matters because refs/keep/* pins point at blobs, and those pins hold
+  # unclassified and scrub-preserved material in four repos.
+  obj_type="$(git cat-file -t "$local_sha" 2>/dev/null || true)"
+  if [[ "$obj_type" != "commit" ]]; then
+    printf '\n\033[1;31m✗ PUSH BLOCKED — %s points at a %s, not a commit.\033[0m\n' \
+      "${local_ref:-<ref>}" "${obj_type:-unknown object}" >&2
+    printf 'The secret scan can only read a commit range. It cannot scan this ref, and a\n' >&2
+    printf 'silent pass here would be an empty scan reported as a clean one. Refusing.\n\n' >&2
+    exit 1
+  fi
   if [[ "${remote_sha:-$zero}" == "$zero" ]]; then
     # new branch on the remote: scan commits not on any existing remote ref
     # NB the `| tail -1` here is SEMANTICS, not truncation: rev-list is
@@ -162,7 +192,15 @@ done
 if [[ -n "$findings" ]]; then
   printf '\n\033[1;31m✗ PUSH BLOCKED — possible secret in the commits being pushed:\033[0m\n' >&2
   printf '%b' "$findings" >&2
-  printf '\nFix: remove the secret + rewrite the commit, or (if a false positive) FLEET_SKIP_SECRET_SCAN=1 git push …\n\n' >&2
+  # DO NOT re-add a bypass suggestion here. This text is what an AGENT reads at the
+  # moment it is blocked and under pressure, and every fleet lane is bound by a
+  # MUST-NOT-BYPASS rule — so the old wording told the reader to do the one thing it
+  # must not do. It nearly mattered: a `git add -A` once swept a secret-bearing file
+  # into a commit, push-fail refused it, and the lane that hit that decision point was
+  # the one with no such rule recorded (core, 20331bba). A gate that advertises its own
+  # disable switch is training the operator to use it.
+  printf '\nFix: remove the secret, rewrite the commit, push again.\n' >&2
+  printf 'If you believe this is a false positive: STOP AND REPORT IT. Do not bypass.\n\n' >&2
   exit 1
 fi
 
