@@ -99,7 +99,7 @@ n=$((n+1))
 printf '# only a comment\n' > "$WS/msg2"
 git -C "$WS/r" commit -q -F "$WS/msg2" >/dev/null 2>&1
 if git -C "$WS/r" rev-parse HEAD >/dev/null 2>&1; then
-  if [[ -z "$(body | grep -v '^$' | grep -v 'Claude-Session\|Co-Authored-By')" ]]; then
+  if ! body | grep -qvE '^$|Claude-Session|Co-Authored-By'; then
     printf '✗ FAIL a comment-only message became a trailer-only commit\n'; fail=$((fail+1))
   else printf '  ok   %-6s %s\n' "safe" "comment-only message did not become a trailer-only commit"; fi
 else printf '  ok   %-6s %s\n' "safe" "comment-only message produced no commit (git refused, as it should)"; fi
