@@ -204,6 +204,31 @@ check deny 'nrfjprog --program other.hex --chiperase'
 check deny 'composer ota sign --key k.pem fw.bin'
 rm -f "$AUTH"
 
+echo "── (3) HEREDOC BODIES ARE DATA, NOT COMMANDS (found 2026-07-20) ──"
+# Defect (1) taught the splitter that text inside '…'/"…" is DATA. That lesson was
+# never carried to the OTHER shell construct that carries a document. A ';' inside a
+# heredoc BODY split the command, the next fragment began with a flasher name, and the
+# gate hard-DENIED one `cat` writing one markdown file, touching no device.
+#
+# Same landing place as defect (1): the gate blocked the document that quotes the
+# dangerous invocation IN ORDER TO WARN AGAINST IT. A gate whose false positives block
+# the DOCUMENTATION of its own hazard is the cousin of one that blocks remediation.
+#
+# BOTH DIRECTIONS, because a fix that only makes things pass is worse than the defect:
+# the body is skipped, and scanning RESUMES after the terminator.
+check pass "$(printf 'cat > SAFETY.md <<EOF\nWrong: cd staged; espflash flash --partition-table p.csv\nEOF\n')"
+check pass "$(printf 'cat <<EOF > notes.md\nnrfjprog --program x.hex --chiperase; never do this\nEOF\n')"
+check pass "$(printf 'cat <<-EOF > n.md\n\tcomposer ota sign --key k.pem fw.bin; prose\n\tEOF\n')"
+check pass "$(printf 'cat <<%s > n.md\nespflash flash t.bin; quoted delimiter\nEOF\n' "'EOF'")"
+# LAUNDERING — a real op chained AFTER the terminator is still a real op.
+check deny "$(printf 'cat > SAFETY.md <<EOF\nprose only\nEOF\nespflash flash --monitor t.bin\n')"
+check deny "$(printf 'cat <<EOF > n.md\nprose\nEOF\nnrfjprog --program other.hex --chiperase\n')"
+# `<<<` is a here-STRING, not a here-doc: it must not swallow the rest of the command.
+check deny 'grep -q x <<< "text"; espflash flash --monitor t.bin'
+# An UNTERMINATED heredoc consumes the rest as body — nothing after it is a command,
+# and the shell would never run one either. Asserted so the -1/n branch stays covered.
+check pass "$(printf 'cat > n.md <<EOF\nespflash flash t.bin\n')"
+
 echo
 if (( fail )); then echo "✗ firmware-gate: $((n-fail))/$n pass, $fail FAIL"; exit 1; fi
 echo "✓ firmware-gate: $n/$n pass"

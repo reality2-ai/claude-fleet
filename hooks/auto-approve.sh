@@ -400,12 +400,72 @@ _hs_flash_or_mint() {
 # evidence base it exists to protect, and teaches lanes to describe findings
 # vaguely to get them through. Gates must match ACTS, never the WORDS in a
 # message body. Parse the structure; do not substring-match fragments.
+# HEREDOC BODIES ARE DATA, NOT COMMANDS (#88, found 2026-07-20).
+#
+# The splitter already knows that text inside '…'/"…" is DATA — that was defect (1) in
+# tests/firmware-gate.sh, and fixing it stopped the gate denying commit messages. IT WAS
+# NEVER GENERALISED TO HEREDOCS, which are the other way a shell carries a document.
+#
+#   cat > _FLASH-SAFETY.md <<EOF
+#   Wrong: cd staged; espflash flash --partition-table partitions.csv
+#   EOF
+#
+# The ';' inside the BODY split the "command", the next fragment began with a flasher
+# name, and the gate hard-DENIED. That is one `cat`, writing one markdown file, touching
+# no device. Measured live: a body with no metacharacter passes, a body containing ';'
+# followed by a flasher name DENIES — so the gate blocks precisely the document that
+# quotes the dangerous invocation in order to warn against it.
+#
+# ★ SAME DEFECT AS (1), ONE FORM OUT. The lesson "quoted text is data" was learned and
+# not carried to the next construct that carries data. And it lands in the same place
+# both times: a gate whose false positives block REMEDIATION and the DOCUMENTATION of
+# the hazard it guards. Third instance in one session of an artifact tripping the
+# detector for the hazard it documents.
+#
+# We skip the body and keep scanning AFTER the terminator, so a real command chained
+# after a heredoc is still classified: `cat <<EOF > f\n…\nEOF\nespflash flash x` denies.
+_hs_skip_heredoc() {   # echo the index just past the heredoc body, or -1 if not one
+  local s="$1" i="$2" n="$3" delim='' j c
+  (( i + 1 < n )) || { printf '%s' -1; return; }
+  [[ "${s:i:2}" == '<<' ]] || { printf '%s' -1; return; }
+  j=$(( i + 2 ))
+  [[ "${s:j:1}" == '<' ]] && { printf '%s' -1; return; }   # `<<<` here-STRING, not a doc
+  [[ "${s:j:1}" == '-' ]] && (( j++ ))                     # `<<-` strips leading tabs
+  while (( j < n )); do c="${s:j:1}"; [[ "$c" == ' ' || "$c" == $'\t' ]] || break; (( j++ )); done
+  while (( j < n )); do                                    # delimiter word, quoted or bare
+    c="${s:j:1}"
+    case "$c" in [A-Za-z0-9_]) delim+="$c"; (( j++ )) ;; "'"|'"') (( j++ )) ;; *) break ;; esac
+  done
+  [[ -n "$delim" ]] || { printf '%s' -1; return; }
+  # find a line that is exactly the delimiter (optionally indented, per `<<-`)
+  local rest="${s:j}" line off=$j
+  while [[ "$rest" == *$'\n'* ]]; do
+    rest="${rest#*$'\n'}"; off=$(( n - ${#rest} ))
+    line="${rest%%$'\n'*}"; line="${line#"${line%%[! 	]*}"}"
+    [[ "$line" == "$delim" ]] && { printf '%s' "$(( off + ${#line} ))"; return; }
+  done
+  printf '%s' "$n"    # unterminated heredoc: the rest of the command is body
+}
+
 _hs_segments() {
   local s="$1"                       # NB: separate statement — a `local` line expands
   local i=0 n=${#s} ch q='' seg=''   # every word BEFORE assigning, so `n=${#s}` on the
                                      # same line reads an unset s and `set -u` aborts.
+  local _hd
   while (( i < n )); do
     ch="${s:i:1}"
+    if [[ -z "$q" && "$ch" == '<' ]]; then
+      # `<<<` is a here-STRING and carries no body. It must be consumed WHOLE: rejecting
+      # it and advancing one char leaves the scanner on the 2nd '<', where `<< "text"`
+      # reads as a heredoc whose delimiter never appears — so the skip runs to end-of-
+      # string and SWALLOWS EVERY COMMAND AFTER IT. That is a laundering channel, and
+      # it was opened by the fix for the false positive above. Caught by the KAT
+      # `grep -q x <<< "t"; espflash flash …`, which the suite did not have until the
+      # same commit: the heredoc fix and the KAT that falsifies it must land together.
+      if [[ "${s:i:3}" == '<<<' ]]; then seg+='<<<'; i=$(( i + 3 )); continue; fi
+      _hd="$(_hs_skip_heredoc "$s" "$i" "$n")"
+      if [[ "$_hd" != -1 ]]; then i="$_hd"; continue; fi
+    fi
     if [[ -n "$q" ]]; then                       # inside a quote: copy verbatim
       # Inside "…" a backslash ESCAPES the next char, including the closing quote;
       # inside '…' a backslash is literal. Shell semantics, and load-bearing: the
