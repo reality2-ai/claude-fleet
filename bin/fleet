@@ -106,8 +106,7 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
                                   start a read-only cross-model adversarial reviewer
   fleet attach <id>             attach your terminal to a child's tmux window
   fleet reap                    detect crashed children and apply restart policy
-  fleet doctor [--quiet]        self-check the oversight wire from ground truth
-                                  (state docs, mailboxes, watchdogs, throttling)
+  fleet doctor [--quiet]        self-check state, mail, Git sync, and throttling
 
   fleet remote-control [on|off] [id]    enable/disable Claude /remote-control on member(s)
   fleet remote [id]             show remote-control status of member(s)
@@ -485,8 +484,7 @@ _child_has_conflict() { [[ -n "${CHILD_CONFLICT[$1]:-}" ]]; }
 # Lanes are routinely asked to cite findings into this ledger ("that is #115(b)",
 # "filed as #121") and until now had NO command to read it. Citation ran one way:
 # the supervisor could write an id, and the lane it was addressed to could not look
-# up what the id said. A cite into a ledger the recipient cannot open is an opaque
-# token, not a reference — the opposite of what §10 of COMMS.md claims a cite buys.
+# up what the id said. A cite into a ledger the recipient cannot open is opaque.
 #
 # The ledger itself lives in the supervisor's session, not on disk, so this command
 # reads an EXPORT the supervisor writes to $STATE_DIR/tasks.json. That keeps the
@@ -751,7 +749,7 @@ fleet_start_supervisor_companion() {
   primer="$(cat "$TOOL_ROOT/skill/SUPERVISOR.md" 2>/dev/null)"
   primer+=$'\n\n=== Current authoritative decisions (bounded) ===\n'
   primer+="$(_fleet_decisions_current_print "" "${FLEET_SUPERVISOR_DECISIONS_MAX:-12}" 0 2>/dev/null || printf '(decision ledger unavailable)')"
-  prompt="You are the $provider backup supervisor lane for this fleet — a SILENT warm standby, NOT a second narrator. The primary 'supervisor' does the active coordination; you receive the same fleet traffic it sends, but do NOT restate, summarize, re-relay, or echo that traffic — repeating the primary's own messages back is noise, not signal. Stay warm and ready. Speak ONLY when you hold INDEPENDENT signal the primary does not: (a) fleet GROUND TRUTH (fleet status/doctor, git ls-remote, RESUME.md) DIVERGES from what the primary reported — then surface the divergence WITH the evidence; (b) you catch provider exhaustion, a file conflict, or a RESUME-health problem the primary appears to have missed; (c) you are explicitly asked (fleet ask / pair-ask) or promoted on failover. If the Claude supervisor is exhausted or unavailable, THEN take over and coordinate fully from ground truth using fleet commands. Otherwise stay quiet. Never assume private Claude transcript state; verify from the repo and fleet commands."
+  prompt="Backup supervisor; stay silent. Speak only on evidenced divergence, missed exhaustion/conflict/handoff fault, direct question, or promotion. On failover, verify ground truth and take over."
   local _sf; sid=""; _sf="$(fleet_run_path "$id" .session)" && [[ -f "$_sf" ]] && sid="$(<"$_sf")"
   [[ -n "$sid" && -n "${FLEET_RESUME_NUDGE-carry on}" ]] && prompt="${FLEET_RESUME_NUDGE-carry on}"
   local -a cargs=()
@@ -2000,7 +1998,8 @@ cmd_reap() {
 #   * a state doc with a session_id exists (reconcile should guarantee this);
 #   * no inbox line has been delivered==false longer than FLEET_MAIL_STALE_SECS;
 #   * sum(.inject_failures)==0 (the honest-inbox failure counter is clear);
-# and fleet-wide: both watchdogs are alive. A worker blocked on an API
+# Optional watchdog utilities are not doctor invariants: they are not fleet-managed,
+# and a global process-name check is wrong when several workspaces run at once. A worker blocked on an API
 # rate-limit is reported as THROTTLED (healthy-but-waiting), kept DISTINCT from
 # idle/dead so it is never mistaken for stuck/dead and restarted. A worker blocked
 # on hard provider credits/quota is reported separately because retry nudges will
@@ -2071,11 +2070,6 @@ cmd_doctor() {
 
   local -a problems=()
   local now; now="$(date +%s)"
-
-  # fleet-wide: both watchdogs must be running.
-  if ! pgrep -f 'fleet-watchdog\.sh' >/dev/null 2>&1; then problems+=("idle-watchdog (fleet-watchdog.sh) not running"); fi
-  if ! pgrep -f 'fleet-api-watchdog\.sh' >/dev/null 2>&1; then problems+=("api-watchdog (fleet-api-watchdog.sh) not running"); fi
-  if ! pgrep -f 'fleet-unblock\.sh' >/dev/null 2>&1; then problems+=("unblock-janitor (fleet-unblock.sh) not running"); fi
 
   # enumerate the same id set status uses (ground-truth union).
   local -A seen=(); local -a ids=(); local id

@@ -246,7 +246,7 @@ doc_out="$("$FLEET" doctor 2>&1)"; doc_rc=$?
 hasstr "(c) fleet doctor reports the inject failure" "$doc_out" "inject failure"
 if [ "$doc_rc" -ne 0 ]; then ok "(c) fleet doctor exits non-zero while broken"; else no "(c) fleet doctor exited 0 despite failure"; fi
 dq="$("$FLEET" doctor --quiet 2>/dev/null)"; dq_rc=$?
-if [ "$dq_rc" -ne 0 ]; then ok "(c) fleet doctor --quiet exits non-zero (watchdog gate)"; else no "(c) doctor --quiet exited 0"; fi
+if [ "$dq_rc" -ne 0 ]; then ok "(c) fleet doctor --quiet exits non-zero on inject failure"; else no "(c) doctor --quiet exited 0"; fi
 hasstr "(c) doctor --quiet emits a one-line digest" "$dq" "alpha"
 
 # DRAIN ATTEMPT 2 — inject now SUCCEEDS → at-least-once retry delivers, counter clears.

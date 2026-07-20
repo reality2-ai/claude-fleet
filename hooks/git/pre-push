@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
-# PREPUSH_VERSION: 4  (2026-07-20) — non-commit refs fail closed; R2 artifact filenames
-#   (tg_sk/_sk/sealed/mnemonic/joinresponse); bypass no longer advertised on block.
+# PREPUSH_VERSION: 5  (2026-07-21) — scrub markers pass; no early-closing grep pipes.
 # Cite this line when reporting which guard a lane runs. An unversioned gate
 # cannot be audited or skew-detected: android measured TWO versions live across
 # six repos, distinguishable only by sha256 of an untracked file.
@@ -25,7 +24,7 @@ zero='0000000000000000000000000000000000000000'
 findings=""
 
 scan_range() {  # $1 = git rev range or single sha
-  local range="$1" added added_all names macs mac_n mac_oui total
+  local range="$1" added added_all names assignments macs mac_n mac_oui total first_mac
   # SIZE GUARD — FAIL CLOSED, NEVER SAMPLE.
   #
   # This used to be `| head -50000`, which meant a push adding more than 50000
@@ -70,16 +69,21 @@ scan_range() {  # $1 = git rev range or single sha
   # (core, 2026-07-20). `_sk` is the secret-bearing half of a keypair and appears in
   # no generic wordlist; `sealed`/`joinresponse`/`mnemonic` are R2 artifact names.
   # Anchored to a separator or extension so `task.bin`/`disk.dat` do not match.
-  printf '%s\n' "$names" | grep -qiE '(^|/)(\.env(\..*)?$|.*\.pem$|.*\.key$|.*\.priv(\.bin)?$|id_rsa$|id_ed25519$|.*secret[^/]*\.(bin|dat|env|key|pem|priv|p12|pfx|jks|keystore)$|tg_priv|tg_sk|[._-]sk\.(bin|dat|key|hex|b64)$|(mnemonic|seed[._-]?phrase|sealed|joinresponse)[^/]*\.(bin|dat|json|txt|hex|b64)$)' \
+  grep -qiE '(^|/)(\.env(\..*)?$|.*\.pem$|.*\.key$|.*\.priv(\.bin)?$|id_rsa$|id_ed25519$|.*secret[^/]*\.(bin|dat|env|key|pem|priv|p12|pfx|jks|keystore)$|tg_priv|tg_sk|[._-]sk\.(bin|dat|key|hex|b64)$|(mnemonic|seed[._-]?phrase|sealed|joinresponse)[^/]*\.(bin|dat|json|txt|hex|b64)$)' <<<"$names" \
     && findings+="  • a secret-bearing filename (.env/.key/.pem/.priv/id_rsa/tg_priv/tg_sk/*_sk.bin/mnemonic/sealed…)\n"
 
   # 2) high-signal secret VALUES in added content
-  printf '%s\n' "$added" | grep -qE '[0-9]{8,10}:[A-Za-z0-9_-]{35}'      && findings+="  • a Telegram-bot-token pattern\n"
-  printf '%s\n' "$added" | grep -qE 'BEGIN [A-Z ]*PRIVATE KEY'          && findings+="  • a PRIVATE KEY block\n"
-  printf '%s\n' "$added" | grep -qE 'AKIA[0-9A-Z]{16}'                  && findings+="  • an AWS access-key id\n"
-  printf '%s\n' "$added" | grep -qE 'sk-(ant-)?[A-Za-z0-9_-]{20,}'      && findings+="  • an sk-/sk-ant- API key\n"
-  printf '%s\n' "$added" | grep -qiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_\-]{16,}' \
-    && findings+="  • a hardcoded secret/token/password assignment\n"
+  grep -qE '[0-9]{8,10}:[A-Za-z0-9_-]{35}' <<<"$added"      && findings+="  • a Telegram-bot-token pattern\n"
+  grep -qE 'BEGIN [A-Z ]*PRIVATE KEY' <<<"$added"           && findings+="  • a PRIVATE KEY block\n"
+  grep -qE 'AKIA[0-9A-Z]{16}' <<<"$added"                   && findings+="  • an AWS access-key id\n"
+  grep -qE 'sk-(ant-)?[A-Za-z0-9_-]{20,}' <<<"$added"       && findings+="  • an sk-/sk-ant- API key\n"
+
+  # Extract assignments before filtering, so a scrub marker on one minified line cannot
+  # hide a second real assignment on that line. Plain R2-SCRUBBED/REDACTED/PLACEHOLDER
+  # values and the base64 prefix for "R2-SCRUBBED-" are remediation markers, not secrets.
+  assignments="$(grep -oiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_\-]{16,}' <<<"$added" || true)"
+  assignments="$(grep -viE '[:=]["'"'"' ]*(R2-(SCRUBBED|REDACTED|PLACEHOLDER)-[A-Z0-9_-]+|UjItU0NSVUJCRUQt[A-Za-z0-9_-]*)$' <<<"$assignments" || true)"
+  [[ -n "$assignments" ]] && findings+="  • a hardcoded secret/token/password assignment\n"
 
   # 3) MAC-shaped VALUES in added content.
   #
@@ -134,8 +138,9 @@ scan_range() {  # $1 = git rev range or single sha
       #     device-unique class this scan exists to catch.
       # Both stay NARROW: they allow a zeroed/countered NIC, never a populated one.
     if [[ -n "$macs" ]]; then
-      mac_n="$(printf '%s\n' "$macs" | grep -c . || true)"
-      mac_oui="$(printf '%s\n' "$macs" | head -1 | cut -d: -f1-3)"
+      mac_n="$(grep -c . <<<"$macs" || true)"
+      IFS=$'\n' read -r first_mac _ <<<"$macs"
+      mac_oui="${first_mac%:*:*:*}"
       # Report the OUI (vendor prefix) only — enough to locate the line, without echoing a
       # device-unique identifier into a terminal/CI log.
       findings+="  • ${mac_n} real-looking MAC-address value(s) in added lines (first OUI ${mac_oui}:…) — allowed: 02:/aa:bb:cc:/de:ad:be:ef prefixes + exact 00:00:00:00:00:00 / ff:ff:ff:ff:ff:ff; FLEET_MAC_SCAN=off to skip\n"

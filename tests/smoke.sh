@@ -206,6 +206,7 @@ has "remote-control skips Codex windows" "$TMP/remote_control_codex.out" "unavai
 
 FLEET_RESUME_CHECK=on "$FLEET" doctor --quiet > "$TMP/doctor_resume_missing.out" 2>/dev/null || true
 has "doctor flags missing repo-local RESUME.md" "$TMP/doctor_resume_missing.out" "missing RESUME.md"
+lacks "doctor does not require optional global watchdog processes" "$TMP/doctor_resume_missing.out" "watchdog"
 "$FLEET" init-resume --force alpha > "$TMP/init_resume.out" 2>&1
 assert "init-resume scaffolds repo RESUME.md" test -f "$WS2/repoA/RESUME.md"
 has "RESUME.md template has takeover fields" "$WS2/repoA/RESUME.md" "## Next Actions"
@@ -518,7 +519,7 @@ export FLEET_CODEX_STUB_LOG="$TMP/dec_primer.log"; : > "$FLEET_CODEX_STUB_LOG"
 command tmux -L "$SOCK" set-environment -t "$SOCK" FLEET_CODEX_STUB_LOG "$FLEET_CODEX_STUB_LOG"
 "$FLEET" dispatch --provider codex latchprobe "inspect latch context" repoA > "$TMP/dec_dispatch.out" 2>&1
 sleep 0.5
-has "worker primer states decision precedence" "$FLEET_CODEX_STUB_LOG" "Ledger below controls operational choices"
+has "worker primer states decision precedence" "$FLEET_CODEX_STUB_LOG" "Ledger controls decisions"
 has "worker primer injects bounded current view" "$FLEET_CODEX_STUB_LOG" "#$DID2 [OPEN/HOLD]"
 "$FLEET" down latchprobe >/dev/null 2>&1 || true
 # the --watch view renders (bounded to one iteration so it terminates)
@@ -627,6 +628,32 @@ path_case "a REAL MAC under vectors/ STILL blocks (allowlist must not blind the 
           "vectors/kat.json" "{\"dev\": \"$REALMAC\"}" block
 path_case "a secret-bearing FILENAME under vectors/ still blocks (filename scan not excluded)" \
           "vectors/id_rsa" "not-really-a-key" block
+
+# Scrub-forward commits must be publishable: the guard previously classified its own
+# explicit replacement values as fresh secrets. Keep extraction per assignment so one
+# scrub marker on a minified line cannot exempt a real credential beside it.
+_scrub_name='apiKey'; _scrub_plain='R2-SCRUBBED-THIRD-PARTY-KEY-----'
+_scrub_b64='UjItU0NSVUJCRUQtVEhJUkQtUEFSVFktS0VZLS0tLS0'
+_real_name='password'; _real_value="$(printf 'z%.0s' $(seq 1 32))"
+path_case "plain scrub marker does not block remediation" "scrub.txt" \
+          "$_scrub_name: $_scrub_plain" pass
+path_case "base64 R2-SCRUBBED marker does not block remediation" "scrub.txt" \
+          "$_scrub_name: $_scrub_b64" pass
+path_case "scrub marker cannot hide a real assignment on the same line" "scrub.txt" \
+          "$_scrub_name: $_scrub_plain; $_real_name: $_real_value" block
+
+# A very long added line made grep -q close its pipe early and emitted a harmless but
+# misleading `printf: Broken pipe`. The hook now feeds matchers without producer pipes.
+_long_value="$(printf 'x%.0s' $(seq 1 100000))"
+printf '%s=%s %s\n' "$_real_name" "$_real_value" "$_long_value" > "$MACREPO/long.txt"
+git -C "$MACREPO" add long.txt
+git -C "$MACREPO" commit -qm case
+_long_out="$TMP/prepush-long.out"; _long_rc=0
+git -C "$MACREPO" push -q origin HEAD:refs/heads/master >"$_long_out" 2>&1 || _long_rc=$?
+if [ "$_long_rc" -ne 0 ]; then ok "long secret line still blocks"; else no "long secret line passed"; fi
+lacks "long-line block emits no broken-pipe diagnostic" "$_long_out" "Broken pipe"
+git -C "$MACREPO" reset -q --hard HEAD~1
+git -C "$MACREPO" clean -qfd
 
 # --- 12. git-hook installer + drift check ------------------------------------
 # The hooks drifted for weeks because NOTHING installed or checked them. These cover both:

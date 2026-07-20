@@ -119,8 +119,8 @@ fleet_agent_build_args() {
 
   # COMMS STANDARD — prepended to EVERY member's primer, BOTH providers, on start
   # AND on resume (claude: --append-system-prompt composes with --resume; codex:
-  # folded into the combined prompt). Carries the RFC 2119/8174 normative rules,
-  # the caveman v2 compressed register, and the dense agent-to-agent wire format.
+  # folded into the combined prompt). Carries one compact evidence-and-action
+  # protocol shared by both providers.
   #
   # It lives HERE rather than in per-repo AGENTS.md because AGENTS.md is opt-in
   # per lane and reaches a codex twin only after its writer commits and pushes —

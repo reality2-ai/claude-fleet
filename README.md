@@ -398,7 +398,7 @@ fleet decisions [--all] [--json] [--watch]
                              #   (--all: history; --watch: self-refreshing pane)
 fleet remote [id]            # remote-control status of member(s)
 fleet doctor [--quiet]       # self-check the oversight wire from ground truth
-                             #   (state docs, mailboxes, watchdogs, throttling)
+                             #   (state docs, mailboxes, Git sync, throttling)
 fleet tokens                 # per-member live context size vs the ceiling (needs a live window)
 
 # lifecycle (tmux)

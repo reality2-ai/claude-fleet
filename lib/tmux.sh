@@ -30,13 +30,9 @@ fleet_tmux_session_exists() {
   fleet_tmux has-session -t "$FLEET_TMUX_SESSION" 2>/dev/null
 }
 
-# True when a tmux server is already answering on the fleet's socket — even if our
-# named session isn't among its sessions. Distinct from session_exists: the durable
-# systemd unit's server hosts the watchdog sessions (r2-apiwatch/idlewatch) and stays
-# up after the 'fleet' session is torn down, so the server can be live while the
-# session is gone. We must NOT re-run systemd-run in that case (the unit already
-# exists → it errors → false "login session" warning); just create the session in the
-# running server, which inherits its durability.
+# True when a tmux server answers on this workspace's socket without our named session.
+# Reuse it: re-running systemd-run would fail on the existing unit and emit a false
+# login-session warning.
 fleet_tmux_server_running() {
   fleet_has_tmux || return 1
   fleet_tmux list-sessions >/dev/null 2>&1
@@ -87,10 +83,7 @@ fleet_tmux_ensure_session() {
   # The timeout only cleans up an abandoned failed launch. A successful first
   # window explicitly removes the bootstrap.
   local -a srv=(tmux -L "$FLEET_TMUX_SOCKET" new-session -d -s "$FLEET_TMUX_SESSION" -n __fleet_root "sleep 300")
-  # A server is already up on our socket (typically the durable systemd unit, kept
-  # alive by the watchdog sessions) but lacks the 'fleet' session — just create the
-  # session in it. Re-running systemd-run here would fail ("unit already exists") and
-  # emit a misleading login-session warning, even though the outcome is durable.
+  # A server is already up on our socket but lacks the fleet session. Create it there.
   if fleet_tmux_server_running; then
     "${srv[@]}" 8>&- 2>/dev/null || true
     fleet_tmux_install_server_hooks; return 0

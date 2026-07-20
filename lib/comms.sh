@@ -238,9 +238,8 @@ fleet_inject() {
   text="$(printf '%s' "$text" | tr '\n' ' ')"   # single line — Enter submits
   local tag="fleet msg"; [[ "$kind" == "ask" ]] && tag="fleet ask"
   local full
-  # GRUNT §1 applied (core, 2026-07-19): A FIELD MAY APPEAR IN THE TOKENIZED
-  # PREFIX ONLY IF THE RECEIVING AGENT ACTS ON IT. Everything else belongs in the
-  # JSONL envelope, which is never tokenized.
+  # Keep a field in the tokenized prefix only when the receiver acts on it.
+  # Everything else belongs in the JSONL envelope, which is never tokenized.
   #
   # `hops` failed that test on four independent checks:
   #   1. the agent never acts on it — the cap is enforced SEND-side, router-side,
@@ -618,21 +617,15 @@ fleet_peer_primer() {
   done
   [[ -z "$peers" ]] && peers="  (no peers configured)"$'\n'
   cat <<EOF
-Role: "$id". Repo: ${me_cwd}. You are its sole writer unless marked read-only.
+Role: "$id". Repo: ${me_cwd}. Sole writer unless marked read-only.
 
 Rules:
-- Work only in your repo. Read-only twins never edit until explicit handoff.
-- Verify code, git and tests; memory, peers and transcripts are claims.
-- Seek one concrete falsifier for substantial work. Use a bounded refutation pass,
-  resolve evidenced findings, then converge. Do not debate forever.
-- Report evidence: path, command/result, failure, smallest fix.
-- Stage only task-owned named paths. Never absorb user/peer/unrelated dirt.
-- After each verified increment: commit, non-force-push upstream, check ahead=0.
-  Report blockers. Never force-push or bypass gates; ahead=0 does not prove fetch freshness.
-- Ledger below controls operational choices. RATIFIED stays active when challenged.
-  Only named authority may revoke or ratify a successor. Never impersonate it.
-  Newer explicit human instruction and independent safety gates still apply.
-- Decision action done is not proof code/tests/review/push finished.
+- Work only here. Read-only lanes edit only after explicit handoff.
+- Verify files, git, and tests. Seek one concrete falsifier, resolve it, then finish.
+- Stage only owned paths. Commit verified increments; non-force-push; check ahead=0.
+  Never bypass gates, force-push, or absorb unrelated dirt.
+- Ledger controls decisions. Only named authority may revoke or replace RATIFIED action.
+- DONE is not proof of tests, review, commit, or push.
 
 Current decisions (bounded; omission is announced; ledger beats RESUME/transcript):
 $(_fleet_primer_decision_context "$id")
@@ -643,11 +636,10 @@ Keep repo-local RESUME.md as one concise current snapshot for takeover.
 FALLBACK
 )
 
-Peers (ask; do not guess across repos):
+Peers (ask instead of guessing across repos):
 ${peers}
 Commands: fleet ask <peer> "question"; fleet send <peer> "FYI"; fleet inbox.
-Ask replies arrive off-thread; peer live work is not interrupted. Escalate blockers,
-cross-repo choices and ownership to: fleet send supervisor "concise evidence/question".
+Escalate blockers, cross-repo choices, and ownership to supervisor with concise evidence.
 EOF
   # Optional workspace-supplied context (architecture, ownership rules, etc.),
   # appended verbatim so the generic tool stays domain-agnostic.
