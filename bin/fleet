@@ -2091,8 +2091,13 @@ cmd_doctor() {
       local _rid _rcwd _st; local -A _repo_seen=()
       for _rid in "${ids[@]}"; do
         [[ -n "$_rid" ]] || continue
-        _rcwd="$(fleet_state_get "$_rid" '.cwd' "")"
-        [[ -z "$_rcwd" || "$_rcwd" == "null" ]] && _rcwd="$(fleet_child_get "$_rid" cwd "")"
+        if [[ -n "${MAN[$_rid]:-}" ]]; then
+          _rcwd="$(fleet_child_get "$_rid" cwd "")"
+        elif fleet_tmux_has_window "$_rid" 2>/dev/null; then
+          _rcwd="$(fleet_state_get "$_rid" '.cwd' "")"
+        else
+          continue
+        fi
         [[ -n "$_rcwd" ]] || continue
         [[ "$_rcwd" != /* ]] && _rcwd="$WORKSPACE/$_rcwd"
         _rcwd="$(cd "$_rcwd" 2>/dev/null && pwd -P)" || continue
@@ -2145,17 +2150,20 @@ cmd_doctor() {
       fi
     fi
 
-    # honest-inbox failure counter.
-    local inf; inf="$(fleet_state_get "$id" '.inject_failures' 0)"; [[ "$inf" =~ ^[0-9]+$ ]] || inf=0
-    (( inf > 0 )) && { problems+=("$id: $inf unverified inject failure(s) (mail may be stranded)"); total_inject_failures=$(( total_inject_failures + inf )); }
-
-    # stale undelivered mail.
+    # Runtime mail health matters only while a child is live. Stopped/dead state is
+    # history, not an active delivery path; treating it as current makes a copied or
+    # restarted workspace permanently red over mail no process can consume.
     # `|| inbox=""` is load-bearing: bin/fleet runs `set -euo pipefail`, and
     # fleet_inbox_file now returns non-zero for a junk id (e.g. the '--help' phantom
     # that lives in real state dirs). A bare assignment would abort doctor ENTIRELY
     # and silently — fail-closed must not become fail-fatal. The -f guard below then
     # does the closing.
-    local inbox; inbox="$(fleet_inbox_file "$id" 2>/dev/null)" || inbox=""
+    local inf=0 inbox=""
+    if [[ "$has_win" == 1 ]]; then
+      inf="$(fleet_state_get "$id" '.inject_failures' 0)"; [[ "$inf" =~ ^[0-9]+$ ]] || inf=0
+      (( inf > 0 )) && { problems+=("$id: $inf unverified inject failure(s) (mail may be stranded)"); total_inject_failures=$(( total_inject_failures + inf )); }
+      inbox="$(fleet_inbox_file "$id" 2>/dev/null)" || inbox=""
+    fi
     if [[ -n "$inbox" && -f "$inbox" ]]; then
       local oldest; oldest="$(jq -s --argjson now "$now" '
         [.[] | select(.delivered==false) | ($now - (.ts // $now))] | (max // 0)' "$inbox" 2>/dev/null || echo 0)"
@@ -2175,11 +2183,12 @@ cmd_doctor() {
     # excluded.
     local managed cwd rel role resume_problem resume_key
     managed="$(fleet_state_get "$id" '.managed' false)"
-    if [[ -n "${MAN[$id]:-}" || "$managed" == "true" ]]; then
-      cwd="$(fleet_state_get "$id" '.cwd' "")"
-      if [[ -z "$cwd" || "$cwd" == "null" ]]; then
+    if [[ -n "${MAN[$id]:-}" || ( "$managed" == "true" && "$has_win" == 1 ) ]]; then
+      if [[ -n "${MAN[$id]:-}" ]]; then
         rel="$(fleet_child_get "$id" cwd "")"
         [[ -n "$rel" ]] && { cwd="$WORKSPACE/$rel"; [[ "$rel" == /* ]] && cwd="$rel"; }
+      else
+        cwd="$(fleet_state_get "$id" '.cwd' "")"
       fi
       if [[ -n "$cwd" && "$cwd" != "null" ]]; then
         if [[ -z "${GIT_SYNC_CHECKED[$cwd]:-}" ]]; then

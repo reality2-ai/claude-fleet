@@ -207,6 +207,21 @@ has "remote-control skips Codex windows" "$TMP/remote_control_codex.out" "unavai
 FLEET_RESUME_CHECK=on "$FLEET" doctor --quiet > "$TMP/doctor_resume_missing.out" 2>/dev/null || true
 has "doctor flags missing repo-local RESUME.md" "$TMP/doctor_resume_missing.out" "missing RESUME.md"
 lacks "doctor does not require optional global watchdog processes" "$TMP/doctor_resume_missing.out" "watchdog"
+
+# Copied runtime state may contain absolute paths to the source workspace. Manifest
+# ownership wins for configured members; stopped ad-hoc records are historical.
+STALE_REPO="$TMP/stale-copy"; git init -q "$STALE_REPO"
+git -C "$STALE_REPO" config user.email smoke@test; git -C "$STALE_REPO" config user.name smoke
+printf 'stale\n' > "$STALE_REPO/f"; git -C "$STALE_REPO" add f; git -C "$STALE_REPO" commit -qm stale
+git -C "$STALE_REPO" remote add origin https://github.com/example/stale-copy.git
+jq --arg cwd "$STALE_REPO" '.cwd=$cwd' "$WS2/.fleet/state/alpha.json" > "$WS2/.fleet/state/alpha.json.t"
+mv "$WS2/.fleet/state/alpha.json.t" "$WS2/.fleet/state/alpha.json"
+jq -n --arg cwd "$STALE_REPO" '{id:"old-stopped",managed:true,state:"stopped",cwd:$cwd,inject_failures:99}' > "$WS2/.fleet/state/old-stopped.json"
+FLEET_RESUME_CHECK=off FLEET_HOOK_DRIFT_CHECK=off "$FLEET" doctor --quiet > "$TMP/doctor_copied_state.out" 2>/dev/null || true
+lacks "doctor uses manifest cwd instead of copied absolute state cwd" "$TMP/doctor_copied_state.out" "stale-copy"
+lacks "doctor ignores stopped ad-hoc runtime failures" "$TMP/doctor_copied_state.out" "old-stopped"
+jq --arg cwd "$WS2/repoA" '.cwd=$cwd' "$WS2/.fleet/state/alpha.json" > "$WS2/.fleet/state/alpha.json.t"
+mv "$WS2/.fleet/state/alpha.json.t" "$WS2/.fleet/state/alpha.json"
 "$FLEET" init-resume --force alpha > "$TMP/init_resume.out" 2>&1
 assert "init-resume scaffolds repo RESUME.md" test -f "$WS2/repoA/RESUME.md"
 has "RESUME.md template has takeover fields" "$WS2/repoA/RESUME.md" "## Next Actions"
