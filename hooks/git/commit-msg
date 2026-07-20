@@ -42,6 +42,16 @@
 
 set -uo pipefail
 
+# Preserve a pre-existing repo-local hook installed as commit-msg.local. The EXIT trap
+# covers every fail-open return path below without duplicating chaining at each one.
+_fleet_commitmsg_local() {
+  local hookdir
+  hookdir="$(git rev-parse --git-path hooks 2>/dev/null || true)"
+  [[ -n "$hookdir" && -x "$hookdir/commit-msg.local" ]] || return 0
+  "$hookdir/commit-msg.local" "$@"
+}
+trap '_fleet_rc=$?; trap - EXIT; if (( _fleet_rc == 0 )); then _fleet_commitmsg_local "$@" || _fleet_rc=$?; fi; exit "$_fleet_rc"' EXIT
+
 [[ "${FLEET_SKIP_TRAILER:-}" == "1" ]] && exit 0
 
 MSG_FILE="${1:-}"

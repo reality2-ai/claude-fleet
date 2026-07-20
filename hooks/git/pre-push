@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
-# PREPUSH_VERSION: 5  (2026-07-21) — scrub markers pass; no early-closing grep pipes.
+# PREPUSH_VERSION: 6  (2026-07-21) — decision-log accountability at publish boundary.
 # Cite this line when reporting which guard a lane runs. An unversioned gate
 # cannot be audited or skew-detected: android measured TWO versions live across
 # six repos, distinguishable only by sha256 of an untracked file.
@@ -15,6 +15,10 @@
 # trace in the output. It exists for a human operator with a reason. FLEET AGENTS
 # ARE FORBIDDEN TO SET IT — if this hook blocks you, hold and report. It is
 # deliberately not mentioned in the block message; see the note at the exit path.
+# Repos with DECISIONS.md also require each new commit to update that ledger or carry a
+# reviewable `Decision-Log: D-...` / `Decision-Log: none` trailer. This keeps local safety
+# commits available while preventing unaccounted work from being published. A human may
+# set FLEET_DECISION_LOG_CHECK=off for recovery; fleet agents are forbidden to set it.
 # Chains to a repo-local hook if one pre-existed (saved as pre-push.local).
 set -uo pipefail
 
@@ -22,6 +26,52 @@ set -uo pipefail
 
 zero='0000000000000000000000000000000000000000'
 findings=""
+decision_findings=""
+
+check_decision_accountability() {  # $1 = remote sha, $2 = local sha
+  local remote="$1" local_sha="$2" commits commit parent_count changed msg short
+  [[ "${FLEET_DECISION_LOG_CHECK:-on}" == off ]] && return 0
+
+  if [[ "$remote" == "$zero" ]]; then
+    # New remote branch: only commits absent from every remote are newly published.
+    commits="$(git rev-list --reverse "$local_sha" --not --remotes 2>/dev/null || true)"
+  else
+    commits="$(git rev-list --reverse "${remote}..${local_sha}" 2>/dev/null || true)"
+  fi
+  [[ -n "$commits" ]] || return 0
+
+  while IFS= read -r commit; do
+    [[ -n "$commit" ]] || continue
+
+    # Once the ledger exists it is a durable invariant. Removing it is itself an
+    # unaccounted decision and must not turn the guard off for later commits.
+    if ! git cat-file -e "${commit}:DECISIONS.md" 2>/dev/null; then
+      if git rev-parse -q --verify "${commit}^" >/dev/null 2>&1 \
+          && git cat-file -e "${commit}^:DECISIONS.md" 2>/dev/null; then
+        short="$(git rev-parse --short "$commit" 2>/dev/null || printf '%s' "$commit")"
+        decision_findings+="  • $short removes DECISIONS.md\n"
+      fi
+      continue
+    fi
+
+    changed="$(git diff-tree --root --no-commit-id --name-only -r "$commit" -- DECISIONS.md 2>/dev/null || true)"
+    [[ "$changed" == "DECISIONS.md" ]] && continue
+
+    # Generated merge commits combine already-accounted histories and do not themselves
+    # choose repo behaviour. A merge that removes the ledger was caught above.
+    parent_count="$(git rev-list --parents -n 1 "$commit" 2>/dev/null | awk '{print NF-1}')"
+    [[ "$parent_count" =~ ^[0-9]+$ ]] || parent_count=0
+    (( parent_count > 1 )) && continue
+
+    msg="$(git log -1 --format=%B "$commit" 2>/dev/null || true)"
+    if grep -qE '^Decision-Log: (none|D-[0-9]{8}-[0-9]{2}(, D-[0-9]{8}-[0-9]{2})*)[[:space:]]*$' <<<"$msg"; then
+      continue
+    fi
+
+    short="$(git rev-parse --short "$commit" 2>/dev/null || printf '%s' "$commit")"
+    decision_findings+="  • $short neither updates DECISIONS.md nor has a Decision-Log trailer\n"
+  done <<<"$commits"
+}
 
 scan_range() {  # $1 = git rev range or single sha
   local range="$1" added added_all names assignments macs mac_n mac_oui total first_mac
@@ -191,8 +241,18 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   else
     range="${remote_sha}..${local_sha}"
   fi
+  check_decision_accountability "${remote_sha:-$zero}" "$local_sha"
   scan_range "$range"
 done
+
+if [[ -n "$decision_findings" ]]; then
+  printf '\n\033[1;31m✗ PUSH BLOCKED — commits do not account for key decisions:\033[0m\n' >&2
+  printf '%b' "$decision_findings" >&2
+  printf '\nRead DECISIONS.md. Amend each listed commit to either include the applicable\n' >&2
+  printf 'Decision-Log: D-YYYYMMDD-NN trailer, or Decision-Log: none for routine work.\n' >&2
+  printf 'If the commit made a new key decision, append the record and commit it instead.\n\n' >&2
+  exit 1
+fi
 
 if [[ -n "$findings" ]]; then
   printf '\n\033[1;31m✗ PUSH BLOCKED — possible secret in the commits being pushed:\033[0m\n' >&2

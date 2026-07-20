@@ -5,8 +5,9 @@
 # launch primer — so all agents share one map of how your repos relate and how
 # to collaborate. Re-`up`/re-dispatch members after editing (applied at launch).
 #
-# The example below is for a workspace with three repos that depend on each
-# other. Replace it with yours.
+# Each repo's AGENTS.md owns its local role/dependency map. Use this primer only
+# for relationships that genuinely need one shared workspace-wide view; do not
+# duplicate every repo contract here. The example below has three dependent repos.
 
 ## How these repos relate
 

@@ -170,6 +170,7 @@ fleet wizard ~/work/myproject              # needs `gh` (logged in)
 ```sh
 fleet init ~/work/myproject                 # scaffold + hooks
 $EDITOR ~/work/myproject/.fleet/fleet.toml  # declare your members (see below)
+FLEET_WORKSPACE=~/work/myproject fleet init-repo  # onboard each declared repo
 ```
 
 Then, either way:
@@ -358,6 +359,35 @@ The scoped track-2 replacement is in
 `r2-fleetd` runtime with a tmux-like TUI, typed agent roles, one-writer leases,
 event logging, worktree isolation, and a later mobile/web hive.
 
+### Onboard a fleet repository
+
+After adding a `[[child]]` to `fleet.toml`, run:
+
+```sh
+fleet init-repo <id>   # omit id to onboard every manifest member
+```
+
+The command creates only missing files; it never overwrites repository content:
+
+- `AGENTS.md` — a short shared fleet contract plus the repo-specific map: role,
+  canonical authority, upstream dependencies, downstream consumers, ownership,
+  invariants, and verification commands.
+- `DECISIONS.md` — append-only decisions and later appropriateness reviews, including
+  real decision-maker, authority basis, rationale, alternatives, outcomes, and evidence.
+- `RESUME.md` — one current takeover snapshot.
+
+It also installs the fleet Git hooks: the pre-push publish guard and commit-attribution
+hook, preserving and chaining pre-existing hooks.
+The shared launch prompt tells every managed agent to consult `AGENTS.md` and
+`DECISIONS.md` before edits. `fleet doctor` reports missing files and unresolved
+`TODO(fleet-onboarding)` map fields; those fields are a hold on cross-repo and behavioural
+work so an agent cannot guess dependency direction or authority.
+
+Once `DECISIONS.md` exists, each newly published non-merge commit must either update the
+ledger or carry `Decision-Log: D-YYYYMMDD-NN`; routine work uses the explicit,
+reviewable `Decision-Log: none`. Enforcement is at push rather than commit so local safety
+checkpoints are never blocked. The wizard runs `init-repo` automatically.
+
 ### Repo-local handoff state — `RESUME.md`
 
 Every implementation worker is expected to maintain `<repo>/RESUME.md` as the
@@ -408,7 +438,9 @@ fleet down [id]                   # stop the suite / one member
 fleet restart <id>                # restart one member
 fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]
 fleet compact [--force] <id> | --all  # inject /compact to bound a heavy member's context
+fleet init-repo [id]             # add missing repo contract/log/handoff + publish guard
 fleet init-resume [--force] [id]  # scaffold repo-local RESUME.md handoff file(s)
+fleet install-git-hooks [repo...] # install/refresh publish + attribution hooks
 fleet pair [--provider claude|codex] [--id companion-id] [id]
 fleet pairs [id]                    # logical pair view: base + provider lanes
 fleet pair-send <id> "<msg>"        # send to all lanes in a pair
@@ -918,9 +950,11 @@ lib/                   common, manifest parser, registry, tmux, restart, provide
 hooks/                 self-reporting hooks: session-start, prompt-submit, post-edit,
                        on-stop, session-end; plus auto-approve (PreToolUse: auto-confirms
                        routine prompts + the firmware/key escalation gate)
+hooks/git/             managed pre-push publishing and commit-attribution hooks
 skill/SUPERVISOR.md    role prompt for the supervising session
 commands/fleet.md      the /fleet slash command (installed into .claude/commands/)
-templates/             example fleet.toml + primer.md + illustrative hooks block
+templates/             workspace examples plus non-overwriting repo onboarding files
+templates/repo/        AGENTS.md + DECISIONS.md + RESUME.md for a new fleet member
 tests/smoke.sh         self-contained smoke test (syntax + lifecycle vs a stub)
 .github/workflows/     CI: runs the smoke test on every push / PR
 ```

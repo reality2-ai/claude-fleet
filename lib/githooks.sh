@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# githooks.sh — install + drift-check the repo-level git hooks (hooks/git/*).
+# githooks.sh — install + drift-check the repo-level Git hooks.
 #
 # WHY THIS FILE EXISTS (2026-07-15). The git hooks were hand-copied into each repo's
 # .git/hooks/ once, in 2026-07-07, and never synced again. Nothing in this tool referenced
@@ -14,14 +14,16 @@
 #
 # Used by: bin/fleet (cmd_install_git_hooks, cmd_doctor).
 
-# The source-of-truth hook shipped by THIS checkout.
+# The pre-push guard covers secret/MAC leakage and decision-log accountability;
+# commit-msg preserves agent/session attribution. Both sources ship in THIS checkout.
 #
 # ⚠ SEQUENCING TRAP: TOOL_ROOT follows the `fleet` symlink back to whatever checkout it
 # points at, on whatever branch that checkout happens to be on — NOT origin/master. So the
 # hook you deploy is the hook in the running checkout's working tree. Check out the branch
 # you intend to deploy FIRST. fleet_git_hook_provenance() exists so this is printed on every
 # install rather than trusted to memory.
-fleet_git_hook_src() { printf '%s\n' "$TOOL_ROOT/hooks/git/pre-push"; }
+fleet_git_hook_names() { printf '%s\n' pre-push commit-msg; }
+fleet_git_hook_src() { printf '%s/hooks/git/%s\n' "$TOOL_ROOT" "${1:-pre-push}"; }
 
 # A one-line provenance banner for the source checkout: branch, short sha, and whether the
 # hook file itself is locally modified (i.e. you are about to deploy uncommitted changes).
@@ -29,8 +31,8 @@ fleet_git_hook_provenance() {
   local br sha dirty=""
   br="$(git -C "$TOOL_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
   sha="$(git -C "$TOOL_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')"
-  if ! git -C "$TOOL_ROOT" diff --quiet -- hooks/git/pre-push 2>/dev/null; then
-    dirty=" (LOCALLY MODIFIED — deploying uncommitted hook changes)"
+  if ! git -C "$TOOL_ROOT" diff --quiet -- hooks/git/ 2>/dev/null; then
+    dirty=" (LOCALLY MODIFIED — deploying uncommitted hooks)"
   fi
   printf '%s @ %s%s\n' "$br" "$sha" "$dirty"
 }
@@ -45,18 +47,25 @@ fleet_git_hook_dir() {
   printf '%s\n' "$hk"
 }
 
-# Is this pre-push OURS (any version of it) rather than a foreign repo-local hook?
-# Marker: the bypass env var, which only our hook defines.
-fleet_git_hook_is_ours() { grep -q 'FLEET_SKIP_SECRET_SCAN' "$1" 2>/dev/null; }
+# Is this hook OURS (any version) rather than a foreign repo-local hook?
+fleet_git_hook_is_ours() {
+  local file="$1" name="${2:-pre-push}" marker
+  case "$name" in
+    pre-push) marker=FLEET_SKIP_SECRET_SCAN ;;
+    commit-msg) marker=FLEET_COMMITMSG_VERSION ;;
+    *) return 1 ;;
+  esac
+  grep -q "$marker" "$file" 2>/dev/null
+}
 
-# Drift state of one repo's deployed pre-push vs source-of-truth.
+# Drift state of one repo's deployed named hook vs source-of-truth.
 # Echoes exactly one of: ok | drift | missing | notgit
 fleet_hook_drift_state() {
-  local repo="$1" hk dep src
-  src="$(fleet_git_hook_src)"
+  local repo="$1" name="${2:-pre-push}" hk dep src
+  src="$(fleet_git_hook_src "$name")"
   [[ -f "$src" ]] || { printf 'notgit\n'; return 0; }
   hk="$(fleet_git_hook_dir "$repo")" || { printf 'notgit\n'; return 0; }
-  dep="$hk/pre-push"
+  dep="$hk/$name"
   [[ -f "$dep" ]] || { printf 'missing\n'; return 0; }
   if [[ "$(sha256sum "$dep" 2>/dev/null | cut -d' ' -f1)" == "$(sha256sum "$src" 2>/dev/null | cut -d' ' -f1)" ]]; then
     printf 'ok\n'
@@ -69,19 +78,20 @@ fleet_hook_drift_state() {
 # $2 = "dry" to report the action without touching anything.
 # Echoes one of: current | updated | installed | preserved | notgit
 #
-# A pre-existing FOREIGN hook is moved to pre-push.local rather than clobbered — our hook
-# chains to pre-push.local on exit, so the repo's own hook keeps running. That is why the
-# backup name is not .bak: .local is load-bearing, not an archive.
+# A pre-existing FOREIGN hook is moved to <name>.local rather than clobbered — both shipped
+# hooks chain to that file, so the repo's own hook keeps running. `.local` is load-bearing,
+# not an archive.
 fleet_install_git_hook() {
-  local repo="$1" mode="${2:-}" hk dep src action
-  src="$(fleet_git_hook_src)"
+  local repo="$1" mode="${2:-}" name="${3:-pre-push}" hk dep src action
+  src="$(fleet_git_hook_src "$name")"
   [[ -f "$src" ]] || { printf 'notgit\n'; return 1; }
   hk="$(fleet_git_hook_dir "$repo")" || { printf 'notgit\n'; return 0; }
 
-  if [[ -f "$hk/pre-push" ]]; then
-    if [[ "$(sha256sum "$hk/pre-push" 2>/dev/null | cut -d' ' -f1)" == "$(sha256sum "$src" 2>/dev/null | cut -d' ' -f1)" ]]; then
+  dep="$hk/$name"
+  if [[ -f "$dep" ]]; then
+    if [[ "$(sha256sum "$dep" 2>/dev/null | cut -d' ' -f1)" == "$(sha256sum "$src" 2>/dev/null | cut -d' ' -f1)" ]]; then
       action=current
-    elif fleet_git_hook_is_ours "$hk/pre-push"; then
+    elif fleet_git_hook_is_ours "$dep" "$name"; then
       action=updated
     else
       action=preserved
@@ -92,9 +102,9 @@ fleet_install_git_hook() {
 
   if [[ "$mode" != dry && "$action" != current ]]; then
     mkdir -p "$hk"
-    [[ "$action" == preserved ]] && mv -f "$hk/pre-push" "$hk/pre-push.local" && chmod +x "$hk/pre-push.local"
-    cp -f "$src" "$hk/pre-push"
-    chmod +x "$hk/pre-push"
+    [[ "$action" == preserved ]] && mv -f "$dep" "$dep.local" && chmod +x "$dep.local"
+    cp -f "$src" "$dep"
+    chmod +x "$dep"
   fi
   printf '%s\n' "$action"
 }

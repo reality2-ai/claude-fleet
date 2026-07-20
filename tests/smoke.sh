@@ -222,6 +222,33 @@ lacks "doctor uses manifest cwd instead of copied absolute state cwd" "$TMP/doct
 lacks "doctor ignores stopped ad-hoc runtime failures" "$TMP/doctor_copied_state.out" "old-stopped"
 jq --arg cwd "$WS2/repoA" '.cwd=$cwd' "$WS2/.fleet/state/alpha.json" > "$WS2/.fleet/state/alpha.json.t"
 mv "$WS2/.fleet/state/alpha.json.t" "$WS2/.fleet/state/alpha.json"
+
+# New members get one non-overwriting scaffold: shared operating contract plus the
+# repo-specific dependency/authority map. Unresolved map fields are visible holds.
+git -C "$WS2/repoA" init -q
+"$FLEET" init-repo alpha > "$TMP/init_repo.out" 2>&1
+assert "init-repo scaffolds AGENTS.md" test -f "$WS2/repoA/AGENTS.md"
+assert "init-repo scaffolds DECISIONS.md" test -f "$WS2/repoA/DECISIONS.md"
+assert "init-repo scaffolds RESUME.md" test -f "$WS2/repoA/RESUME.md"
+assert "init-repo installs publish guard" test -x "$WS2/repoA/.git/hooks/pre-push"
+assert "init-repo installs attribution hook" test -x "$WS2/repoA/.git/hooks/commit-msg"
+has "repo template requires upstream dependencies" "$WS2/repoA/AGENTS.md" "Upstream dependencies: TODO(fleet-onboarding)"
+has "repo template requires downstream consumers" "$WS2/repoA/AGENTS.md" "Downstream consumers: TODO(fleet-onboarding)"
+has "repo template requires decision consultation" "$WS2/repoA/AGENTS.md" 'Consult `DECISIONS.md`'
+FLEET_RESUME_CHECK=off FLEET_HOOK_DRIFT_CHECK=off "$FLEET" doctor --quiet > "$TMP/doctor_onboarding.out" 2>/dev/null || true
+has "doctor makes unresolved repository map a visible hold" "$TMP/doctor_onboarding.out" "unresolved fleet onboarding fields"
+printf '\nONBOARDING-SENTINEL\n' >> "$WS2/repoA/AGENTS.md"
+"$FLEET" init-repo alpha > "$TMP/init_repo_again.out" 2>&1
+has "init-repo never overwrites an existing AGENTS.md" "$WS2/repoA/AGENTS.md" "ONBOARDING-SENTINEL"
+if "$FLEET" init-repo absent > "$TMP/init_repo_absent.out" 2>&1; then
+  no "init-repo rejects an unknown manifest member"
+else
+  ok "init-repo rejects an unknown manifest member"
+fi
+sed -i 's/TODO(fleet-onboarding)/configured/g' "$WS2/repoA/AGENTS.md"
+FLEET_RESUME_CHECK=off FLEET_HOOK_DRIFT_CHECK=off "$FLEET" doctor --quiet > "$TMP/doctor_onboarding_clear.out" 2>/dev/null || true
+lacks "doctor clears the onboarding hold after repository map completion" "$TMP/doctor_onboarding_clear.out" "unresolved fleet onboarding fields"
+
 "$FLEET" init-resume --force alpha > "$TMP/init_resume.out" 2>&1
 assert "init-resume scaffolds repo RESUME.md" test -f "$WS2/repoA/RESUME.md"
 has "RESUME.md template has takeover fields" "$WS2/repoA/RESUME.md" "## Next Actions"
@@ -670,10 +697,34 @@ lacks "long-line block emits no broken-pipe diagnostic" "$_long_out" "Broken pip
 git -C "$MACREPO" reset -q --hard HEAD~1
 git -C "$MACREPO" clean -qfd
 
+# A repo decision log is operational, not aspirational. The publish boundary accepts a
+# new record or an explicit, reviewable acknowledgement and rejects silent omission.
+DECREMOTE="$TMP/decremote.git"; DECREPO="$TMP/decrepo"
+git init -q --bare "$DECREMOTE"; git init -q "$DECREPO"
+git -C "$DECREPO" config user.email smoke@test; git -C "$DECREPO" config user.name smoke
+git -C "$DECREPO" config commit.gpgsign false
+install -m 755 "$PPHOOK" "$DECREPO/.git/hooks/pre-push"
+git -C "$DECREPO" remote add origin "$DECREMOTE"
+cp "$ROOT/templates/repo/DECISIONS.md" "$DECREPO/DECISIONS.md"
+printf 'base\n' > "$DECREPO/f.txt"
+git -C "$DECREPO" add DECISIONS.md f.txt; git -C "$DECREPO" commit -qm base
+assert "first decision-ledger commit can publish" git -C "$DECREPO" push -q origin HEAD:refs/heads/master
+printf 'routine\n' >> "$DECREPO/f.txt"
+git -C "$DECREPO" add f.txt; git -C "$DECREPO" commit -qm routine
+_decision_out="$TMP/prepush-decision.out"; _decision_rc=0
+git -C "$DECREPO" push -q origin HEAD:refs/heads/master >"$_decision_out" 2>&1 || _decision_rc=$?
+if (( _decision_rc != 0 )); then ok "publish guard rejects an unaccounted commit"; else no "publish guard rejects an unaccounted commit"; fi
+has "decision rejection explains the missing acknowledgement" "$_decision_out" "neither updates DECISIONS.md nor has a Decision-Log trailer"
+git -C "$DECREPO" commit --amend -qm $'routine\n\nDecision-Log: none'
+assert "explicit no-decision acknowledgement can publish" git -C "$DECREPO" push -q origin HEAD:refs/heads/master
+printf '\n### D-20260721-99 — test record\n' >> "$DECREPO/DECISIONS.md"
+git -C "$DECREPO" add DECISIONS.md; git -C "$DECREPO" commit -qm decision
+assert "a commit containing a decision record can publish" git -C "$DECREPO" push -q origin HEAD:refs/heads/master
+
 # --- 12. git-hook installer + drift check ------------------------------------
-# The hooks drifted for weeks because NOTHING installed or checked them. These cover both:
-# the installer (idempotent, preserves a foreign hook as the chained pre-push.local) and the
-# drift state machine doctor reports from.
+# The hooks drifted for weeks because NOTHING installed or checked them. These cover the
+# installer (idempotent, preserves foreign hooks as chained *.local files) and the drift
+# state machine doctor reports from.
 section "12. git-hook installer + drift check"
 export TOOL_ROOT="$ROOT"                 # lib/githooks.sh resolves the source from TOOL_ROOT
 # shellcheck source=../lib/githooks.sh
@@ -683,8 +734,8 @@ GH="$TMP/gh"; mkdir -p "$GH"
 newrepo() { local d="$GH/$1"; rm -rf "$d"; git init -q "$d"; printf '%s\n' "$d"; }
 # NB call the lib functions IN THIS shell — `assert bash -c …` would spawn a child bash that
 # has never sourced githooks.sh, so the function would be unbound and the test vacuously red.
-drift_is() { local st; st="$(fleet_hook_drift_state "$2")"; if [ "$st" = "$3" ]; then ok "$1"; else no "$1 (got '$st')"; fi; }
-did()      { local a; a="$(fleet_install_git_hook "$2" "${4:-}")"; if [ "$a" = "$3" ]; then ok "$1"; else no "$1 (got '$a')"; fi; }
+drift_is() { local st; st="$(fleet_hook_drift_state "$2" "${4:-pre-push}")"; if [ "$st" = "$3" ]; then ok "$1"; else no "$1 (got '$st')"; fi; }
+did()      { local a; a="$(fleet_install_git_hook "$2" "${4:-}" "${5:-pre-push}")"; if [ "$a" = "$3" ]; then ok "$1"; else no "$1 (got '$a')"; fi; }
 
 R1="$(newrepo r1)"
 drift_is "drift state of a hook-less repo is 'missing'"        "$R1" missing
@@ -695,6 +746,13 @@ did      "installer reports 'installed' on a fresh repo"       "$R1" installed
 assert   "installed hook is executable"                        test -x "$R1/.git/hooks/pre-push"
 drift_is "installed hook matches source"                       "$R1" ok
 did      "re-run is idempotent (reports 'current')"            "$R1" current
+
+# The attribution hook is part of the same managed set; a definition that is never
+# deployed is another false-green control plane.
+drift_is "commit-msg starts missing too"                        "$R1" missing commit-msg
+did      "installer deploys commit-msg"                         "$R1" installed "" commit-msg
+assert   "installed commit-msg is executable"                   test -x "$R1/.git/hooks/commit-msg"
+drift_is "installed commit-msg matches source"                  "$R1" ok commit-msg
 
 # ★ NEGATIVE CONTROL: the drift check must actually FAIL on drift, or it is theatre.
 printf '\n# tampered\n' >> "$R1/.git/hooks/pre-push"
@@ -710,6 +768,17 @@ did      "foreign hook → 'preserved'"                          "$R2" preserved
 has      "the foreign hook survives as pre-push.local (our hook chains to it)" "$R2/.git/hooks/pre-push.local" "echo mine"
 assert   "pre-push.local is executable"                        test -x "$R2/.git/hooks/pre-push.local"
 drift_is "and the fleet hook is now installed"                 "$R2" ok
+
+# commit-msg also preserves and actually CALLS a foreign hook.
+R4="$(newrepo r4)"
+mkdir -p "$R4/.git/hooks"
+printf '#!/usr/bin/env bash\nprintf chained > "$(git rev-parse --show-toplevel)/foreign-ran"\n' > "$R4/.git/hooks/commit-msg"
+chmod +x "$R4/.git/hooks/commit-msg"
+did      "foreign commit-msg is preserved"                      "$R4" preserved "" commit-msg
+has      "foreign commit-msg survives as commit-msg.local"      "$R4/.git/hooks/commit-msg.local" "foreign-ran"
+git -C "$R4" config user.email smoke@test; git -C "$R4" config user.name smoke
+printf 'x\n' > "$R4/f"; git -C "$R4" add f; git -C "$R4" commit -qm chained
+assert   "fleet commit-msg chains the foreign hook"             test -f "$R4/foreign-ran"
 
 # --dry-run must not touch anything
 R3="$(newrepo r3)"

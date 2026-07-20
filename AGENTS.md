@@ -48,8 +48,9 @@ implementation. Read `README.md`; running state lives in `RESUME.md`.
 
 Stage task-owned named paths only—never user/peer/unrelated dirt. Commit verified
 increments and non-force-push upstream. Before idle/done, verify no local commit remains
-ahead. Report push blockers; never force-push or bypass gates. Ahead-zero does not prove
-fetch freshness.
+ahead. A published commit updates `DECISIONS.md`, cites governing `Decision-Log: D-...`,
+or says `Decision-Log: none` for routine work. Report push blockers; never force-push or
+bypass gates. Ahead-zero does not prove fetch freshness.
 
 ## Verification
 

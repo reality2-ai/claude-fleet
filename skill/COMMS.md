@@ -1,4 +1,4 @@
-COMMS_VERSION: 19
+COMMS_VERSION: 20
 
 # Fleet peer communication
 
@@ -26,5 +26,7 @@ A clean unwired or empty scan is not evidence. Findings include severity, reprod
 and the smallest fix or test. If no attack survives, report checks run and the strongest
 untested attack.
 
-Do not debate after evidence resolves the question. Record durable state in the repo or
-decision ledger, then converge.
+Before edits, read repo `AGENTS.md` and `DECISIONS.md`. Before commit, append any key
+ruling, review, or consequential delegated choice; routine commits state
+`Decision-Log: none`. Do not debate after evidence resolves the question. Record durable
+state, then converge.

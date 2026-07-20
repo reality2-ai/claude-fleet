@@ -60,8 +60,9 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
                                           (covers hand-started sessions in sub-repos;
                                            no-ops outside a .fleet workspace)
   fleet install-git-hooks [--dry-run] [repo...]
-                                        install the repo-level GIT pre-push hook
-                                        (secret + MAC-value scan) into managed repos'
+                                        install repo-level Git hooks: pre-push
+                                        publish guards + commit attribution
+                                        into managed repos'
                                         .git/hooks/. Idempotent; a pre-existing hook is
                                         preserved as pre-push.local and still chained.
                                         NB installs from the RUNNING checkout's branch —
@@ -90,6 +91,8 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet restart <id>            force-restart one child (honours intensity breaker)
   fleet dispatch [--provider claude|codex] <id> "<task>" [cwd]
                                   start a fresh worker seeded with a task
+  fleet init-repo [id]           add missing AGENTS/DECISIONS/RESUME files and
+                                  publish guards to one/all manifest repositories
   fleet init-resume [--force] [id] scaffold repo-local RESUME.md handoff file(s)
   fleet pair [--provider claude|codex] [--id companion-id] [id]
                                   start per-repo adversarial read-only twin(s)
@@ -220,12 +223,12 @@ cmd_wizard() {
   info ""
   info "Wrote manifest with ${#agent_names[@]} member(s): ${agent_names[*]}"
   cmd_init "$ws"          # scaffold dirs + .gitignore + hooks (keeps the manifest above)
+  FLEET_WORKSPACE="$ws" cmd_init_repo
 
   info ""
   info "Next:"
-  info "  1. (optional) describe how your repos relate in $ws/.fleet/primer.md"
-  info "     (copy templates/primer.md.example) — agents share it and consult the right expert."
-  info "  2. install tmux if needed, then:  cd $ws && fleet up"
+  info "  1. Complete each AGENTS.md repository map; TODO(fleet-onboarding) is a hold."
+  info "  2. Fill each RESUME.md, then install tmux if needed: cd $ws && fleet up"
 }
 
 # ----------------------------------------------------------------------------
@@ -866,10 +869,10 @@ cmd_down() {
 
 # Install a per-user systemd unit so the fleet auto-starts on boot and resumes
 # every agent. Renders templates/fleet.service.example for the current workspace.
-# --- git hooks: install hooks/git/pre-push into the managed repos -------------
+# --- git hooks: install the managed repos' publish guard -----------------------
 # Distinct from `install-hooks`, which installs the SELF-REPORTING hooks into
 # .claude/settings.json. This one installs the repo-level GIT hook (the pre-push
-# secret/MAC scan) into <repo>/.git/hooks/. Until now nothing installed it at all, which is
+# secret/MAC + decision-accountability guard) into <repo>/.git/hooks/. Until now nothing installed it at all, which is
 # exactly why deployed drifted from source for weeks — see lib/githooks.sh.
 #
 # Idempotent + safe to re-run. A pre-existing FOREIGN hook is preserved as pre-push.local
@@ -877,13 +880,16 @@ cmd_down() {
 cmd_install_git_hooks() {
   local dry=0
   while [[ $# -gt 0 ]]; do case "$1" in --dry-run|-n) dry=1; shift ;; *) break ;; esac; done
-  local src; src="$(fleet_git_hook_src)"
-  [[ -f "$src" ]] || die "no hook at $src (is this a full checkout?)"
+  local hook src
+  while read -r hook; do
+    src="$(fleet_git_hook_src "$hook")"
+    [[ -f "$src" ]] || die "no hook at $src (is this a full checkout?)"
+  done < <(fleet_git_hook_names)
 
   # ⚠ SEQUENCING TRAP, made visible rather than documented-and-forgotten: this installs from
   # the RUNNING checkout, on whatever branch it is on — not origin/master. Print it every run.
   printf '%sfleet install-git-hooks%s%s\n' "$c_bold" "$c_reset" "$([[ $dry == 1 ]] && printf ' (dry-run)')"
-  printf '  source: %s\n  branch: %s\n' "$src" "$(fleet_git_hook_provenance)"
+  printf '  source: %s/hooks/git/\n  branch: %s\n' "$TOOL_ROOT" "$(fleet_git_hook_provenance)"
 
   local -a repos=()
   if [[ $# -gt 0 ]]; then
@@ -905,14 +911,17 @@ cmd_install_git_hooks() {
 
   local r act
   for r in "${repos[@]}"; do
-    act="$(fleet_install_git_hook "$r" "$([[ $dry == 1 ]] && printf dry)")" || act=notgit
-    case "$act" in
-      notgit)    printf '  %s—%s    %s (not a git repo — skipped)\n' "$c_dim" "$c_reset" "$r" ;;
-      current)   printf '  %sok%s   %s (already current)\n' "$c_grn" "$c_reset" "$r" ;;
-      updated)   printf '  %sok%s   %s (updated from an older fleet hook)\n' "$c_grn" "$c_reset" "$r" ;;
-      installed) printf '  %sok%s   %s (installed)\n' "$c_grn" "$c_reset" "$r" ;;
-      preserved) printf '  %sok%s   %s (installed; pre-existing hook preserved as pre-push.local, still chained)\n' "$c_grn" "$c_reset" "$r" ;;
-    esac
+    while read -r hook; do
+      act="$(fleet_install_git_hook "$r" "$([[ $dry == 1 ]] && printf dry)" "$hook")" || act=notgit
+      case "$act" in
+        notgit)    printf '  %s—%s    %s (%s: not a git repo — skipped)\n' "$c_dim" "$c_reset" "$r" "$hook" ;;
+        current)   printf '  %sok%s   %s (%s already current)\n' "$c_grn" "$c_reset" "$r" "$hook" ;;
+        updated)   printf '  %sok%s   %s (%s updated)\n' "$c_grn" "$c_reset" "$r" "$hook" ;;
+        installed) printf '  %sok%s   %s (%s installed)\n' "$c_grn" "$c_reset" "$r" "$hook" ;;
+        preserved) printf '  %sok%s   %s (%s installed; existing hook preserved as %s.local and chained)\n' \
+                     "$c_grn" "$c_reset" "$r" "$hook" "$hook" ;;
+      esac
+    done < <(fleet_git_hook_names)
   done
 }
 
@@ -1266,6 +1275,23 @@ _fleet_resume_status_problem() {
     if (( delta > stale )); then
       printf '%s: %s stale by %ss relative to last activity\n' "$id" "$(fleet_resume_filename)" "$delta"
     fi
+  fi
+}
+
+_fleet_repo_onboarding_problem() {
+  local id="$1" cwd="$2"
+  [[ "${FLEET_REPO_ONBOARDING_CHECK:-on}" == off ]] && return 0
+  [[ -d "$cwd" ]] || return 0
+  if [[ ! -f "$cwd/AGENTS.md" ]]; then
+    printf '%s: missing AGENTS.md; run fleet init-repo %s\n' "$id" "$id"
+    return 0
+  fi
+  if [[ ! -f "$cwd/DECISIONS.md" ]]; then
+    printf '%s: missing DECISIONS.md; run fleet init-repo %s\n' "$id" "$id"
+    return 0
+  fi
+  if grep -qF 'TODO(fleet-onboarding)' "$cwd/AGENTS.md" 2>/dev/null; then
+    printf '%s: AGENTS.md has unresolved fleet onboarding fields; hold cross-repo and behavioural work\n' "$id"
   fi
 }
 
@@ -1653,6 +1679,65 @@ cmd_init_resume() {
     _fleet_resume_template "$id" "$cwd" "$task" >"$f"
     info "wrote   $f"
   done
+}
+
+cmd_init_repo() {
+  local only="${1:-}"
+  [[ $# -le 1 ]] || die "usage: fleet init-repo [id]"
+  [[ "$only" != "-h" && "$only" != "--help" ]] || die "usage: fleet init-repo [id]"
+
+  fleet_load_paths
+  [[ -f "$MANIFEST" ]] || die "no manifest: $MANIFEST"
+  fleet_manifest_load "$MANIFEST"
+
+  local -a ids=()
+  local id found=0
+  if [[ -n "$only" ]]; then
+    for id in "${CHILD_IDS[@]:-}"; do
+      [[ "$id" == "$only" ]] && { found=1; break; }
+    done
+    [[ "$found" == 1 ]] || die "unknown manifest child '$only'"
+    ids=("$only")
+  else
+    ids=("${CHILD_IDS[@]:-}")
+  fi
+  [[ ${#ids[@]} -gt 0 ]] || die "no manifest children found"
+
+  local srcdir="$TOOL_ROOT/templates/repo" cwd src dest fn hook hook_action
+  [[ -d "$srcdir" ]] || die "missing repository templates: $srcdir"
+  for id in "${ids[@]}"; do
+    [[ -n "$id" ]] || continue
+    cwd="$(_fleet_id_cwd "$id")"
+    [[ -d "$cwd" ]] || { warn "$id: cwd does not exist: $cwd"; continue; }
+    git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+      || { warn "$id: not a git repository: $cwd"; continue; }
+
+    for fn in AGENTS.md DECISIONS.md RESUME.md; do
+      src="$srcdir/$fn"
+      dest="$cwd/$fn"
+      [[ "$fn" == RESUME.md ]] && dest="$(_fleet_resume_path "$cwd")"
+      if [[ -L "$dest" ]]; then
+        warn "$id: refused symlink destination: $dest"
+      elif [[ -e "$dest" ]]; then
+        info "kept   $dest"
+      else
+        fleet_atomic_write "$dest" <"$src" || die "could not safely write $dest"
+        info "wrote   $dest"
+      fi
+    done
+
+    while read -r hook; do
+      hook_action="$(fleet_install_git_hook "$cwd" "" "$hook")" || hook_action=notgit
+      case "$hook_action" in
+        current)   info "kept   $cwd/.git/hooks/$hook (current)" ;;
+        updated)   info "updated $cwd/.git/hooks/$hook" ;;
+        installed) info "wrote   $cwd/.git/hooks/$hook" ;;
+        preserved) info "wrote   $cwd/.git/hooks/$hook (existing hook preserved and chained)" ;;
+        *)         warn "$id: could not install $hook" ;;
+      esac
+    done < <(fleet_git_hook_names)
+  done
+  info "Complete every TODO(fleet-onboarding) before cross-repo or behavioural work."
 }
 
 cmd_pair() {
@@ -2078,9 +2163,9 @@ cmd_doctor() {
   for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] || continue; seen["$id"]=1; ids+=("$id"); done
   while read -r id; do [[ -n "$id" && -z "${seen[$id]:-}" ]] && { seen["$id"]=1; ids+=("$id"); }; done < <(fleet_state_ids)
   local -A MAN=(); for id in "${CHILD_IDS[@]:-}"; do [[ -n "$id" ]] && MAN["$id"]=1; done
-  local -A RESUME_CHECKED=() GIT_SYNC_CHECKED=()
+  local -A RESUME_CHECKED=() GIT_SYNC_CHECKED=() ONBOARDING_CHECKED=()
 
-  # --- hook drift: deployed .git/hooks/pre-push vs source-of-truth -----------
+  # --- hook drift: deployed .git/hooks/* vs source-of-truth ------------------
   # THE check that would have caught this class. The git hooks were hand-copied once and
   # never synced, so source could gain a scan (the MAC-value check) while every repo kept
   # running the old file — and every gate still reported CLEAN. An un-installed hook
@@ -2090,7 +2175,7 @@ cmd_doctor() {
   if [[ "${FLEET_HOOK_DRIFT_CHECK:-on}" != "off" ]]; then
     local _hsrc; _hsrc="$(fleet_git_hook_src)"
     if [[ -f "$_hsrc" ]]; then
-      local _rid _rcwd _st; local -A _repo_seen=()
+      local _rid _rcwd _st _hook; local -A _repo_seen=()
       for _rid in "${ids[@]}"; do
         [[ -n "$_rid" ]] || continue
         if [[ -n "${MAN[$_rid]:-}" ]]; then
@@ -2105,11 +2190,13 @@ cmd_doctor() {
         _rcwd="$(cd "$_rcwd" 2>/dev/null && pwd -P)" || continue
         [[ -n "${_repo_seen[$_rcwd]:-}" ]] && continue
         _repo_seen["$_rcwd"]=1
-        _st="$(fleet_hook_drift_state "$_rcwd" 2>/dev/null)" || _st=notgit
-        case "$_st" in
-          drift)   problems+=("$(basename "$_rcwd"): deployed pre-push hook DRIFTS from source-of-truth (run: fleet install-git-hooks)") ;;
-          missing) problems+=("$(basename "$_rcwd"): no pre-push hook installed — the secret/MAC scan is not protecting this repo (run: fleet install-git-hooks)") ;;
-        esac
+        while read -r _hook; do
+          _st="$(fleet_hook_drift_state "$_rcwd" "$_hook" 2>/dev/null)" || _st=notgit
+          case "$_st" in
+            drift)   problems+=("$(basename "$_rcwd"): deployed $_hook hook DRIFTS from source-of-truth (run: fleet install-git-hooks)") ;;
+            missing) problems+=("$(basename "$_rcwd"): no $_hook hook installed (run: fleet install-git-hooks)") ;;
+          esac
+        done < <(fleet_git_hook_names)
       done
     fi
   fi
@@ -2201,6 +2288,12 @@ cmd_doctor() {
         fi
         role="$(fleet_state_get "$id" '.role' "")"
         if [[ "$id" != "supervisor" && "$role" != "adversary" ]]; then
+          if [[ -z "${ONBOARDING_CHECKED[$cwd]:-}" ]]; then
+            ONBOARDING_CHECKED["$cwd"]=1
+            local onboarding_problem
+            onboarding_problem="$(_fleet_repo_onboarding_problem "$id" "$cwd")"
+            [[ -n "$onboarding_problem" ]] && problems+=("$onboarding_problem")
+          fi
           resume_key="$cwd"
           if [[ -z "${RESUME_CHECKED[$resume_key]:-}" ]]; then
             RESUME_CHECKED["$resume_key"]=1
@@ -2615,6 +2708,7 @@ main() {
     down)      cmd_down "$@" ;;
     restart)   cmd_restart "$@" ;;
     dispatch)  cmd_dispatch "$@" ;;
+    init-repo|repo-init) cmd_init_repo "$@" ;;
     init-resume|resume-init) cmd_init_resume "$@" ;;
     pair)      cmd_pair "$@" ;;
     pairs|pair-status|pair-ls) cmd_pairs "$@" ;;
