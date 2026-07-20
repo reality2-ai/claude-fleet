@@ -30,8 +30,10 @@ implementation. Read `README.md`; running state lives in `RESUME.md`.
 
 ## Control invariants
 
-- Decision ledger controls operational action. Challenge changes confidence only.
-  Ratified action changes only through named-authority revoke or ratified successor.
+- The fleet ledger controls live gates; durable repo rulings live in `DECISIONS.md`.
+  Read it before changing established behaviour; append ratified outcomes with rationale
+  and evidence, and append later reviews without rewriting history.
+  Challenge changes confidence only; authority revoke or successor changes action.
   Never impersonate authority. Newer explicit human instruction and safety gates apply.
 - `RESUME.md` is one concise current takeover snapshot, not diary. Handoffs are bounded
   orientation packets; target re-verifies ground truth.
