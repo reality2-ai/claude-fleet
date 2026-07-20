@@ -265,6 +265,18 @@ has "doctor bounds oversized RESUME.md context" "$TMP/doctor_resume_large.out" "
 FLEET_RESUME_CHECK=on "$FLEET" doctor --quiet > "$TMP/doctor_resume_todo.out" 2>/dev/null || true
 has "doctor flags unfilled RESUME.md placeholders" "$TMP/doctor_resume_todo.out" "TODO placeholders"
 
+# A seed-only start followed by an intentional stop is not meaningful work and
+# must not manufacture RESUME staleness debt. Structural RESUME checks above remain.
+sed -i 's/TODO/DONE/g' "$WS2/repoA/RESUME.md"
+touch -d '@1' "$WS2/repoA/RESUME.md"
+jq --argjson now "$(date +%s)" '.state="stopped" | .heartbeat=$now' \
+  "$WS2/.fleet/state/alpha.json" > "$TMP/alpha-stopped.json"
+mv "$TMP/alpha-stopped.json" "$WS2/.fleet/state/alpha.json"
+FLEET_RESUME_CHECK=on FLEET_RESUME_STALE_SECS=1 FLEET_HOOK_DRIFT_CHECK=off \
+  "$FLEET" doctor --quiet > "$TMP/doctor_resume_stopped.out" 2>/dev/null || true
+lacks "stopped managed session does not create RESUME staleness debt" \
+  "$TMP/doctor_resume_stopped.out" "stale by"
+
 # GitHub synchronization is locally checkable without network: missing upstream
 # and commits ahead of the remote-tracking ref are both operational faults.
 git -C "$WS2/repoA" init -q

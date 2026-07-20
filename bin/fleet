@@ -1240,7 +1240,7 @@ _fleet_git_sync_problem() {
 }
 
 _fleet_resume_status_problem() {
-  local id="$1" cwd="$2" role f mt act delta stale bytes max_bytes
+  local id="$1" cwd="$2" role state f mt act delta stale bytes max_bytes
   [[ "${FLEET_RESUME_CHECK:-on}" == "off" ]] && return 0
   fleet_is_supervisor_id "$id" && return 0
   role="$(fleet_state_get "$id" '.role' "")"
@@ -1268,6 +1268,12 @@ _fleet_resume_status_problem() {
     printf '%s: %s still contains TODO placeholders\n' "$id" "$(fleet_resume_filename)"
     return 0
   fi
+  # Intentional shutdown is not work. Starting a seed-only session updates its
+  # transcript/heartbeat even when it makes no change; after `fleet down`, using
+  # that timestamp as handoff debt makes a clean start/stop permanently red.
+  # Presence, size, and placeholder checks above still apply to stopped members.
+  state="$(fleet_state_get "$id" '.state' "")"
+  [[ "$state" == "stopped" ]] && return 0
   stale="${FLEET_RESUME_STALE_SECS:-3600}"
   [[ "$stale" =~ ^[0-9]+$ ]] || stale=3600
   (( stale <= 0 )) && stale=0
