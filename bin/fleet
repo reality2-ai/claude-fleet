@@ -790,6 +790,10 @@ cmd_supervise() {
 
 cmd_up() {
   local no_sup=0 start_pairs=0
+  # Workspace policy lives in .fleet/env. Load it before reading the auto-pair
+  # default; the old order silently ignored FLEET_PAIR_ON_UP from that file and
+  # honoured it only when inherited from the launching shell.
+  fleet_load_paths
   [[ "${FLEET_PAIR_ON_UP:-off}" == on ]] && start_pairs=1
   while [[ $# -gt 0 ]]; do
     case "${1:-}" in
@@ -800,7 +804,7 @@ cmd_up() {
       *) break ;;
     esac
   done
-  fleet_load_paths; fleet_manifest_load "$MANIFEST"
+  fleet_manifest_load "$MANIFEST"
   # Serialize 'fleet up' per workspace so two starts (e.g. the boot service and
   # a manual run) can't race into duplicate windows/agents. The per-window
   # has-window guard is checked-then-acted, so without this a tight race could

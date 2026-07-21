@@ -162,6 +162,16 @@ has "second concurrent 'fleet up' is skipped" "$TMP/lock.out" "another 'fleet up
 wait "$holder" 2>/dev/null || true
 
 "$FLEET" down >/dev/null 2>&1; sleep 0.3
+printf 'export FLEET_PAIR_ON_UP=on\n' > "$WS2/.fleet/env"
+export FLEET_CODEX_STUB_LOG="$TMP/alpha.envpair.codex.log"; : > "$FLEET_CODEX_STUB_LOG"
+"$FLEET" up --no-supervisor alpha > "$TMP/up_env_pair.out" 2>&1
+sleep 0.6
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins_env_pair.out" 2>/dev/null
+hasline ".fleet/env can enable automatic opposite-provider companion" \
+  "$TMP/wins_env_pair.out" "alpha-codex"
+"$FLEET" down >/dev/null 2>&1; sleep 0.3
+rm -f "$WS2/.fleet/env"
+
 export FLEET_STUB_LOG="$TMP/alpha.autopair.claude.log"; : > "$FLEET_STUB_LOG"
 export FLEET_CODEX_STUB_LOG="$TMP/alpha.autopair.codex.log"; : > "$FLEET_CODEX_STUB_LOG"
 "$FLEET" up --no-supervisor --pairs alpha > "$TMP/up_pair.out" 2>&1
