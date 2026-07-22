@@ -13,8 +13,13 @@ scaffold peer constant (0x0dcadbf8) that mismatches the scan-resolved XIAO and
 drops the frame. The mechanism is fine — the *list* keeps being wrong, because
 source constants are hand-maintained while the real membership lives in composer's
 custody roster (the TG's actual enrolment record, which minted D5 this morning and
-knows all 5 members). Core's roster design + composer's .roster export CLI are
-both ready — this gate is the only thing between them and implementation.
+knows the membership). Core's roster design is ready, and composer's export CLI
+is **done and verified** on branch `feat/tg-roster-blob` @7346f8a — emits the
+real TG's roster (4 members: RAK, D4, XIAO, D5; 16 bytes). Ruling "adopt"
+executes as: merge that branch + core wires the bake. One open sub-check:
+the CLI skips a wire_id-0 placeholder member (android-fieldchecker) — composer
+is confirming that's a test artifact and not the real phone member silently
+dropped from every roster.
 
 ## Core's proposed durable shape
 
