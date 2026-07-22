@@ -446,3 +446,27 @@ It is not a task log and does not replace specifications, ADRs, or code.
   anyway." — SEN0676 attach deferred indefinitely; D5's standing role = bench test
   tool (cosine sim sensor); the eventual radar field node = XIAO-based, not DFR1195.
   Gate 4 CLEARED. (Field-node design memory updated: radar host leans XIAO.)
+
+## 2026-07-23 — BLEROLE ITER-3 SPLIT VERDICT + D5 ATTESTED + GATE 6 OPENED
+
+- **Iter-3 (ef26d7d0):** flash+role PASS; LIST GAP CLOSED (falsifier printed
+  'expects 8c15b0c2 -> rbid 6084'; XIAO LoRa beacon resolves by name). NEW distinct
+  blocker: XIAO's BLE R2-BEACON emits a TRANSPORT-SPECIFIC rbid (55ca) the resolver
+  does not compute — derivation reconcile = core, in flight. bit0-BOTH still NO;
+  composer stopped correctly on the pre-registered STOP condition.
+- **D5 cosine sensor BUILT + attested (656cab50):** triple differential (wave took:
+  != sin-build 61a5578d; role took: != no-role 3d6e9ec1), WaveSourceSentant at the
+  sentant layer per Roy's ruling, minted persona baked. FLASH HELD — pending core's
+  enumeration of whether ANY current image can resolve the bench personas (3rd
+  list-membership question today; FR4-era ids != bench personas).
+- **Gate 6 OPENED (gates/g6):** durable baked-roster registry from composer custody
+  — the fix for the list-miss defect class. Roy lean requested.
+- **#d016 EXECUTED:** composer manifest regen ab62a0e — and honest correction: the
+  file was never corrupt, it was STALE pre-chip-split; delta is systematic. Possible
+  generator follow-up (chip_profile lookup for arch/target_triple) flagged, parked.
+- **#d015 chain COMPLETE at specs:** D-20260723-07/-08/-09; R2-HEARTBEAT v0.21,
+  R2-ROUTE v0.79. Specs corrected my crossing-verify: their v0.19 declared-seed arm
+  CONTRADICTED Roy's observed-only verbatim — removed in v0.20; correct outcome,
+  my verify had under-checked that arm. Stale-cwd incident verified closed by specs
+  with corrections accepted (their -08 draft committed intact via their 7edcb8f;
+  my restore was correct minus my own 5-line bullet, which landed properly as -09).
