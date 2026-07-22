@@ -35,3 +35,15 @@ has happened on metal.
 
 "gate 5: stay split" / "gate 5: merge" / "gate 5: defer until phone-pair merge proven"
 (the third is the lean, stated as a condition rather than a date)
+
+## Roy's topology context (2026-07-23)
+
+Two PC+MCU combinations exist: **tuxedo-os** (laptop, travels; test MCUs plugged in
+"whenever I can" — itinerant attach) and **alfred** (fixed office PC, currently the
+claude-fleet host). Both on Tailscale (a standing Inet tenant path between them).
+
+**Sharpened lean — "merge follows permanence":** identity merge suits a *resident*
+MCU (alfred + dedicated board someday; the SBC+MCU single-box shape); *visiting*
+MCUs (the carried test boards on tuxedo) stay two-hives+relay — attach/detach should
+be a bearer event, never an identity event. Rule per-pair when a resident MCU exists.
+Tailscale spanning = a future Inet-leg substrate test, free once below-TG is locked.
