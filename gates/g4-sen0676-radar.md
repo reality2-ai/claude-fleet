@@ -1,6 +1,6 @@
 # Gate 4 — SEN0676 radar attach: when does D5 get its real sensor?
 
-**Status:** OPEN · sequencing decision, hardware on hand
+**Status:** ✅ RULED 2026-07-23 — #d017 (see Ruling below)
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → "read gates/g4 and the water-level field-node design with me"
 
 ## Background
@@ -36,3 +36,14 @@ this is genuinely your sequencing call.
 ## Ruling syntax
 
 "gate 4: after blerole" / "gate 4: after substrate lock" / "gate 4: now"
+
+
+---
+
+## RULING (Roy, 2026-07-23 — #d017)
+
+**Radar set aside; D5 is a bench test tool from now on.** Roy: *"put aside the radar
+for now, [D]5 is a bench test tool from now on. We will deal with the radar later,
+and probably use a Xiao with that anyway."* Consequences: SEN0676 attach deferred
+indefinitely; D5's standing role = bench test tool (cosine sim sensor); the eventual
+radar field node leans XIAO-based, not DFR1195 (field-node design updated).

@@ -1,6 +1,6 @@
 # Gate 1 — Key-10 liveness window: per-transport or tier-keyed?
 
-**Status:** OPEN · low urgency (bench unaffected — it runs the 4 s benchkeepalive)
+**Status:** ✅ RULED 2026-07-23 — #d015 (see Ruling below)
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → "read gates/g1 and argue both sides with me"
 
 ## The problem in one paragraph
@@ -53,3 +53,25 @@ fading while ESP-NOW is hot), per-transport (a) wins.
 
 "gate 1: tier-keyed" / "gate 1: per-transport" / "gate 1: leave it" — with any
 sharpening you want; specs gets it as a spec-first task either way.
+
+
+---
+
+## RULING (Roy, 2026-07-23 — #d015, specs D-20260723-07/-08)
+
+**Both axes compose.** Roy: *"both options A and B make sense. eg LoRa must have a
+longer time-to-fade just due to the nature of the connection and the way lora is
+mostly quiet when not in use. Similarly, devices that have a regular time cadence,
+eg a sensor that turns on, reads a value and turns off must be able to have that
+cadence automatically become part of the timing."*
+
+Follow-ons folded into the same ruling: the sensor lifecycle model (first-boot shout
+= enrolment; TG-member existence never fully fades; each neighbour learns "what seems
+normal for this hive" locally, **observed, no exchange**; attention = deviation from
+that hive's own normal), the mobility axis (wearable-in-crowd = fast fade;
+non-members fade fully — privacy consequence), and the TG contact primitive (the
+regular "shout out to all").
+
+**Landed:** R2-HEARTBEAT v0.19 §6.4.1 `W_T = clamp(k_w × C_T, floor_T, ceil_T)`
+(specs 861d7b0), with the observed-only supersede + mobility folds in the v0.20
+follow-up. The #d008 tension case became a conformance MUST with a negative control.

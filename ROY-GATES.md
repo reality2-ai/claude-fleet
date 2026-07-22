@@ -25,3 +25,11 @@ GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20
 - Multi-hive / multi-TG scale-out — gated on the below-TG substrate lock (the table
   is the gate-keeper, not a ruling).
 - Waveform-as-sentant implementation — core owns it under your layer ruling.
+
+## Ruled — record of decisions past
+
+| # | Gate | Ruling | Ref | Brief |
+|---|------|--------|-----|-------|
+| 1 | Key-10 liveness window | both axes compose: transport floor × observed cadence; lifecycle + mobility folds | #d015 | [g1](gates/g1-key10-liveness-window.md) |
+| 3 | composer manifest.json | regenerate | #d016 | [g3](gates/g3-composer-manifest.md) |
+| 4 | SEN0676 radar | set aside; D5 = bench test tool; radar later on a XIAO | #d017 | [g4](gates/g4-sen0676-radar.md) |

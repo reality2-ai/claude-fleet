@@ -1,6 +1,6 @@
 # Gate 3 — composer webapp/dist/manifest.json: regenerate or revert?
 
-**Status:** OPEN · trivial · one word settles it
+**Status:** ✅ RULED 2026-07-23 — #d016 (see Ruling below)
 **Interrogate:** probably unnecessary — but `claude` in r2-composer can show you the diff
 
 ## Background
@@ -25,3 +25,11 @@ now". Revert just postpones the same regeneration.
 ## Ruling syntax
 
 "gate 3: regenerate" / "gate 3: revert"
+
+
+---
+
+## RULING (Roy, 2026-07-23 — #d016)
+
+**Regenerate.** Roy: *"Gate 3 - yes, regenerate makes sense."* Composer regenerates
+`webapp/dist/manifest.json` cleanly and commits, sequenced after the blerole flash.
