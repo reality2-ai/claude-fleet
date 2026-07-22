@@ -355,3 +355,5 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **First:** composer's read-only D5 banner report establishes what persona/image it
   currently holds (may already have a valid persona to reuse — mint only if absent
   or invalid).
+- **Roy follow-on (same ruling):** D5's simulated sensor = COSINE wave at a DIFFERENT
+  frequency than D4's sine — the two streams stay distinguishable end-to-end.
