@@ -1,6 +1,15 @@
 # Gate 6 — Durable member registry: baked roster from composer's custody?
 
-**Status:** OPEN · opened 2026-07-23 · blocks the "list-membership miss" defect class
+**Status:** ✅ CLOSED 2026-07-23 — #d020 · Roy verbatim: *"gate 6: adopt as dev seed"*
+
+## RULING
+
+Adopt as dev-tier seed of the runtime member-set. Canon already landed
+(R2-PROVISION v0.121 §1.2 lifecycle, R2-DISCOVERY v0.19 §3.3 runtime member-set,
+D-20260723-13/-14). Execution: composer merges `feat/tg-roster-blob` @7346f8a;
+core wires the mutable member-set with BAKED_ROSTER as dev seed; compile-time
+KNOWN_HIVE_IDS and one-off peer constants retire. Roy's two shaping inputs
+(learned-membership lifecycle; the-learned-roster-is-canon) are recorded above.
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → "read gates/g6 and argue both sides with me"
 
 ## Why this gate exists
