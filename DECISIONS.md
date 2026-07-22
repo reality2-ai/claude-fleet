@@ -233,3 +233,24 @@ It is not a task log and does not replace specifications, ADRs, or code.
   0x25 is wanted. (3) composer webapp/dist/manifest.json left dirty (half-corrupt
   regen — regenerate or revert). (4) board-to-board BLE initiator slot (blerole
   c01c9db9 + blob a55810f9) awaits its own flash grant.
+
+## 2026-07-23 — #d009 SINGLE-HIVE CANON AMENDMENTS RATIFIED (Roy): SECURED BRIDGE + MERGE-REFLASH
+
+- **Decision (Roy, verbatim intent):** "go with your recommendations for 1 and 2 to
+  match canon" — resolves the two canon-gating items in
+  r2-android docs/design/HIVE-FIRST-ANDROID.md §6 (a)/(e) (note e06af14).
+- **(1) Enclosure-security premise (§6a):** amend R2-COMPLEX-HIVE so a complex hive
+  whose components do NOT share enclosure/power may conform via a CRYPTO-SECURED
+  internal bridge (USB link keyed). The enclosure rule itself stays intact for true
+  single-box complex hives (Uno-Q shape) — amendment adds the secured-bridge option to
+  the §11.1/§2.2/§3.5 MUSTs, does not re-ground the boundary rule.
+- **(2) Field-formed key sharing (§6e):** MERGE-REFLASH is the defined op — the XIAO
+  is reflashed with phone-derived TG material via the existing bake path
+  (DFR_ROLE_PATH-style), phone = identity holder. No live pairing ceremony now;
+  ceremony may come later as convenience.
+- **Consequences:** specs owns the canon amendment (spec-first); android's design note
+  freezes once specs lands it; increment 5 (XIAO internal Usb=4 attach) unblocks at
+  that point but any FLASH still rides its own per-op grant. §6 (b)/(c)/(d)/(6)
+  remain scoped-but-open (recommendations sent, not ruled).
+- **Evidence:** design note e06af14 §6; specs contradiction flags (a)/(e); Roy ruling
+  this session 2026-07-23.
