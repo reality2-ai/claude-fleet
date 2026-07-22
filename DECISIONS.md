@@ -470,3 +470,5 @@ It is not a task log and does not replace specifications, ADRs, or code.
   my verify had under-checked that arm. Stale-cwd incident verified closed by specs
   with corrections accepted (their -08 draft committed intact via their 7edcb8f;
   my restore was correct minus my own 5-line bullet, which landed properly as -09).
+
+#d014 addendum (2026-07-23, supervisor): D5 emitter 656cab50 STANDS — no provenance rebuild from 5c13a3c5. Hive enumerated diff 7766f53c..5c13a3c5 = receiver-side KNOWN_HIVE_IDS append only, no-op for D5's own resolver. Rebuild = zero behavior change + verify churn. Receiver-side coverage stays with core enumeration / g6 roster.
