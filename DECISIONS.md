@@ -338,3 +338,20 @@ It is not a task log and does not replace specifications, ADRs, or code.
   for the rebuild from core fix 3ed2f818 (empty-registry L3 resolver starve; first
   iteration flash PASS but bit0-BOTH blocked at rbid resolution). Same slot, same
   scope (D4 only, XIAO untouched), new grant record for the new sha on delivery.
+
+## 2026-07-23 — #d014 D5 RELEASED (Roy): SECOND SENSOR, OWN PERSONA, COMPOSER MINTS
+
+- **Decision (Roy):** "bring D5 up to date as a second sensor - and of course it not
+  exactly the same as D4 - it has a different persona, something that should be
+  natural for Composer" — releases the D5 hold (#d004) for this purpose.
+- **Scope:** D5 = second sensor per the #d003 bench roster (sine-wave
+  ai.reality2.cap.env.scalar, simulated duty cycle). OWN persona (distinct hive_id —
+  no-duplicate rule), shared TG. Composer owns the persona mint (its tooling).
+  Image = pinned coex base bee0e996 lineage, D4-sensor recipe, D5 persona baked,
+  no role blob.
+- **Sequencing:** build + persona mint start NOW in parallel; D5 FLASH waits until
+  the blerole bit0-BOTH retest completes (no mid-campaign bench confound). Flash =
+  its own per-op grant on attested shas (Roy's standing pattern).
+- **First:** composer's read-only D5 banner report establishes what persona/image it
+  currently holds (may already have a valid persona to reuse — mint only if absent
+  or invalid).
