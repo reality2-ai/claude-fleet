@@ -370,3 +370,8 @@ It is not a task log and does not replace specifications, ADRs, or code.
   functionality" — multi-hive/multi-TG scale-out is GATED on the below-L5 substrate
   being locked (bearers, routing/relay, discovery/liveness proven on metal). Table
   first; expansion after.
+- **Roy layer ruling (waveform, supersedes the env-bake recommendation):** the
+  simulated waveform "should be just a Sentant functionality (or ensemble without a
+  plugin)" — waveform generation belongs at the SENTANT/ensemble layer, not as a
+  compile-time plugin knob. Core owns the smallest implementation honoring that
+  layer assignment.
