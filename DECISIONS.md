@@ -362,3 +362,7 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **Roy forward context:** "we have numerous other dfr1195s when we want to test
   more hives, and multiple TGs" — bench can scale to multi-hive / multi-TG
   (islands-of-sensitivity refutation) with existing DFR1195 stock; no purchase gate.
+- **Roy (further):** "numerous other xiaos+loRa pairs to act in the same way (not
+  necessarily as Android + xiao complex hives)" — XIAO+SX1262 stock = standalone
+  hives too; complex-hive pairing is one deployment shape, not the default for the
+  stock.
