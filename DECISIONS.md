@@ -179,3 +179,33 @@ It is not a task log and does not replace specifications, ADRs, or code.
   pass stage 1 — no known sk-/sk-ant provider issues keys that short; revisit if one appears.
 - **Evidence:** Control run 2026-07-22 (six fixtures above); composer self-test 7/7 at 80cc2bb.
 - **Supersedes:** 2026-07-22 "pre-push sk-key pattern: anchor left boundary" (d54e6d3).
+
+## 2026-07-22 (night) — #d007 OVERNIGHT AUTONOMY: bit5 campaign linear flow (Roy asleep)
+
+- **Decision:** Roy (verbatim): "DFR1195s, Xiao and Android are connected to tuxedo-os.
+  I need to go sleep. Work through the remaining tasks to turn the table green."
+  Interpreted as a bounded overnight grant for the bit5 campaign's LINEAR flow on bench
+  boards D4+XIAO only:
+  1. Pre-attested v7-diag images (XIAO 8a6dea89 / D4 3b412e54, built from 78177f50)
+     flashable IFF sniff per-span verdict = XIAO-RX-side; composer two-party SHA verify
+     mandatory before every flash.
+  2. Subsequent fix images: hive builds under #d005-compliant supervisor orders naming
+     the pinned sha; flashable within the same campaign scope only.
+  3. EVERY flash op uses the full flash-safety preamble: ports resolved by-id at flash
+     time (never ttyACM number), partition table passed explicitly, espflash plan
+     tripwire (CONFIRM app@0x20000, ABORT if 0x10000), NO write to 0x12000 persona
+     region, console closed during flash.
+  4. OUT of scope overnight: D5 (#d004 held), RAK (frozen #d003), blerole/ghostfix
+     images (explicitly never conflated with this flow), persona mints, history
+     rewrites, HOTSPOT PSK, any repo-history or publishing action. Android lane may
+     RUN its junit suite via tuxedo-os if JDK17 already present there — no toolchain
+     installs on Roy's machines; absent toolchain = report and hold.
+- **Rationale:** Roy armed the bench explicitly and named the goal; the campaign's next
+  steps (diag flash, run-6, fix, verify) are the pre-ratified ladder. Holding every new
+  sha until morning would make the instruction unfulfillable. Risk bounded: bench
+  boards, USB-recoverable, brick class avoided by the preamble.
+- **Expected consequences:** Morning report owed to Roy with a complete op log (every
+  flash: sha, board, by-id port, verify result). If verdict = D4-TX-side, flow re-aims
+  at D4-TX diag; new diag images buildable under the same rules.
+- **Evidence:** v7-diag attestation (hive, pre-built); sniff instrument corpus-proven
+  (poscontrol total=714/action=4; live run total=12593/action=33, drops=0).
