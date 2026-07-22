@@ -54,16 +54,37 @@ Every new board or persona change is another hand-edit to source constants on ev
 image, and today proved how reliably that goes wrong. The alternative is living with
 the miss class and catching it via falsifier instruments each time.
 
-## Supervisor lean
+## Roy's reframe (2026-07-23) — membership knowledge is LEARNED
 
-**Adopt**: baked roster, separate blob, generous cap, hive_id-only. It moves the
-source of truth to where the truth already is (custody), kills a proven defect
-class, and both future doors (OTA descriptor, multi-TG rosters) stay open.
-**Would refute the lean:** if the derivation reconcile (blerole's current blocker)
-reveals per-transport keying that needs more than hive_id per member, question 3
-flips to (id, key-material) and the blob design needs a second look before adopting.
+Verbatim: *"Every fresh new hive knows nothing about what is around it — the
+table is empty. The only thing set is its persona. Its first task is to make
+noise — I'm here — and listen for other devices nearby. If a hive has a baked-in
+TG, it may well be difficult for it to learn about other TG members initially if
+they are not physically nearby (or available via a relay). A fresh hive when not
+in dev mode will come ready to have its TG membership set, and this will
+primarily be by proximity to other TG hives. Therefore, the routing table gets a
+kickstart."*
+
+Consequence: the production mechanism is not a compiled list at all. Membership
+knowledge is **runtime state**: proximity enrolment sets the TG and kickstarts
+the routing table with the enrolling neighbourhood; after that, GroupHmac-verified
+frames teach new member IDs as they're met (formation is already rbid-free —
+core's enumeration). The resolver registry becomes a **runtime member-set**, and
+the rbid resolver computes rbids for *learned* members, not compile-time constants.
+
+The baked roster survives as exactly what the baked persona already is: a
+**dev-tier seed** — bench boards bypass live enrolment, so their member-set gets
+pre-seeded from composer's custody at bake. Same blob, same CLI, demoted from
+"the mechanism" to "the dev seed of the mechanism".
+
+## Supervisor lean (reshaped)
+
+**Adopt as dev-tier seed of a runtime member-set.** Core's registry work shifts
+shape: resolvers read a runtime set; the baked blob pre-seeds it in dev builds;
+production populates it via enrolment + verified frames. Composer's CLI stands
+as-is. Kills the hardcoded-list class *and* aligns with the enrolment lifecycle.
 
 ## Ruling syntax
 
-"gate 6: adopt" (lean) / "gate 6: adopt, but …" / "gate 6: hold until derivation
-reconcile lands"
+"gate 6: adopt as dev seed" (reshaped lean) / "gate 6: adopt baked-only for now,
+runtime set later" / "gate 6: hold"
