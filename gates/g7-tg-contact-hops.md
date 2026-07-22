@@ -1,6 +1,10 @@
 # Gate 7 — TG contact: one-hop pulse only, or multi-hop via relay?
 
-**Status:** ✅ CLOSED 2026-07-23 — #d019 (relax to two-hop; specs ordered to modify canon)
+**Status:** ✅ CLOSED 2026-07-23 — #d019 · canon LANDED same day: R2-HEARTBEAT v0.24 §7
+(D-20260723-15 @8a81e69, verified on main) — TTL=2, one transport-shaped go-between,
+cross-transport-only relay (same-bearer re-broadcast forbidden), relayed pulses feed
+contact never phase-coupling; complex-hive bridges + pure IP transit = not hops;
+honest residual: TTL outside the GroupHmac span (pre-existing class).
 
 ## RULING (Roy, 2026-07-23)
 
