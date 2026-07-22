@@ -438,3 +438,11 @@ It is not a task log and does not replace specifications, ADRs, or code.
 
 - **Decision (Roy):** "Gate 3 - yes, regenerate makes sense" — composer regenerates
   webapp/dist/manifest.json cleanly and commits. Gate 3 CLEARED.
+
+## 2026-07-23 — #d017 GATE 4 RULED (Roy): RADAR SET ASIDE; D5 = BENCH TEST TOOL
+
+- **Decision (Roy):** "put aside the radar for now, [D]5 is a bench test tool from
+  now on. We will deal with the radar later, and probably use a Xiao with that
+  anyway." — SEN0676 attach deferred indefinitely; D5's standing role = bench test
+  tool (cosine sim sensor); the eventual radar field node = XIAO-based, not DFR1195.
+  Gate 4 CLEARED. (Field-node design memory updated: radar host leans XIAO.)
