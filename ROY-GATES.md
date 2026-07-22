@@ -15,9 +15,7 @@ syntax is at the bottom of every brief.
 
 | # | Gate | One-liner | Lean | Brief |
 |---|------|-----------|------|-------|
-| 2 | Persistent 0x25 | standing BLE green needs pump or initiator | wait — blerole dissolves it | [g2](gates/g2-persistent-pump.md) |
-| 3 | composer manifest.json | dirty generated file | regenerate | [g3](gates/g3-composer-manifest.md) |
-| 4 | SEN0676 radar attach | when does D5 get the real sensor | after blerole, before scale-out | [g4](gates/g4-sen0676-radar.md) |
+| 2 | Persistent 0x25 | Roy direction: heartbeat/shout-over-BLE = the standing source | core sizing in flight — likely no ruling needed | [g2](gates/g2-persistent-pump.md) |
 | 5 | Alfred rig fork | merge to one identity vs stay two hives + relay | stay split until phone-pair merge proven | [g5](gates/g5-alfred-rig-fork.md) |
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
