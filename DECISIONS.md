@@ -318,3 +318,16 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **Consequences:** specs finds the canon home (spec-first); firmware never needs
   infra-WiFi + mesh coexistence on one radio; capability matrix per-board columns
   = TN duties only, host columns carry infra bearers.
+
+## 2026-07-23 — #d013 ADDENDUM (Roy): TRANSPORT-PRESENCE SEMANTICS + EXCEPTION CLASS
+
+- **Roy (follow-on, confirming the tenant-bearer framing):** the host's code "passes
+  along a TCP-IP/UDP transport for R2 to sit alongside the others" — uniform
+  presence semantics: exactly as a radio's presence/absence decides whether that
+  transport exists in the table, the host's IP stack decides Udp/Inet presence.
+  One rule for all bearers.
+- **Hard consequence:** a XIAO or DFR1195 CANNOT take part in WiFi-AP/infra traffic
+  — its radio is in use for R2 TN traffic. Not a limitation to fix; the ruled
+  dedication (#d013).
+- **Exception class (Roy):** simplified R2 implementations may be excepted — named
+  example r2-workshop (browser/WS shapes). Default + exceptions, exceptions named.
