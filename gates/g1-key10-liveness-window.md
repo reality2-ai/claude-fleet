@@ -1,6 +1,6 @@
 # Gate 1 — Key-10 liveness window: per-transport or tier-keyed?
 
-**Status:** ✅ RULED 2026-07-23 — #d015 (see Ruling below)
+**Status:** ✅ CLOSED 2026-07-23 — #d015 (see Ruling below)
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → "read gates/g1 and argue both sides with me"
 
 ## The problem in one paragraph

@@ -1,6 +1,6 @@
 # Gate 3 — composer webapp/dist/manifest.json: regenerate or revert?
 
-**Status:** ✅ RULED 2026-07-23 — #d016 (see Ruling below)
+**Status:** ✅ CLOSED 2026-07-23 — #d016 (see Ruling below)
 **Interrogate:** probably unnecessary — but `claude` in r2-composer can show you the diff
 
 ## Background

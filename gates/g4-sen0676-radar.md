@@ -1,6 +1,6 @@
 # Gate 4 — SEN0676 radar attach: when does D5 get its real sensor?
 
-**Status:** ✅ RULED 2026-07-23 — #d017 (see Ruling below)
+**Status:** ✅ CLOSED 2026-07-23 — #d017 (see Ruling below)
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → "read gates/g4 and the water-level field-node design with me"
 
 ## Background

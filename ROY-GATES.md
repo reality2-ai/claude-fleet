@@ -26,7 +26,7 @@ GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20
   is the gate-keeper, not a ruling).
 - Waveform-as-sentant implementation — core owns it under your layer ruling.
 
-## Ruled — record of decisions past
+## Closed — record of decisions past
 
 | # | Gate | Ruling | Ref | Brief |
 |---|------|--------|-----|-------|
