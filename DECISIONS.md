@@ -331,3 +331,10 @@ It is not a task log and does not replace specifications, ADRs, or code.
   dedication (#d013).
 - **Exception class (Roy):** simplified R2 implementations may be excepted — named
   example r2-workshop (browser/WS shapes). Default + exceptions, exceptions named.
+
+## 2026-07-23 — #d011 ADDENDUM: SECOND ITERATION CONFIRMED (Roy)
+
+- Roy: "go ahead with the reflash when the shas are ready" — explicit per-sha confirm
+  for the rebuild from core fix 3ed2f818 (empty-registry L3 resolver starve; first
+  iteration flash PASS but bit0-BOTH blocked at rbid resolution). Same slot, same
+  scope (D4 only, XIAO untouched), new grant record for the new sha on delivery.
