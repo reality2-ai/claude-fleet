@@ -254,3 +254,23 @@ It is not a task log and does not replace specifications, ADRs, or code.
   remain scoped-but-open (recommendations sent, not ruled).
 - **Evidence:** design note e06af14 §6; specs contradiction flags (a)/(e); Roy ruling
   this session 2026-07-23.
+
+## 2026-07-23 — #d010 TIER-2 DESIGN-NOTE RULINGS (Roy): §6 (b)/(c)/(d)/(6) RESOLVED
+
+- **Decision (Roy):** "go ahead with the tier 2 recommendations as well" — resolves the
+  four remaining scoped items of HIVE-FIRST-ANDROID.md §6 (e06af14) per supervisor
+  recommendations. Scope note: parked queue (window tension, pump, blerole slot,
+  master merge, manifest.json, D5/radar, Alfred fork) NOT included — still Roy's.
+- **(b) Intermittent above-L5 tier: NO NEW TIER.** Partition model suffices
+  (R2-ARCH §1 Cor 1 + R2-TRUST silence=DG-1). Revisit ONLY if bench shows a real
+  failure the existing tiers cannot name.
+- **(c) Dev-ensemble privilege: the three ceilings ARE the rule** — own-TG
+  entitlement, non-aggregation, single-TG. Nothing beyond them without a new ruling.
+- **(d) Detach/reattach semantics: DEFERRED** until increment 5 work starts —
+  behaviour falls out of the secured-bridge design (#d009). Explicitly not ruled now.
+- **(6) Track-B collapse: CONFIRMED** — single-hive target collapses phone<->XIAO
+  re-originator into an internal below-L5 attach; §4.3.6 re-attestation stays canon
+  for genuine two-hive cross-tier paths only. Wire flips only at merge-reflash.
+- **Consequences:** specs records (b)/(c)/(6) (ledger + minimal canon notes where a
+  cite-target is needed; no big spec surgery); android updates §6 markers 3/4/6
+  resolved + 5 deferred. Design note then fully frozen against v0.12.
