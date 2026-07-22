@@ -143,3 +143,21 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **Evidence:** Reproduced in `/R2` after the 2026-07-21 trial start; `bin/fleet` and
   stopped-session regression in `tests/smoke.sh`.
 - **Supersedes:** None
+
+## 2026-07-22 — pre-push sk-key pattern: anchor left boundary, keep body charset
+- **Decision:** `hooks/git/pre-push` sk-key value scan becomes
+  `(^|[^A-Za-z0-9])sk-(ant-)?[A-Za-z0-9_-]{20,}` (left boundary added; body charset unchanged).
+- **Authority basis:** Supervisor tooling ownership (this repo); fix for the reproduced
+  ask-fork false-positive class (composer's push blocked 3x on synthetic fixtures).
+- **Context:** Loose pattern matched `sk-` mid-word, so hyphenated slugs containing
+  "ask-fork…" tripped the gate. Composer proposed narrowing the charset to unbroken alnum.
+- **Rationale:** Charset narrowing FALSE-NEGATIVES real Anthropic keys — `sk-ant-api03-…`
+  breaks any unbroken-alnum run at `api03-`. Verified both ways against real-format
+  synthetics; boundary form flags sk-ant/sk-48 keys and passes the slug.
+- **Alternatives:** Composer's `sk-(ant-)?[A-Za-z0-9]{20,}` rejected (misses the exact key
+  class the line exists for; its positive control planted wrong-corpus keys).
+- **Expected consequences:** ask-fork-class false positives stop; real-key detection
+  unchanged; composer's key-hygiene.sh (be52729) needs the same boundary fix.
+- **Evidence:** Control run against the production-extracted pattern 2026-07-22
+  (realkey sk-ant FLAG / sk-48 FLAG / slug pass / line-start FLAG).
+- **Supersedes:** None
