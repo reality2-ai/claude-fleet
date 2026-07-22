@@ -414,3 +414,27 @@ It is not a task log and does not replace specifications, ADRs, or code.
   non-member passers-by (the crowd's other wearables) fade out fully as ordinary
   strangers. Mobility = a third input to the learned normal (transport floor x
   observed cadence x proximity churn).
+- **Roy follow-on 3 (#d015, the contact primitive):** "part of the way that a TG
+  maintains contact between its members is a regular 'shout out to all'" — TG
+  maintenance includes a periodic BROADCAST-to-all-members primitive (the standing
+  rhythm the learned-normal model observes; first-boot shout = its first instance).
+- **Roy (gate-2 context):** "given that all the hives at the moment belong to the
+  same dev TG, that should work" — heartbeat/shout-over-BLE as the standing-liveness
+  source is viable on the current bench (all boards same dev TG). Core scoping in
+  flight sizes it.
+
+## 2026-07-23 — SUPERVISOR INCIDENT: stale-cwd ledger commit into specs' repo
+
+- My #d015-follow-on-3 ledger append ran with cwd = r2-specifications (stale from a
+  verification step) — committed d6f46b1 onto specs' working branch, SWEEPING their
+  uncommitted D-20260723-08 draft (39 lines) into my commit; reverted 9e27a37
+  (no force-push), then RESTORED their 39 lines to their working tree uncommitted,
+  verified intact. Net: two noise commits on their branch, no content lost.
+- Lesson (recorded in memory): supervisor shell work MUST pin cwd per command —
+  `cd /path && ...` in every mutating compound, never rely on prior state. The
+  no-direct-repo-writes rule was breached by a MECHANISM (cwd drift), not intent.
+
+## 2026-07-23 — #d016 GATE 3 RULED (Roy): manifest.json REGENERATE
+
+- **Decision (Roy):** "Gate 3 - yes, regenerate makes sense" — composer regenerates
+  webapp/dist/manifest.json cleanly and commits. Gate 3 CLEARED.
