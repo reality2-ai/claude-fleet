@@ -65,12 +65,18 @@ in dev mode will come ready to have its TG membership set, and this will
 primarily be by proximity to other TG hives. Therefore, the routing table gets a
 kickstart."*
 
-Consequence: the production mechanism is not a compiled list at all. Membership
-knowledge is **runtime state**: proximity enrolment sets the TG and kickstarts
-the routing table with the enrolling neighbourhood; after that, GroupHmac-verified
-frames teach new member IDs as they're met (formation is already rbid-free —
-core's enumeration). The resolver registry becomes a **runtime member-set**, and
-the rbid resolver computes rbids for *learned* members, not compile-time constants.
+And per Roy's follow-up, **the learned roster is already canon** — R2-PROVISION:
+the §2.2 join flow admits a member, Step 7 `member_announce` teaches existing
+members (defined in canon; the wire opcode is a recorded follow-on), and the §3.2
+identity-split rule fixes roster identity as the per-TG `mesh_pk` (never the
+stable device_id). So the production mechanism needs no invention: the resolver
+registry becomes the **canon roster materialized on-device** — runtime state,
+kickstarted by proximity enrolment, extended by `member_announce` and
+GroupHmac-verified frames as members are met (formation is already rbid-free —
+core's enumeration). The rbid resolver computes rbids for *roster* members, not
+compile-time constants. One reconciliation for specs: composer's blob carries u32
+wire_ids while canon roster identity is the per-TG `mesh_pk` — the mapping and
+its bake-time linkability hygiene need stating.
 
 The baked roster survives as exactly what the baked persona already is: a
 **dev-tier seed** — bench boards bypass live enrolment, so their member-set gets

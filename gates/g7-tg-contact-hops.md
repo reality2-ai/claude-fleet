@@ -37,9 +37,28 @@ deliberately.
   recently used) with only occasional routed contact to confirm. Cheapest — no
   standing far traffic at all — but weakest liveness guarantee.
 
-## Supervisor lean
+## Roy's input (2026-07-23)
 
-**A**, with C's passive derivation as an optimization inside it. Layering stays
+*"I think the one-hop rule might have to be relaxed to two-hop to allow for
+transports that act as a go-between, such as internet relay."*
+
+That's a fourth shape — **D: TTL=2 pulse**. The pulse may cross exactly one
+go-between (an internet relay, a bearer-bridge repeater), never more. It covers
+the ladder's last rung with one mechanism, keeps traffic bounded (no mesh
+flooding — a single relay leg, not propagation), and limits the privacy cost to
+one island boundary rather than arbitrary reach. Two notes for the design:
+- **Complex-hive bridges don't count as hops** (#d009 — the internal link is
+  invisible), so phone-relaying-for-its-own-XIAO stays "direct"; two-hop budget
+  spends only on inter-hive go-betweens.
+- The go-between itself is transport-shaped (the relay leg acts like a bearer),
+  which is why this reads as a transport concern rather than mesh routing.
+
+## Supervisor lean (updated)
+
+**D** — Roy's two-hop relaxation, folded into specs' reconciliation design: pulse
+TTL=2 with the go-between defined as a transport-level object, complex-hive
+bridges excluded from the count. The prior lean **A** stands as fallback if specs
+finds TTL=2 leaks (e.g. relay chains masquerading as one go-between). Layering stays
 clean (pulse = direct evidence; routed contact = reachability), privacy holds
 (membership liveness doesn't cross islands unbidden), and the ladder still reads
 as you described — the *contact* migrates automatically, its mechanism switching
