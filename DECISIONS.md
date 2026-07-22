@@ -161,3 +161,21 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **Evidence:** Control run against the production-extracted pattern 2026-07-22
   (realkey sk-ant FLAG / sk-48 FLAG / slug pass / line-start FLAG).
 - **Supersedes:** None
+
+## 2026-07-22 — pre-push sk-key scan: adopt composer v3 two-stage (supersedes d54e6d3 entry)
+- **Decision:** sk-key value scan = boundary + `[A-Za-z0-9_-]{40,}` run, AND matched run
+  carries >=2 digits (two-stage grep). Adopted from r2-composer tools/key-hygiene.sh 80cc2bb.
+- **Authority basis:** Supervisor tooling ownership; composer's empirical counter-finding.
+- **Context:** d54e6d3's boundary-only form still flagged sk-prefixed hyphenated slugs
+  >=20 chars at word boundary (SpinKit-class identifiers; composer's fixtures = 3 live
+  push blocks). Boundary fixes mid-word (ask-fork) only.
+- **Rationale:** Real keys are ~50-100-char hyphen-inclusive runs and api03-/base64url
+  guarantee digits; prose slugs are short or digit-less. Both directions control-tested
+  against the production-extracted pattern (real sk-ant FLAG / bare-48 FLAG / mid-word
+  pass / sk-slug-32 pass / 44-digit-less pass / short-digit pass).
+- **Alternatives:** Keeping boundary-only rejected (live false-positive class persists);
+  length-only without digit gate rejected (44-char digit-less slugs would flag).
+- **Expected consequences:** Known accepted edge: a real key with body 20-39 chars would
+  pass stage 1 — no known sk-/sk-ant provider issues keys that short; revisit if one appears.
+- **Evidence:** Control run 2026-07-22 (six fixtures above); composer self-test 7/7 at 80cc2bb.
+- **Supersedes:** 2026-07-22 "pre-push sk-key pattern: anchor left boundary" (d54e6d3).

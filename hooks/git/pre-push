@@ -126,12 +126,14 @@ scan_range() {  # $1 = git rev range or single sha
   grep -qE '[0-9]{8,10}:[A-Za-z0-9_-]{35}' <<<"$added"      && findings+="  • a Telegram-bot-token pattern\n"
   grep -qE 'BEGIN [A-Z ]*PRIVATE KEY' <<<"$added"           && findings+="  • a PRIVATE KEY block\n"
   grep -qE 'AKIA[0-9A-Z]{16}' <<<"$added"                   && findings+="  • an AWS access-key id\n"
-  # Left boundary kills the "ask-fork-…" slug class (sk- mid-word) while KEEPING
-  # -/_ in the body: real Anthropic keys are sk-ant-api03-<base64url> — the api03-
-  # segment breaks any unbroken-alnum run, so narrowing the charset instead of
-  # anchoring the start false-negatives the exact key this line exists to catch
-  # (verified both ways against a real-format synthetic, 2026-07-22).
-  grep -qE '(^|[^A-Za-z0-9])sk-(ant-)?[A-Za-z0-9_-]{20,}' <<<"$added" && findings+="  • an sk-/sk-ant- API key\n"
+  # Two-stage (composer v3, adopted 2026-07-22 after two falsifier rounds):
+  # boundary + hyphen-inclusive run >=40, AND the matched run must carry >=2 digits.
+  # Charset-narrowing false-negatived real keys (sk-ant-api03-… breaks an alnum run
+  # at api03-); boundary-only still flagged sk-prefixed hyphenated slugs >=20
+  # (SpinKit-class identifiers, composer's fixtures — 3 live blocks). Real keys are
+  # ~50-100-char runs and api03/base64url guarantee digits; prose slugs are short or
+  # digit-less. Controls live in r2-composer tools/key-hygiene.sh (80cc2bb).
+  grep -oE '(^|[^A-Za-z0-9])sk-(ant-)?[A-Za-z0-9_-]{40,}' <<<"$added" | grep -qE '[0-9].*[0-9]' && findings+="  • an sk-/sk-ant- API key\n"
 
   # Extract assignments before filtering, so a scrub marker on one minified line cannot
   # hide a second real assignment on that line. Plain R2-SCRUBBED/REDACTED/PLACEHOLDER
