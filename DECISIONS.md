@@ -357,3 +357,8 @@ It is not a task log and does not replace specifications, ADRs, or code.
   or invalid).
 - **Roy follow-on (same ruling):** D5's simulated sensor = COSINE wave at a DIFFERENT
   frequency than D4's sine — the two streams stay distinguishable end-to-end.
+- **Roy flash pre-grant (same pattern as #d011):** "go ahead with the D5 flash when
+  the shas are ready" — sha-conditioned, still sequenced after the blerole retest.
+- **Roy forward context:** "we have numerous other dfr1195s when we want to test
+  more hives, and multiple TGs" — bench can scale to multi-hive / multi-TG
+  (islands-of-sensitivity refutation) with existing DFR1195 stock; no purchase gate.
