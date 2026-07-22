@@ -406,3 +406,11 @@ It is not a task log and does not replace specifications, ADRs, or code.
   NO protocol exchange, no self-declared cadence field (no trust surface);
   (3) liveness signal = DEVIATION from that hive's own learned normal, not from a
   global constant. First-boot shout = the enrolment moment for the list.
+- **Roy follow-on 2 (#d015, mobility axis):** "a wearable device in a crowd of other
+  wearable devices attached to people moving around will have a much faster fade
+  cycle" — the learned-normal model is per-hive AND per-mobility-class: a mobile
+  wearable's normal is fast rhythm + transient network proximity, so its fade cycle
+  is fast. Clarify in canon: never-fully-fades applies to TG MEMBERS' existence;
+  non-member passers-by (the crowd's other wearables) fade out fully as ordinary
+  strangers. Mobility = a third input to the learned normal (transport floor x
+  observed cadence x proximity churn).
