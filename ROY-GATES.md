@@ -15,7 +15,7 @@ syntax is at the bottom of every brief.
 
 | # | Gate | One-liner | Lean | Brief |
 |---|------|-----------|------|-------|
-| 6 | Baked member roster | 3 list-misses in one day — move truth to composer custody, bake a roster blob | adopt: separate blob, id-only, generous cap | [g6](gates/g6-baked-roster.md) |
+| 6 | Baked member roster | 4 hardcoded-id misses in 2 days — move truth to composer custody, bake a roster blob; core design + composer CLI ready | adopt: separate blob, id-only, generous cap | [g6](gates/g6-baked-roster.md) |
 | 5 | Alfred rig fork | merge to one identity vs stay two hives + relay | stay split until phone-pair merge proven | [g5](gates/g5-alfred-rig-fork.md) |
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates

@@ -5,13 +5,16 @@
 
 ## Why this gate exists
 
-Three times in one day, a board failed to recognise a co-member because a hardcoded
-hive-ID list in source didn't contain the right value: the blerole resolver shipped
-with an empty registry, then with a list missing the XIAO, and the D5 coverage claim
-cited stale FR4-era IDs instead of the bench personas. The mechanism is fine — the
-*list* keeps being wrong, because source constants are hand-maintained while the real
-membership lives in composer's custody roster (the TG's actual enrolment record,
-which minted D5 this morning and knows all 5 members).
+Four times in two days, a board failed to recognise a co-member because a hardcoded
+hive-ID value in source was wrong: the blerole resolver shipped with an empty
+registry, then with a list missing the XIAO; the D5 coverage claim cited stale
+FR4-era IDs instead of the bench personas; and the CoC L3 path carries a stale
+scaffold peer constant (0x0dcadbf8) that mismatches the scan-resolved XIAO and
+drops the frame. The mechanism is fine — the *list* keeps being wrong, because
+source constants are hand-maintained while the real membership lives in composer's
+custody roster (the TG's actual enrolment record, which minted D5 this morning and
+knows all 5 members). Core's roster design + composer's .roster export CLI are
+both ready — this gate is the only thing between them and implementation.
 
 ## Core's proposed durable shape
 
