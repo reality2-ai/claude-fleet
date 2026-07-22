@@ -15,7 +15,6 @@ syntax is at the bottom of every brief.
 
 | # | Gate | One-liner | Lean | Brief |
 |---|------|-----------|------|-------|
-| 2 | Persistent 0x25 | heartbeat-over-BLE sized MEDIUM; coex re-soak mandatory before standing-0x25 green | proceed once rbid blocker clears — silence = go | [g2](gates/g2-persistent-pump.md) |
 | 6 | Baked member roster | 3 list-misses in one day — move truth to composer custody, bake a roster blob | adopt: separate blob, id-only, generous cap | [g6](gates/g6-baked-roster.md) |
 | 5 | Alfred rig fork | merge to one identity vs stay two hives + relay | stay split until phone-pair merge proven | [g5](gates/g5-alfred-rig-fork.md) |
 
@@ -32,5 +31,6 @@ GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20
 | # | Gate | Ruling | Ref | Brief |
 |---|------|--------|-----|-------|
 | 1 | Key-10 liveness window | both axes compose: transport floor × observed cadence; lifecycle + mobility folds | #d015 | [g1](gates/g1-key10-liveness-window.md) |
+| 2 | Persistent 0x25 | dev bearer-ping + beacon-level awareness; heartbeat ≠ transport test; pump dead | #d018 | [g2](gates/g2-persistent-pump.md) |
 | 3 | composer manifest.json | regenerate — EXECUTED ab62a0e (was chip-split staleness, not corruption) | #d016 | [g3](gates/g3-composer-manifest.md) |
 | 4 | SEN0676 radar | set aside; D5 = bench test tool; radar later on a XIAO | #d017 | [g4](gates/g4-sen0676-radar.md) |
