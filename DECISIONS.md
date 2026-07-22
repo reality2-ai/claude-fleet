@@ -302,3 +302,19 @@ It is not a task log and does not replace specifications, ADRs, or code.
   alt-image marker, not owed by coex proof surface; Android WiFi-STA unaffected
   (no ESP-NOW contention on phone). Future infra-mode proof = its own image +
   slot, only if ever needed.
+
+## 2026-07-23 — #d013 GENERAL RULING (Roy): MCU RADIOS = TN-MESH ONLY; DONGLE MODEL
+
+- **Decision (Roy, verbatim):** "As a general ruling, using the ESP radios (or
+  equivalent) solely for R2 TN mesh. we can imagine this comes packaged as a
+  plugin-in dongle. Other wifi / bluetooth / wired networking sits elsewhere."
+- **Meaning:** the MCU-class radio set (ESP32 ESP-NOW/BLE, LoRa, nRF equivalents)
+  is DEDICATED to the R2 transient-network substrate — mesh data plane, discovery,
+  R2 OTA. Infra WiFi (STA/AP), general-purpose Bluetooth, and wired/Internet
+  networking live on the HOST half of a pairing (phone, laptop, router) — the
+  complex-hive split generalized to a product shape: the R2 radio as a plug-in
+  dongle. Generalizes #d012 (no single chip owes both WiFi modes) from a bench
+  reclassification to an architecture principle.
+- **Consequences:** specs finds the canon home (spec-first); firmware never needs
+  infra-WiFi + mesh coexistence on one radio; capability matrix per-board columns
+  = TN duties only, host columns carry infra bearers.
