@@ -18,6 +18,16 @@ ARCHIVED unflashed. Boards left meshing, soak logger + tuxedo keep-awake running
 Morning items for Roy: see DECISIONS.md #d008 (window design tension, persistent
 pump, composer manifest.json dirty file, blerole flash slot).
 
+## 2026-07-23 (day) — hive-first design note CLOSED end-to-end
+
+Roy ruled all §6 items (#d009 secured-bridge + merge-reflash, #d010 tier-2).
+Executed: R2-COMPLEX-HIVE v0.12 (specs cc70ca3 — §11.1 secured-bridge arm, new
+§10.5 merge-reflash), R2-WEB v0.11 (98804ce — §1.0 dev-ensemble privilege ceiling),
+specs ledger D-20260723-03/-04; android note e06af14 FROZEN + FULLY CITED (markers
+e4c4afa/1b8516d/8bcf4ee). Sole open item: §6 (d) detach/reattach, DEFERRED to
+increment-5 by ruling. Increment 5 (XIAO internal Usb=4 attach) canon-legal as
+design; gated on securing USB bridge + §10.5 merge-reflash; flash per-op granted.
+
 ## Recent repo changes (this branch)
 
 - `hooks/git/pre-push` sk-key scan v3: two-stage boundary + run>=40 + >=2 digits
