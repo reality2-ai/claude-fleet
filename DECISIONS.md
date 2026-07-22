@@ -366,3 +366,7 @@ It is not a task log and does not replace specifications, ADRs, or code.
   necessarily as Android + xiao complex hives)" — XIAO+SX1262 stock = standalone
   hives too; complex-hive pairing is one deployment shape, not the default for the
   stock.
+- **Roy priority ruling:** "before we get there we have to lock in the below TG
+  functionality" — multi-hive/multi-TG scale-out is GATED on the below-L5 substrate
+  being locked (bearers, routing/relay, discovery/liveness proven on metal). Table
+  first; expansion after.
