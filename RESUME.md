@@ -1,18 +1,22 @@
 # RESUME — claude-fleet
 
-Updated 2026-07-22 (eve). Fleet ACTIVE on `/R2` — coex campaign, offline-window phase.
-This repo: branch `gate-heredoc-2026-07-20`, tip pushed (ahead=0); remote `master`
-deliberately lags the branch (merge = a later stake-in-ground step, Roy-gated).
+Updated 2026-07-23 (overnight). COEX CAMPAIGN CLOSED — PASS (#d008). This repo:
+branch `gate-heredoc-2026-07-20`, tip pushed (ahead=0); remote `master` deliberately
+lags the branch (merge = a later stake-in-ground step, Roy-gated).
 
-## Objective
+## Objective — ACHIEVED
 
-XIAO health key-10 = 0x25 (BLE|LoRa|ESP-NOW) sustained >=10s from real admitted
-traffic. bit0 CLOSED on metal (86s, double-framing root cause, PREFIX-ALWAYS canon
-D-20260722-10). bit2 fix built (densify 83a2a17f). bit5 = the one open blocker
-(ESP-NOW RX-blind at XIAO); instrument ladder staged: ch1 RF sniff (zero-flash,
-Roy fires `ssh -t tuxedo-os "sudo bash /tmp/sniff-ch1.sh"`) then v7-diag 78177f50
-rxdiag counters (images pre-built + attested: XIAO 8a6dea89, D4 3b412e54,
-HELD-NOT-FLASHABLE pending sniff=XIAO-RX verdict + Roy grant).
+XIAO key-10 = 0x25 sustained 41.6 s contiguous (4x the >=10 s bar), 2026-07-23
+overnight under Roy's #d007 grant. Root was NEVER an RX defect: sniff (corpus-proven
+filter) + console correlation refuted all three pre-registered signatures; cause =
+30 s keepalive cadence vs 8 s ADMIT_W window (structural, intentional design).
+Fix = benchkeepalive 8000->4000 + densify riding (core bee0e996); hive images
+XIAO d12ddcc8 / D4 d818ffda; composer flashed under per-op .fleet/flash-authorization
+grants, banners app@0x20000 + personas intact; 0x24 sustained 94.2 s pre-pump; CoC
+pump at fresh XIAO BLE addr lit bit0 => 0x25. v7-diag images (8a6dea89/3b412e54)
+ARCHIVED unflashed. Boards left meshing, soak logger + tuxedo keep-awake running.
+Morning items for Roy: see DECISIONS.md #d008 (window design tension, persistent
+pump, composer manifest.json dirty file, blerole flash slot).
 
 ## Recent repo changes (this branch)
 
