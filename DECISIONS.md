@@ -288,3 +288,17 @@ It is not a task log and does not replace specifications, ADRs, or code.
   app@0x20000 / ABORT 0x10000, no 0x12000/0x17000, consoles detached).
 - **DONE bar:** seen-on-metal — initiator boot-print + scan-to-connect handoff +
   bit0 on BOTH boards board-to-board (no host pump).
+
+## 2026-07-23 — #d012 WiFi-STA RECLASSIFIED (Roy): OPTION (a) — NOT A COEX CELL
+
+- **Decision (Roy):** "go with (a) for WiFi-STA" — Wifi·1 (SoftAP/STA infra) is a
+  DEFAULT-image mode, mutually exclusive with ESP-NOW (WifiMesh·5) on the one
+  2.4 GHz radio; the coex table stops owing it. No bench slot, no time-slicing.
+- **Grounds (core scoping @bee0e996):** coex build has Wifi·1 dark by construction
+  (serve_ap hardwired false, DATA_PLANE_JOIN.signal zero callers, no bit1 in health
+  bitset); M8c join was suppressed at 56d39498 precisely because join-retry bursts
+  desensed ESP-NOW. Canon: hive WiFi-band data plane IS the mesh.
+- **Consequences:** matrix WiFi-STA cells (DFR1195/XIAO) reclassified to
+  alt-image marker, not owed by coex proof surface; Android WiFi-STA unaffected
+  (no ESP-NOW contention on phone). Future infra-mode proof = its own image +
+  slot, only if ever needed.
