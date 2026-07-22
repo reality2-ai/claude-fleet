@@ -281,7 +281,7 @@ It is not a task log and does not replace specifications, ADRs, or code.
   grant for the blerole slot, conditioned on hive delivering attested shas.
 - **Scope:** D4 ONLY (initiator image, blerole lineage carrying coex fixes off
   bee0e996, blob a55810f9 baked via DFR_ROLE_PATH). XIAO NOT a target (keeps
-  d12ddcc8, acceptor = blob-absent). Third board the third bench board (MAC F4:12:…, full value in bench notes) never a target.
+  d12ddcc8, acceptor = blob-absent). Third bench board (MAC F4:12:…, full value in bench notes) never a target.
 - **Mechanism:** supervisor writes .fleet/flash-authorization (expires/artifact/
   target/sha256) once hive's sha is two-party verified by composer; full preamble
   mandatory (by-id port at flash time, csv e0e49127, espflash plan tripwire CONFIRM
