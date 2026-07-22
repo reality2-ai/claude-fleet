@@ -1,6 +1,21 @@
 # Gate 7 — TG contact: one-hop pulse only, or multi-hop via relay?
 
-**Status:** OPEN · opened 2026-07-23 (Roy) · specs reconciliation design in flight
+**Status:** ✅ CLOSED 2026-07-23 — #d019 (relax to two-hop; specs ordered to modify canon)
+
+## RULING (Roy, 2026-07-23)
+
+*"I think the one-hop rule might have to be relaxed to two-hop to allow for
+transports that act as a go-between, such as internet relay."* Then, after specs'
+reconciliation had landed one-hop-stands (D-20260723-11): *"For gate 7, you will
+need to tell specs to modify canon."*
+
+Executed as: TG-contact pulse TTL=2 — one go-between allowed. Specs' IP-transit
+reading survives as the hop-1 case (id-6 bearer transit is not an R2 hop); the
+canon change additionally admits one R2 go-between (e.g. a repeater relaying the
+pulse). Constraints carried into the design order: TTL accounting at the
+go-between (no chain masquerade), complex-hive bridges count zero (#d009),
+relayed-pulse rate/suppression to bound the O(N) and privacy cost — one island
+boundary is the point of 2-not-N.
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → "read gates/g7 and R2-HEARTBEAT v0.21 §6.1 with me"
 
 ## Why this gate exists

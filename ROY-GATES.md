@@ -15,9 +15,8 @@ syntax is at the bottom of every brief.
 
 | # | Gate | One-liner | Lean | Brief |
 |---|------|-----------|------|-------|
-| 6 | Baked member roster | reshaped per your input: membership = LEARNED runtime state; baked blob = dev-tier seed only | adopt as dev seed of runtime member-set | [g6](gates/g6-baked-roster.md) |
+| 6 | Baked member roster | canon LANDED your way (runtime member-set + dev-tier seed, D-20260723-13); wire_id-0 concern refuted (phone = client-only, never beacons); composer branch + core bake staged | one word closes it: "gate 6: adopt as dev seed" | [g6](gates/g6-baked-roster.md) |
 | 5 | Alfred rig fork | merge to one identity vs stay two hives + relay | stay split until phone-pair merge proven | [g5](gates/g5-alfred-rig-fork.md) |
-| 7 | TG contact hops | one-hop pulse vs multi-hop: bearer ladder's relay rung vs v0.21 never-relayed | A: pulse stays one-hop, far contact = routed message; specs proposal in flight | [g7](gates/g7-tg-contact-hops.md) |
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
 
@@ -35,3 +34,4 @@ GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20
 | 2 | Persistent 0x25 | dev bearer-ping + beacon-level awareness; heartbeat ≠ transport test; pump dead | #d018 | [g2](gates/g2-persistent-pump.md) |
 | 3 | composer manifest.json | regenerate — EXECUTED ab62a0e (was chip-split staleness, not corruption) | #d016 | [g3](gates/g3-composer-manifest.md) |
 | 4 | SEN0676 radar | set aside; D5 = bench test tool; radar later on a XIAO | #d017 | [g4](gates/g4-sen0676-radar.md) |
+| 7 | TG contact hops | relax to two-hop (one go-between; TTL=2); specs ordered to modify canon | #d019 | [g7](gates/g7-tg-contact-hops.md) |
