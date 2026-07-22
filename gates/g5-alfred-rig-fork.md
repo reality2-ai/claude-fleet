@@ -1,6 +1,17 @@
 # Gate 5 — Alfred rig: merge to one identity, or stay two hives + relay?
 
-**Status:** OPEN · no urgency — the rig works as-is
+**Status:** ✅ CLOSED 2026-07-23 — #d021 · Roy verbatim: *"gate 5: defer until
+phone-pair merge proven"*
+
+## RULING
+
+Alfred stays two sovereign hives + relay (already conformant; keeps real
+inter-hive relay traffic under continuous bench test). The merge question
+REOPENS automatically when the §10.5 merge-reflash + #d009 secured bridge are
+proven on metal on the phone+XIAO pair — Alfred then adopts a proven op rather
+than pioneering it. Merge-follows-permanence stands: identity merge suits a
+resident MCU; visiting MCUs stay two-hives+relay, attach/detach = a bearer
+event, never an identity event.
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → "read gates/g5 and R2-COMPLEX-HIVE §3.2 with me"
 
 ## Background

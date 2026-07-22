@@ -13,9 +13,7 @@ syntax is at the bottom of every brief.
 
 ---
 
-| # | Gate | One-liner | Lean | Brief |
-|---|------|-----------|------|-------|
-| 5 | Alfred rig fork | merge to one identity vs stay two hives + relay | stay split until phone-pair merge proven | [g5](gates/g5-alfred-rig-fork.md) |
+*(nothing waiting on you)*
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
 
@@ -35,3 +33,4 @@ GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20
 | 4 | SEN0676 radar | set aside; D5 = bench test tool; radar later on a XIAO | #d017 | [g4](gates/g4-sen0676-radar.md) |
 | 7 | TG contact hops | relax to two-hop (one go-between; TTL=2); canon landed HEARTBEAT v0.24 §7 | #d019 | [g7](gates/g7-tg-contact-hops.md) |
 | 6 | Baked member roster | adopt as dev seed of runtime member-set; canon D-13/-14; merge + wiring dispatched | #d020 | [g6](gates/g6-baked-roster.md) |
+| 5 | Alfred rig fork | defer until phone-pair merge proven on metal; stays two hives + relay; reopens automatically | #d021 | [g5](gates/g5-alfred-rig-fork.md) |
