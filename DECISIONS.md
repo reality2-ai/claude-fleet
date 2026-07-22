@@ -490,3 +490,6 @@ Batch status 2026-07-23 (post-#d018): bench re-sequenced — remote quiesce infe
 
 #d021 [RATIFIED] 2026-07-23 scope=alfred-rig authority=Roy verbatim 'gate 5: defer until phone-pair merge proven'
   GATE 5 RULED: Alfred rig stays TWO sovereign hives + relay (conformant; keeps inter-hive relay under continuous bench test). REOPEN CONDITION: §10.5 merge-reflash + #d009 secured bridge proven ON METAL on the phone+XIAO pair — Alfred then adopts a proven op. Merge-follows-permanence doctrine stands (resident MCU merges; visiting MCUs = two-hives+relay; attach/detach = bearer event never identity event). No lane action required; status quo is the ruling.
+
+#d022 [RATIFIED] 2026-07-23 scope=bench-flash authority=Roy verbatim 'yes'
+  D5 ITER-5 REFLASH AUTHORIZED (fresh word; prior #d014 grant consumed by 656cab50). Image: d5-cos5.elf 11f2d2ef from unified 471f0cf7 (adds member-set roster feed + signed-i16 value-print; cosine attested cos!=sin). Sequence: two-party verify all 3 on alfred -> D4 c51ad8a6 -> XIAO 90d3f489 -> D5, one-op rolling grants (pair under #d011 standing slot). Post: election-driven bit0-BOTH retest + cosine value samples; logger rotates per flash with BUILD_ID coex.iter5.0723.
