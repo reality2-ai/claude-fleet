@@ -15,7 +15,7 @@ syntax is at the bottom of every brief.
 
 | # | Gate | One-liner | Lean | Brief |
 |---|------|-----------|------|-------|
-| 6 | Baked member roster | 4 hardcoded-id misses in 2 days — move truth to composer custody, bake a roster blob; core design + composer CLI ready | adopt: separate blob, id-only, generous cap | [g6](gates/g6-baked-roster.md) |
+| 6 | Baked member roster | reshaped per your input: membership = LEARNED runtime state; baked blob = dev-tier seed only | adopt as dev seed of runtime member-set | [g6](gates/g6-baked-roster.md) |
 | 5 | Alfred rig fork | merge to one identity vs stay two hives + relay | stay split until phone-pair merge proven | [g5](gates/g5-alfred-rig-fork.md) |
 | 7 | TG contact hops | one-hop pulse vs multi-hop: bearer ladder's relay rung vs v0.21 never-relayed | A: pulse stays one-hop, far contact = routed message; specs proposal in flight | [g7](gates/g7-tg-contact-hops.md) |
 
