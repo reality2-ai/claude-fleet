@@ -21,6 +21,19 @@ HELD-NOT-FLASHABLE pending sniff=XIAO-RX verdict + Roy grant).
   tools/key-hygiene.sh 80cc2bb). Accepted edge logged in DECISIONS.md.
 - DECISIONS.md carries both rounds (d54e6d3 superseded by 8535c9d).
 
+## BLE board-to-board (b) — pre-metal COMPLETE, queued behind diag campaign
+
+Core increment 2 landed dfr1195-fw-blerole c01c9db9 (08fa87ed threads
+profile.ble_role into ble_task + boot-print; c01c9db9 initiator scan-dial:
+captures first valid-R2 acceptor BdAddr, N=5 empty windows => hive_id fallback;
+cocbench BENCH_ADDR cfg-split). Composer delivered D4 initiator blob sha256
+a55810f9d25e... (48B RPF1, b[6]=0x01, b[4]=0x02 Bridge ground-truthed vs
+e4031efd:3347 — b[6] sole behavioral delta), on alfred:~/d4-initiator.role;
+gen-role CLI = composer 4a4b0cb. XIAO gets NO blob (absent = acceptor-only,
+bit0-proven role preserved). Bake input: DFR_ROLE_PATH=~/d4-initiator.role.
+DONE bar = seen-on-metal (boot-print + scan-to-connect handoff); flash rides a
+LATER Roy per-op grant, never conflated with the 78177f50 diag flow.
+
 ## Fleet state
 
 #d006 standing (drain-first, ownership registry, report-don't-act) — working.
