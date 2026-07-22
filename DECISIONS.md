@@ -209,3 +209,27 @@ It is not a task log and does not replace specifications, ADRs, or code.
   at D4-TX diag; new diag images buildable under the same rules.
 - **Evidence:** v7-diag attestation (hive, pre-built); sniff instrument corpus-proven
   (poscontrol total=714/action=4; live run total=12593/action=33, drops=0).
+
+## 2026-07-23 (night) — #d008 COEX CAMPAIGN CLOSED: 0x25 SUSTAINED PASS
+
+- **Decision/outcome:** XIAO key-10 = 0x25 (BLE|LoRa|ESP-NOW) sustained 41.6 s
+  contiguous (7 frames, 4x the >=10 s bar) — campaign PASS, executed under #d007.
+- **Chain:** sniff (corpus-proven filter after -d-vs-live radiotap divergence) refuted
+  all three pre-registered RX-defect signatures; root = emit cadence (30 s keepalive)
+  vs 8 s ADMIT_W liveness window, structural not defect. Fix = benchkeepalive
+  8000->4000 (core bee0e996, off 56d39498, densify ancestor => bit2 rode along).
+  Hive built + attested (XIAO d12ddcc8, D4 d818ffda); composer two-party verified,
+  flashed under per-op .fleet/flash-authorization grants (gate honored, audit-logged),
+  boot banners confirmed app@0x20000 + personas intact. Pre-pump soak: 0x24 sustained
+  94.2 s (was ~47% flicker). CoC pump at XIAO's fresh post-reflash BLE addr lit bit0.
+- **Also closed tonight:** v7-diag images (8a6dea89/3b412e54) ARCHIVED unflashed —
+  decider showed bit5 ever-lit x1033 + 0x25 momentarily x3, admit path proven.
+  0x17000 NVS role-write brick hazard re-surfaced (3rd time) and re-recorded;
+  role overrides are bake-and-rebuild only. Android repo made fresh-clone-hermetic
+  (codegen task c0fddca + R2_CORE_REF pin e7c3096); junit execution still pending.
+- **For Roy (morning):** (1) key-10 window design tension — 8 s window < 10 s default
+  health cadence means a quiescent conformant node is bit-dark by design; per-transport
+  vs tier-keyed window = canon decision. (2) persistent-pump question if persistent
+  0x25 is wanted. (3) composer webapp/dist/manifest.json left dirty (half-corrupt
+  regen — regenerate or revert). (4) board-to-board BLE initiator slot (blerole
+  c01c9db9 + blob a55810f9) awaits its own flash grant.
