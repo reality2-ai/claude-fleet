@@ -375,3 +375,19 @@ It is not a task log and does not replace specifications, ADRs, or code.
   plugin)" — waveform generation belongs at the SENTANT/ensemble layer, not as a
   compile-time plugin knob. Core owns the smallest implementation honoring that
   layer assignment.
+
+## 2026-07-23 — #d015 KEY-10 LIVENESS WINDOW RULED (Roy, gate 1): BOTH AXES COMPOSE
+
+- **Decision (Roy):** "both options A and B make sense" — the admit window composes
+  BOTH bases: (1) PER-TRANSPORT — "LoRa must have a longer time-to-fade just due to
+  the nature of the connection and the way lora is mostly quiet when not in use";
+  (2) CADENCE-KEYED — "devices that have a regular time cadence, eg a sensor that
+  turns on, reads a value and turns off must be able to have that cadence
+  automatically become part of the timing."
+- **Reading:** window = f(transport nature, node's own duty cadence) — a node's
+  regular cadence AUTOMATICALLY folds into its liveness window (self-declared or
+  observed cadence widens the window; transport physics sets the floor). Not a
+  static constant on either axis.
+- **Consequences:** specs owns the spec-first canon task (R2-HEARTBEAT window rule;
+  compose with R2-ROUTE §2.4 class-scaled fade + SCF duty-class). Bench 4 s
+  benchkeepalive unaffected meanwhile. Gate 1 CLEARED from ROY-GATES/artifact.
