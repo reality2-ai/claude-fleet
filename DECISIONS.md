@@ -391,3 +391,18 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **Consequences:** specs owns the spec-first canon task (R2-HEARTBEAT window rule;
   compose with R2-ROUTE §2.4 class-scaled fade + SCF duty-class). Bench 4 s
   benchkeepalive unaffected meanwhile. Gate 1 CLEARED from ROY-GATES/artifact.
+- **Roy follow-on (#d015, the lifecycle model — settles self-declared vs observed as
+  OBSERVED, no exchange):** verbatim: "You turn it on for the first time as it is
+  being installed. It shouts out to the rest of the network: I'm alive, and the
+  nearby nodes add it to their list. Because it is part of the TG, its existence
+  will never fully fade, but we can note when its cadence seems to get longer. As it
+  then settles into its regular duty cycle, neighbours will notice that it comes on
+  every half hour, so the fade cycle is adjusted to fit. This doesn't require any
+  exchange of information per se, just a note of 'what seems to be normal for this
+  hive' and when 'normal' is strayed from." Three normative consequences:
+  (1) TG-member EXISTENCE never fully fades — only freshness/cadence annotations
+  change (composes with partition≠eviction + silence=DG-1);
+  (2) each neighbour LEARNS the per-hive normal cadence locally by observation —
+  NO protocol exchange, no self-declared cadence field (no trust surface);
+  (3) liveness signal = DEVIATION from that hive's own learned normal, not from a
+  global constant. First-boot shout = the enrolment moment for the list.
