@@ -13,7 +13,13 @@ syntax is at the bottom of every brief.
 
 ---
 
-*(nothing waiting on you)*
+## g8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path (small, physical/network)
+The phone UDP metal test is DONE except the last hop: phone sends the probe correctly,
+tuxedo's echo server works, but the datagram never arrives — your WiFi AP has
+client isolation on (wireless client ↔ wireless client blocked; ICMP 100% loss both
+ways). Fix is any ONE of: disable AP client isolation · put tuxedo on ethernet ·
+use a non-isolating SSID. Then composer re-runs (2 min). Not urgent — cell stays
+annotated transport-only either way.
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
 
