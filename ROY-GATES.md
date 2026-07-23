@@ -13,7 +13,9 @@ syntax is at the bottom of every brief.
 
 ---
 
-## g9 — D5 USB replug needed (30 seconds, physical) — unblocks the OTA cell cycle
+## g9 — Wake tuxedo + replug D5 USB (30 seconds, physical) — unblocks the OTA cell cycle
+*(Update ~03:15: tuxedo has gone to sleep — off the tailnet. Waking it is part of this
+same gate; the fleet reconnects automatically once it's back.)*
 D5's USB-JTAG is hard-wedged (enumerates but neither the app CDC nor the ROM
 bootloader responds; sudo/DTR-RTS/ioctl recovery all failed — no root on tuxedo).
 **Fix: unplug D5's USB cable, wait 2 s, replug.** D5 is SAFE — the occupancy-tuned
