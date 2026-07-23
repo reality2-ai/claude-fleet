@@ -13,21 +13,6 @@ syntax is at the bottom of every brief.
 
 ---
 
-## g9 — CLOSED (replug done 06:2x; the "sleeping tuxedo" was a wrong-host artifact)
-D5 replugged by Roy — tuned firmware confirmed booting. The overnight "tuxedo keeps
-sleeping" part was NOT real: a worker was pinging the dead tailnet node `tuxedo` instead
-of the live `tuxedo-os` (up 2 days, never suspended). Suspend-disable and WiFi-powersave
-asks are WITHDRAWN — nothing to do. Follow-up (fleet-side): grant v4 rebuild in flight
-for the D5 ADV-wedge bug found in round-2.
-D5's USB-JTAG is hard-wedged (enumerates but neither the app CDC nor the ROM
-bootloader responds; sudo/DTR-RTS/ioctl recovery all failed — no root on tuxedo).
-**Fix: unplug D5's USB cable, wait 2 s, replug.** D5 is SAFE — the occupancy-tuned
-base (coex.otatune.0724) is in flash and boots on power-cycle; nothing was corrupted
-(a hung espflash left the port in a bad state after the gate blocked a reset).
-Everything else is staged: tuned firmware attested 3-way, 4 signed v2 packages,
-grant v3 live, composer ready. On replug the fleet resumes the P1→P2a→P2b→P3
-OTA conformance cycle automatically — just replug and walk away.
-
 ## g8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path (small, physical/network)
 The phone UDP metal test is DONE except the last hop: phone sends the probe correctly,
 tuxedo's echo server works, but the datagram never arrives — your WiFi AP has
@@ -55,3 +40,4 @@ GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20
 | 7 | TG contact hops | relax to two-hop (one go-between; TTL=2); canon landed HEARTBEAT v0.24 §7 | #d019 | [g7](gates/g7-tg-contact-hops.md) |
 | 6 | Baked member roster | adopt as dev seed of runtime member-set; canon D-13/-14; merge + wiring dispatched | #d020 | [g6](gates/g6-baked-roster.md) |
 | 5 | Alfred rig fork | defer until phone-pair merge proven on metal; stays two hives + relay; reopens automatically | #d021 | [g5](gates/g5-alfred-rig-fork.md) |
+| 9 | D5 USB replug | replugged 07-24 06:2x; "sleeping tuxedo" = wrong-host artifact (dead node `tuxedo` vs live `tuxedo-os`); suspend/powersave asks withdrawn | #d026 | — |
