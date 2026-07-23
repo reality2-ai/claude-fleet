@@ -13,6 +13,16 @@ syntax is at the bottom of every brief.
 
 ---
 
+## g9 — D5 USB replug needed (30 seconds, physical) — unblocks the OTA cell cycle
+D5's USB-JTAG is hard-wedged (enumerates but neither the app CDC nor the ROM
+bootloader responds; sudo/DTR-RTS/ioctl recovery all failed — no root on tuxedo).
+**Fix: unplug D5's USB cable, wait 2 s, replug.** D5 is SAFE — the occupancy-tuned
+base (coex.otatune.0724) is in flash and boots on power-cycle; nothing was corrupted
+(a hung espflash left the port in a bad state after the gate blocked a reset).
+Everything else is staged: tuned firmware attested 3-way, 4 signed v2 packages,
+grant v3 live, composer ready. On replug the fleet resumes the P1→P2a→P2b→P3
+OTA conformance cycle automatically — just replug and walk away.
+
 ## g8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path (small, physical/network)
 The phone UDP metal test is DONE except the last hop: phone sends the probe correctly,
 tuxedo's echo server works, but the datagram never arrives — your WiFi AP has
