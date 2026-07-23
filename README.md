@@ -61,6 +61,26 @@ and `fleet` keeps it running.
 - **Remote control** — enable Claude Code's own Remote Control on Claude-backed
   members and drive them from claude.ai/code or the mobile app.
 
+## Where it runs
+
+`fleet` is designed to live on an **always-on machine** — a home server, a
+mini-PC, a desktop that stays up — in the same spirit as other long-running
+agent hosts. Members are tmux sessions: they keep working while you're away,
+and anything that suspends the host (a laptop lid-close) pauses every agent
+mid-thought until it wakes. It works fine on a laptop for a working session;
+the always-on host is what makes overnight runs, `fleet ask` from your phone
+via Remote Control, and crash recovery worth having. See
+**[Surviving logout & reboot](#surviving-logout--reboot-remote-hosts)** for the
+systemd user unit that brings the whole fleet back after a reboot.
+
+**One machine can host several independent fleets.** A fleet is scoped to its
+workspace (the directory holding `.fleet/fleet.toml`); each workspace derives
+its own tmux socket and session name from the workspace path, so fleets never
+collide — even when two workspaces use identical member ids
+(`tests/multi-workspace.sh` proves this end-to-end). Run `fleet` commands from
+inside a workspace (or set `FLEET_WORKSPACE`) to address that fleet; state,
+mailboxes, and logs stay under each workspace's own `.fleet/`.
+
 ## Prerequisites
 
 | Requirement | Why | Check / install |
