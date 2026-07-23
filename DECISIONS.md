@@ -557,3 +557,6 @@ Batch status 2026-07-23 (post-#d018): bench re-sequenced — remote quiesce infe
 
 #d029 addendum-2: v5 final sha CORRECTED e1172e9f -> 7131fb9f (core follow-up: rollback step-2 CLEAR-only-on-send-handoff). Hive order superseded in-flight (drain-first held). All cites otherwise per addendum-1; key-19 emit gated key-18 schema>=2, RX convergence H9-gated.
   Decision-Log: #d029
+
+#d029 addendum-3: hive preflight caught LATENT offset collision — ROLLBACK_REC 0x1C000 == xiaobridge LINK_KEY 0x1C000 (dormant on bench triplet; future xiaobridge+OTA image would erase pairing on rollback or lose the rollback event to a pair-write). Held build, core relocated rollback to 0x1E000 (verified free) + fixed stale comments. v5 FINAL sha = f52a0f98. Final offset map: 0x1C000 link_key (xiaobridge) / 0x1D000 rotation checkpoint / 0x1E000 rollback record; personas 0x12000/0x14000/0x17000 untouched. Hive build GO'd.
+  Decision-Log: #d029
