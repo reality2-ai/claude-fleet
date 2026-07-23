@@ -596,6 +596,35 @@ whom).
 reply inherits hop+1; a fresh thread resets to 1). Messages past `[supervisor]
 max_hops` are refused.
 
+**What it sounds like.** Members follow a comms doctrine (`skill/COMMS.md`):
+shortest message that preserves the evidence and required action, ~600 chars
+routine target, no greetings or restatement — evidence cited exactly (shas,
+paths, error strings never shortened). An optional dense form prefixes each
+line: `!` finding, `@` evidence, `=` required action, `?` open question, `#`
+status, `~` non-binding info. A real exchange from our own fleet (a firmware
+worker reporting a root cause to the supervisor, lightly redacted):
+
+```
+[fleet msg from core]
+! v6 boot-hang ROOT-CAUSED = first-tick checkpoint flash-write in boot window,
+  NOT hardware, NOT transient.
+@ coarse_checkpoint_tick() (main.rs:1107) writes flash @0x1D000 on FIRST call —
+  high-water mark starts 0, coarse_time_now() is absolute ~1.78e9 s, so the
+  "now-hwm>=225" throttle is instantly true; sector erase+write suspends the
+  flash cache ~1s after "BLE controller init OK" while radio init runs from
+  flash (XIP) = deadlock, every boot. Survives power-cycle exactly as observed.
+@ e6ff5198 (previous build) has no loop flash op; delta is v6-only.
+= FIX 6eec53d5: seed high-water mark at boot -> first checkpoint defers 225s
+  into proven-safe steady state. Type-checks 0 err x3 recipes.
+= NEXT: hive rebuild 4 artifacts @6eec53d5; I attest + score.
+# v7-ready
+```
+
+One claim per line, the falsifier and the exact evidence intact, and the
+supervisor can rule on it without a follow-up question. Compare the ~2,000-char
+prose version an agent writes by default — same facts, three round-trips of
+clarification.
+
 ### Decision ledger — decisions waiting on you
 
 Gates the fleet raises for you otherwise live only in the supervisor's scrollback
