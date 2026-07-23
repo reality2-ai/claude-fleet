@@ -2,18 +2,44 @@
 
 [![CI](https://github.com/reality2-ai/claude-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/reality2-ai/claude-fleet/actions/workflows/ci.yml)
 
-An **OTP-style supervisor for parallel autonomous coding-agent sessions** —
-**Claude Code** and/or **OpenAI Codex.**
+**Run a whole team of AI coding agents — and direct them like a project lead,
+in plain English, from one place (even your phone).**
 
-If you run several agent sessions at once across a multi-repo workspace,
-`fleet` gives you one place to: see them all at a glance, notice when two are
-editing the same file, keep an aggregate log, let them message each other, drive
-any of them from your phone — and, crucially, **bring the whole suite back after
-a crash or reboot.**
+One AI coding agent in one chat window can build you one thing. But real
+projects are bigger than one chat window: an app *and* its backend *and* the
+docs, each in its own repository, each needing sustained attention. `fleet`
+lets you run a **team** of agents — one per repository, powered by **Claude
+Code** and/or **OpenAI Codex** — with a **supervisor agent as your single point
+of contact**. You tell the supervisor what you want built, in ordinary
+language; it coordinates the workers, the workers write the code, and they
+consult each other directly when their pieces need to fit together.
 
-It's a small set of `bash` scripts wrapping `tmux` and the agent CLI (`claude`
-or `codex` — chosen per member). No daemon, no background services; all runtime
-state is plain JSON files under your workspace.
+You don't have to be a programmer to direct a fleet — describing what you want,
+deciding between options the supervisor brings you, and saying "yes, ship it"
+is project leadership, not coding. What you do need: comfort copy-pasting a few
+terminal commands to install it, and ideally a computer that stays on (an old
+desktop or mini-PC is perfect) so your team keeps working while you're away and
+you can check in from your phone.
+
+For the technically inclined: `fleet` keeps the whole thing inspectable and
+boring on purpose. It watches every agent, restarts the ones that die, flags
+two agents editing the same file, keeps an aggregate log, and **brings the
+whole team back — mid-conversation, not from scratch — after a crash or
+reboot.** It's a small set of `bash` scripts wrapping `tmux` and the agent
+CLIs: no daemon, no database, no cloud service — all runtime state is plain
+JSON files in your workspace, and every agent is an ordinary terminal session
+you can attach to and read.
+
+**The shape it works best with.** `fleet` shines on a workspace with a clear
+line of authority between repositories: a *specifications* repo that says what
+the system should do, a *core* library that implements it, and downstream repos
+(apps, services, firmware, tooling) that consume the core. One expert agent per
+repo, listed in dependency order; when a downstream agent needs a behaviour
+decided, it asks the specs agent rather than inventing an answer, and changes
+flow in one direction instead of rippling back and forth. You describe that
+structure once in a shared [primer](docs/COMMS-AND-DECISIONS.md#shared-context--primermd)
+so every agent knows who to consult; a flat collection of unrelated repos works
+fine too — you just get less of the team effect.
 
 > **Two co-evolving tracks.** `fleet` isn't just a runner — it carries a working
 > *doctrine* (autonomy with a failsafe, spec-first, refutation by a *different*
