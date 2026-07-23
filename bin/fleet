@@ -913,6 +913,12 @@ cmd_install_git_hooks() {
       [[ -n "${seen_repo[$rcwd]:-}" ]] && continue
       seen_repo["$rcwd"]=1; repos+=("$rcwd")
     done
+    # The tool's own repo is doctor-checked for drift but has no manifest child, so
+    # without this it is the one repo the fixer can never reach.
+    rcwd="$(cd "$TOOL_ROOT" 2>/dev/null && pwd -P)" || rcwd=""
+    if [[ -n "$rcwd" && -z "${seen_repo[$rcwd]:-}" && -d "$rcwd/.git" ]]; then
+      seen_repo["$rcwd"]=1; repos+=("$rcwd")
+    fi
   fi
   [[ ${#repos[@]} -gt 0 ]] || { printf '  (no managed repos found)\n'; return 0; }
 
