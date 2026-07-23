@@ -560,3 +560,6 @@ Batch status 2026-07-23 (post-#d018): bench re-sequenced — remote quiesce infe
 
 #d029 addendum-3: hive preflight caught LATENT offset collision — ROLLBACK_REC 0x1C000 == xiaobridge LINK_KEY 0x1C000 (dormant on bench triplet; future xiaobridge+OTA image would erase pairing on rollback or lose the rollback event to a pair-write). Held build, core relocated rollback to 0x1E000 (verified free) + fixed stale comments. v5 FINAL sha = f52a0f98. Final offset map: 0x1C000 link_key (xiaobridge) / 0x1D000 rotation checkpoint / 0x1E000 rollback record; personas 0x12000/0x14000/0x17000 untouched. Hive build GO'd.
   Decision-Log: #d029
+
+#d029 addendum-4: v5 trio BUILT + TWO-PARTY ATTESTED @ f52a0f98 (coex.v5fix.0724). Hive ELF attest PASS (personas baked==input D5 e6108006/D4 0ad4a84d/XIAO 43638da0; roles RPF1 D5=Sensor D4=Bridge+Initiator XIAO=Hive; rollback@0x1E000, collision gone; 4 fixes marker-verified). Amendment-3 (extract-only, ELF shas ca105f88/32d73d83/97cab182) -> hive + composer INDEPENDENT save-image derives MATCHED 3/3: d5-v5 bin 3f88fd04 894976B / d4-v5 bb4f50b5 878096B / xiao-v5 d06826e4 863936B. Grant v5 STAGED at .fleet/flash-authorization.v5-staged (3 per-board sections, issued sequentially AFTER OTA P1-P3 under v4). Sequencing unchanged: bench return -> OTA cycle first -> v5 trio flash.
+  Decision-Log: #d029
