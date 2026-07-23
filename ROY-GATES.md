@@ -13,11 +13,12 @@ syntax is at the bottom of every brief.
 
 ---
 
-## g9 — Wake tuxedo + replug D5 USB (30 seconds, physical) — unblocks the OTA cell cycle
-*(Update ~03:15: tuxedo has gone to sleep — off the tailnet. Waking it is part of this
-same gate; the fleet reconnects automatically once it's back. It re-slept after a brief
-auto-wake at ~03:30 — while you're there, please disable suspend/lid-sleep on tuxedo
-for bench nights, otherwise overnight runs keep stalling.)*
+## g9 — CLOSED (replug done 06:2x; the "sleeping tuxedo" was a wrong-host artifact)
+D5 replugged by Roy — tuned firmware confirmed booting. The overnight "tuxedo keeps
+sleeping" part was NOT real: a worker was pinging the dead tailnet node `tuxedo` instead
+of the live `tuxedo-os` (up 2 days, never suspended). Suspend-disable and WiFi-powersave
+asks are WITHDRAWN — nothing to do. Follow-up (fleet-side): grant v4 rebuild in flight
+for the D5 ADV-wedge bug found in round-2.
 D5's USB-JTAG is hard-wedged (enumerates but neither the app CDC nor the ROM
 bootloader responds; sudo/DTR-RTS/ioctl recovery all failed — no root on tuxedo).
 **Fix: unplug D5's USB cable, wait 2 s, replug.** D5 is SAFE — the occupancy-tuned
