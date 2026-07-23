@@ -17,9 +17,12 @@ consult each other directly when their pieces need to fit together.
 You don't have to be a programmer to direct a fleet — describing what you want,
 deciding between options the supervisor brings you, and saying "yes, ship it"
 is project leadership, not coding. What you do need: comfort copy-pasting a few
-terminal commands to install it, and ideally a computer that stays on (an old
-desktop or mini-PC is perfect) so your team keeps working while you're away and
-you can check in from your phone.
+terminal commands to install it, and a home for it. Like **OpenClaw** and its
+ilk, `fleet` is built to live on an **always-on machine** — an old desktop, a
+mini-PC, a home server — where your team keeps working overnight and while
+you're away, and you check in and steer from your phone. It runs fine on a
+laptop for a working session; the always-on host is where it earns its keep
+(see [Where it runs](#where-it-runs)).
 
 For the technically inclined: `fleet` keeps the whole thing inspectable and
 boring on purpose. It watches every agent, restarts the ones that die, flags
