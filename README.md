@@ -24,6 +24,15 @@ state is plain JSON files under your workspace.
 
 *The supervisor coordinating the fleet — inter-agent messages (`fleet msg from hive · hop 1/6`), a `fleet status` it ran itself, the member windows along the bottom (`0:supervisor 1:specs 2:core 3:hive …`), and Remote Control active.*
 
+> **This repository dogfoods itself.** It is both the tool and one live instance
+> of it: `bin/`, `lib/`, `hooks/`, `templates/`, `skill/`, `tests/`, and `docs/`
+> are the reusable tool; `DECISIONS.md`, `RESUME.md`, `ROY-GATES.md`, and
+> `gates/` are the *operational state of our own fleet* (the R2 project), kept
+> in-repo as working examples of the ledger/handoff discipline described below.
+> If you adopt `fleet`, don't inherit ours — `fleet init-repo` scaffolds fresh
+> `AGENTS.md` / `DECISIONS.md` / `RESUME.md` files in *your* repos, and your
+> workspace state lives under *your* `<workspace>/.fleet/`, not here.
+
 ## The model (Erlang/OTP)
 
 Each coding-agent session is a supervised "child"; you describe the set declaratively

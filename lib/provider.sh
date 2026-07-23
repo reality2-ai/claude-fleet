@@ -142,11 +142,11 @@ $primer"
       [[ -n "${MANAGED_SETTINGS:-}" ]] && argv+=(--settings "$MANAGED_SETTINGS")
       [[ -n "$primer" ]] && argv+=(--append-system-prompt "$primer")
       # Autonomous WORKERS must never block on an interactive permission prompt. The
-      # overnight stalls were workers hung at prompts for hardware commands (ssh tuxedo-os
+      # overnight stalls were workers hung at prompts for hardware commands (ssh bench-host
       # '…espflash…serial…') the auto-approve hook didn't cover — no human to press "Yes".
       # Skip-permissions for workers (GitHub-failsafe doctrine: don't gate, checkpoint instead;
       # safety = pre-push secret-scan + auto-checkpoint hook + sandboxed worktrees). The
-      # SUPERVISOR lanes keep prompt-gating (Roy oversees them). Toggle: FLEET_SKIP_PERMISSIONS=off
+      # SUPERVISOR lanes keep prompt-gating (a human oversees them). Toggle: FLEET_SKIP_PERMISSIONS=off
       if [[ "${FLEET_SKIP_PERMISSIONS:-on}" == "on" ]] && ! fleet_is_supervisor_id "$id"; then
         argv+=(--dangerously-skip-permissions)
       elif [[ -n "$pm" ]]; then

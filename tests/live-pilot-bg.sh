@@ -3,7 +3,7 @@
 # lifecycle (durable-session start + controller-in-tmux-window + keystroke-free
 # delivery). Isolated: private socket/workspace; does not touch the real fleet.
 set -u
-ROOT="/home/roycdavies/Development/R2/claude-fleet"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export TOOL_ROOT="$ROOT"
 export FLEET_FACULTY_ADAPTER=claude-bg
 export FLEET_TMUX_USER_SCOPE=off FLEET_SKIP_PERMISSIONS=on FLEET_BG_POLL=5
