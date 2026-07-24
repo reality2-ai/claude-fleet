@@ -23,6 +23,19 @@ annotated transport-only either way.
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
 
+## g11 — D5 off USB since 12:25; replug when home (physical, blocks the v8.3 OTA cycle)
+D5 dropped off tuxedo-os USB at 12:25:43 (healthy right up to the break: beats=96,
+synced=true — reads as power-path, not firmware crash). Everything else is staged and
+verified: v8.3 flashables 3-way attested, 4 signed streams hashed at rest on both hosts,
+watchers armed with hours-long terms. When you're at the bench:
+1. Replug / power-cycle D5. If it stays absent from `lsusb` entirely, suspect the
+   cable or an unpowered hub — absent-from-lsusb means USB/power path, not firmware.
+2. The cycle then fires automatically (composer pre-hashes, reflashes with the explicit
+   partition table, runs P1→P3). Nothing else to do.
+3. Optional, same trip — g8: run the hotspot one-liner I gave you
+   (`! ssh -t roycdavies@100.90.50.112 'sudo nmcli device wifi hotspot ...'`) and the
+   phone UDP test closes too.
+
 ## Not waiting on you
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
 - Multi-hive / multi-TG scale-out — gated on the below-TG substrate lock (the table
