@@ -38,6 +38,10 @@ address* is behind the double-fault the new watchdog only papers over.
 was consumed. The capture is still worth having: once you run the sudo, composer can
 pre-arm a JTAG breakpoint at the fault handler and catch the next hang *before* the
 watchdog resets it. Same one command, same value — just no longer time-critical.
+**Update 07-25:** value went UP. The v8.5 cycle proved the ~4min double-fault hang is
+now THE blocker for OTA (it pre-empts every OTA window; the radio-mask fixes all work).
+This sudo gives the fastest root-cause read — JTAG catches the fault registers live.
+The firmware-side alternative (v8.6 exception hook) is being designed in parallel.
 
 ## Not waiting on you
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
