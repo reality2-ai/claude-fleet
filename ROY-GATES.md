@@ -23,6 +23,19 @@ annotated transport-only either way.
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
 
+## g12 — one sudo command unblocks the D5 crash forensics (tiny, Alfred)
+D5 is sitting in its idle-hang state with the crash registers intact, and composer has
+openocd ready to read them over the board's built-in USB-JTAG — no reset, read-only.
+The only blocker is USB permissions (libusb EACCES; the board was never touched).
+Any ONE of these on **Alfred** fixes it:
+```
+sudo cp ~/.espressif/tools/openocd-esp32/*/openocd-esp32/share/openocd/contrib/60-openocd.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+```
+…or run the openocd command yourself (logged in `/tmp/d5-exccause.log` on Alfred), or
+grant passwordless sudo for openocd. Not urgent: hangs recur every 3–7 min, so a fresh
+window is cheap even if this one is lost — but the capture tells us *which* exception
+and *what address* is behind the double-fault the new watchdog only papers over.
+
 ## Not waiting on you
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
 - Multi-hive / multi-TG scale-out — gated on the below-TG substrate lock (the table
