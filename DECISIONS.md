@@ -592,3 +592,12 @@ R2-visible bearer — specs stamped). Falsifiers F1-F6 ratified. BUILD HELD on R
 (graze-points: LoRa relay island dark during window; collectors show astray, truthful).
 Evidence: /tmp/d5-score.log (tuxedo-os), .fleet/flash-authorization.log 11:30-13:45 entries.
 Decision-Log: this entry.
+
+#d026 addendum-7 (2026-07-24): Roy BLESSED g10 as shaped ("gate 10 - yes, bless the v8 as
+shaped"). Both graze-points accepted: (a) LoRa beacon + relay duty dark during OTA window
+(lease-bounded, ~90s hard cap); (b) collectors show device astray on masked bearers for the
+window. v8 build UNGATED: core ordered commit+push final diff; hive build follows core's
+pinned sha under #d005 (BUILD_ID coex.v8.####, preflights incl. partition/persona map +
+set_phy source-scope); then 3-way attest, path-A re-sign, grant v8, D5 reflash, P1 full-stream
+(F1), P3 rollback + §5.4, P2a/P2b re-verify. g10 removed from ROY-GATES.md.
+  Decision-Log: #d026

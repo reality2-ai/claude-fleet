@@ -23,15 +23,6 @@ annotated transport-only either way.
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
 
-## g10 — v8 OTA-session radio quiesce: two canon graze-points to bless (small, firmware)
-P1 finding: the ~900KB OTA stream dies after chunk 1 under LoRa+ESP-NOW coex (no resume,
-reproducible). Specs confirmed the lawful fix shape: a LEASED R2-TRANSPORT §2.3A mask over
-{LoRa, ESP-NOW} for the OTA session (session-bound, hard timeout, clear-on-complete;
-BLE + its beacon stay up throughout). Two things you should see before v8 builds:
-(a) during the window the device's LoRa beacon + relay duty go dark — one island of relay
-capacity blinks out, bounded by the lease; (b) collectors will show the device "astray" on
-masked bearers for the window (truthful, cosmetic). Rule: bless v8 as shaped / adjust.
-
 ## Not waiting on you
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
 - Multi-hive / multi-TG scale-out — gated on the below-TG substrate lock (the table
@@ -50,3 +41,4 @@ masked bearers for the window (truthful, cosmetic). Rule: bless v8 as shaped / a
 | 6 | Baked member roster | adopt as dev seed of runtime member-set; canon D-13/-14; merge + wiring dispatched | #d020 | [g6](gates/g6-baked-roster.md) |
 | 5 | Alfred rig fork | defer until phone-pair merge proven on metal; stays two hives + relay; reopens automatically | #d021 | [g5](gates/g5-alfred-rig-fork.md) |
 | 9 | D5 USB replug | replugged 07-24 06:2x; "sleeping tuxedo" = wrong-host artifact (dead node `tuxedo` vs live `tuxedo-os`); suspend/powersave asks withdrawn | #d026 | — |
+| 10 | v8 OTA radio quiesce | blessed as shaped 07-24 (relay-island dark + collectors-astray accepted); v8 build GO | #d026 | — |
