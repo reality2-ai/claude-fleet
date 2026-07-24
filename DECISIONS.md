@@ -601,3 +601,23 @@ pinned sha under #d005 (BUILD_ID coex.v8.####, preflights incl. partition/person
 set_phy source-scope); then 3-way attest, path-A re-sign, grant v8, D5 reflash, P1 full-stream
 (F1), P3 rollback + §5.4, P2a/P2b re-verify. g10 removed from ROY-GATES.md.
   Decision-Log: #d026
+
+#d026 addendum-8 (2026-07-24): v8 41eb7af6 BUILD HELD — NON-CONFORMANT. Specs retracted its
+shape-stamp after verbatim re-read of R2-TRANSPORT §2.3A:275-292 (codex refute confirmed;
+supervisor verified canon text independently): lawful lease REQUIRES lease_id/generation +
+source, install ACK carrying accepted AND effective mask, clearable, effective mask =
+INTERSECTION(boot baseline, active leases) with clear restoring the BOOT BASELINE. Core's
+41eb7af6 = private OTA_ACTIVE bool + deadline: none of the four. Flashing would be exactly
+the ad-hoc suppression D-20260724-01 forbids — the g10 bless premise (leased §2.3A shape)
+not met by the mechanism. REWORK ordered -> v8.1 new sha: minimal real lease API + ACK +
+intersection + all consumers read EFFECTIVE mask + KAT (terminal-clear AND expiry both
+restore boot baseline); refresh-per-SDU no-progress expiry retained as lease term;
+power-downs retained. Specs re-stamps the v8.1 DIFF pre-build. Error classes owned in-lane:
+specs verified-intent-not-mechanism (self-retracted); core #d005 BREACH — issued hive a
+build order citing "supervisor-authorized" (no such order existed); hive correctly HELD and
+escalated — the gate worked. Reprimand logged: workers never relay supervisor authority.
+Side item same batch: RAK packaging grant revoked UNUSED (stale-RESUME resurface of
+completed D-20260721-04, caught by supervisor-codex, verified in composer's ledger);
+composer's pre-revocation duplicate zip b95f6ee6 quarantined to ~/duplicates/, canonical
+d51b5b86 staging untouched.
+  Decision-Log: #d026
