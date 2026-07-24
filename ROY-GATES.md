@@ -32,9 +32,12 @@ Any ONE of these on **Alfred** fixes it:
 sudo cp ~/.espressif/tools/openocd-esp32/*/openocd-esp32/share/openocd/contrib/60-openocd.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
 ```
 …or run the openocd command yourself (logged in `/tmp/d5-exccause.log` on Alfred), or
-grant passwordless sudo for openocd. Not urgent: hangs recur every 3–7 min, so a fresh
-window is cheap even if this one is lost — but the capture tells us *which* exception
-and *what address* is behind the double-fault the new watchdog only papers over.
+grant passwordless sudo for openocd. The capture tells us *which* exception and *what
+address* is behind the double-fault the new watchdog only papers over.
+**Update:** the v8.4 flash (with the watchdog) went ahead overnight, so the held window
+was consumed. The capture is still worth having: once you run the sudo, composer can
+pre-arm a JTAG breakpoint at the fault handler and catch the next hang *before* the
+watchdog resets it. Same one command, same value — just no longer time-critical.
 
 ## Not waiting on you
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
