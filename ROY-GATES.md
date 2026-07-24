@@ -23,21 +23,6 @@ annotated transport-only either way.
 
 GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
 
-## g11 — D5 off USB since 12:25; replug when home (physical, blocks the v8.3 OTA cycle)
-D5 dropped off tuxedo-os USB at 12:25:43 (healthy right up to the break: beats=96,
-synced=true — reads as power-path, not firmware crash). Your read fits: a tuxedo-os
-suspend at 12:25 would cut USB power; ssh reads later succeeded, so it woke — but a
-suspend-orphaned USB device often needs a physical replug to re-enumerate. Everything else is staged and
-verified: v8.3 flashables 3-way attested, 4 signed streams hashed at rest on both hosts,
-watchers armed with hours-long terms. When you're at the bench:
-1. Replug / power-cycle D5. If it stays absent from `lsusb` entirely, suspect the
-   cable or an unpowered hub — absent-from-lsusb means USB/power path, not firmware.
-2. The cycle then fires automatically (composer pre-hashes, reflashes with the explicit
-   partition table, runs P1→P3). Nothing else to do.
-3. Optional, same trip — g8: run the hotspot one-liner I gave you
-   (`! ssh -t roycdavies@100.90.50.112 'sudo nmcli device wifi hotspot ...'`) and the
-   phone UDP test closes too.
-
 ## Not waiting on you
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
 - Multi-hive / multi-TG scale-out — gated on the below-TG substrate lock (the table
@@ -57,3 +42,4 @@ watchers armed with hours-long terms. When you're at the bench:
 | 5 | Alfred rig fork | defer until phone-pair merge proven on metal; stays two hives + relay; reopens automatically | #d021 | [g5](gates/g5-alfred-rig-fork.md) |
 | 9 | D5 USB replug | replugged 07-24 06:2x; "sleeping tuxedo" = wrong-host artifact (dead node `tuxedo` vs live `tuxedo-os`); suspend/powersave asks withdrawn | #d026 | — |
 | 10 | v8 OTA radio quiesce | blessed as shaped 07-24 (relay-island dark + collectors-astray accepted); v8 build GO | #d026 | — |
+| 11 | D5 replug / bench USB | closed 07-24 22:5x — tuxedo uplink cable bad (data lines); boards moved to Alfred, all 3 stable; v8.3 cycle firing | #d026 | — |
