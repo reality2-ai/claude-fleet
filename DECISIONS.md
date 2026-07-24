@@ -566,3 +566,29 @@ Batch status 2026-07-23 (post-#d018): bench re-sequenced — remote quiesce infe
 
 #d026 addendum-5: OTA CYCLE ABORTED at P1 — ROOT CAUSE FOUND. e6ff5198 panics at OTA CoC accept: 3c8ea9e1 tuning calls set_phy(Le2M); esp-radio 0.18.0 asserts llc_phy_upd.c:159 -> panic -> board HALT ('BLE assert llc_phy_upd.c 159, param 00000004 00000003'). All round-2 os107/os110 drops were masking (connection died pre-set_phy; boot-sync connect finally reached it). Watchdog falsifier verdict MOOT (board halted, not adv-suppressed). Second independent find same session: pre-connect coex adv-continuity silent drop (adv up once, accept().await blocks, no re-adv) -> core fix af17e83d (10s re-arm timer, falsifier: beacon >=10min unconnected under coex). PATH: core removes set_phy (keep DLE+credits, 1M PHY) on af17e83d -> hive rebuilds FULL set (otarx-wd/otafail-wd/d4/xiao) -> two-party attest -> re-sign 4 streams -> grant v6 -> cycle re-run. Grant v4 + staged f52a0f98 trio bins + 4 signed e6ff5198-derived payloads ALL superseded. Composer protocol overstep x2 (pre-fired P1 without GO) logged; its rogue attempt produced the decisive crash capture.
   Decision-Log: #d026
+
+## d026 addendum-6 (2026-07-24) — v7 OTA conformance cycle closed at the coex boundary
+Decision-maker: supervisor (cycle mechanics); Roy gate g10 OPEN for v8.
+v6 (05dba4f3) was DOA: deterministic boot-hang — coarse_checkpoint_tick's first-call flash
+write @0x1D000 fired ~1s post-BLE-init (high-water-mark seeded 0 vs absolute coarse time),
+esp-storage cache-suspend during radio XIP = executor deadlock, every boot; survived MCU-reset
+AND power-cycle (transient-BUSY theory refuted by the power-cycle discriminator). Fix v7 =
+6eec53d5 (seed hwm at boot; first checkpoint deferred 225s). Full pipeline rerun (hive build,
+3-way ELF+bin attest 4/4, path-A re-sign, grant v7).
+GRANT v7 RESULTS — coex-immune conformance ALL PASS on metal: boot past hang point (beats,
+beacon, LoRa nbrs); set_phy panic GONE at CoC accept (e6ff5198 died exactly there); signed
+header verify seq=1, payload byte-exact; chunk-1 ODT+OAK; §5.2 health under load; P2a
+UnauthorizedSigner reason=4; P2b ClassMismatch reason=7. Composer OTA stack validated
+(asymmetric RESP framing, exact reject reasons).
+FAIL-AS-WRITTEN, honestly held: [0b] adv-persistence (BLE adv radiates ~1min post-boot then
+coex starves slots — firmware re-adv WORKS, air-time doesn't; pre-existing #d029 wall, NOT a
+v7 regression) and the bulk ODT stream (drops post-chunk-1, no resume) -> P1 §5.1 CONFIRMED
++ P3 rollback/§5.4 GATED on v8.
+v8 = OTA-session radio quiesce, canon-shaped per specs: OTA session as a LEASED R2-TRANSPORT
+§2.3A transport_allow_mask writer masking {LoRa, ESP-NOW} (BLE never masked), radio
+power-downs = the actual coex relief, mask-consults on direct-TX paths, hard timeout
+~90s, auto-clear on done/fail/rollback; WiFi-STA modem-sleep rides along (STA not an
+R2-visible bearer — specs stamped). Falsifiers F1-F6 ratified. BUILD HELD on Roy g10
+(graze-points: LoRa relay island dark during window; collectors show astray, truthful).
+Evidence: /tmp/d5-score.log (tuxedo-os), .fleet/flash-authorization.log 11:30-13:45 entries.
+Decision-Log: this entry.
