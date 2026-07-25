@@ -881,3 +881,32 @@ it ran the search and owns its scope. Adopted — the accurate version teaches b
 generous one, and I am recording the refusal rather than quietly keeping my version.
 
 Decision-Log: obligation keys on (repo, crate, sha); scoping error recorded as shared at specs' request
+
+## D-20260726-S4 — whole-crate count is six; the security-drift claim is REFUTED
+
+Specs re-ran the comparison whole-crate and found both lanes had been hashing src/lib.rs
+ALONE. rak4630-fw-wt's lib.rs is byte-identical to canon while two other files in the crate
+differ. **Count corrected to nine copies / SIX contents; rak4630 leaves the in-sync group.**
+Only dfr1195-fw-forensics survives a whole-crate match. Method finding is sound and is the
+same shape one level down: a match on one file is not evidence about the crate.
+
+**SEVERITY CLAIM REFUTED — verified by me, not relayed.** Specs reported this as drift in the
+security core: hkdf.rs holds derive_hive_id and trust_group_uuid, the functions the g15
+join-carriage argument turned on, and wire_hmac.rs is the HMAC span. Direct check:
+
+- hkdf.rs diff = ONE hunk at line 464; #[cfg(test)] begins at 289. Canon GAINED 84 lines of
+  provenance tests on 07-19, one day after rak vendored on 07-18.
+- wire_hmac.rs diff = ONE COMMENT LINE inside a test; #[cfg(test)] begins at 105, hunk at 152.
+- Pre-#[cfg(test)] regions of both files: IDENTICAL. Negative control (test regions) DIFFERS,
+  proving the comparison could see a difference.
+- derive_hive_id and trust_group_uuid byte-identical, same line numbers (145, 241) in both.
+
+**No board runs key-derivation or HMAC code differing from canon.** Specs asked me to decide
+whether to raise a second gate for the bench; answer NO, and the reason is the evidence above
+rather than a judgement about priority. Escalating would have put a false security finding in
+front of Roy under time pressure, which is the worst place for one.
+
+Standing note: specs did the right thing by asking rather than escalating on its own judgement,
+and its whole-crate detector (report-only, does not classify) is the durable win here.
+
+Decision-Log: trust count six; rak4630 out of in-sync; security-drift claim refuted on production/test split; no second gate

@@ -31,7 +31,7 @@ Shared crates are **vendored per repository with no shared source**:
 
 | crate | copies | distinct contents |
 |---|---|---|
-| `r2-trust` | **nine** | **five** — one shared by three repos, one by two, three singletons |
+| `r2-trust` | **nine** | **six** — corrected again; see the whole-crate note below |
 | `r2-dataplane` | **five** | **four** — only core's carries the g15 fix (join-carry: core 11, all four others 0) |
 
 **The pairing is itself evidence, and it is good news.** Three pairs agree *exactly*. That
@@ -70,6 +70,36 @@ dataplane copy, the crate that *did* move (it gained the g15 fix), is the pre-g1
 
 This is why the obligation you rule must key on **(repo, crate, pinned-core-sha)**. Repo-level
 is not a coarser version of the right answer; it is the wrong answer.
+
+**And one level further down: the comparison was one file, not the crate.** Both lanes had
+been hashing `src/lib.rs` alone. Specs re-ran it whole-crate and found a repo whose `lib.rs`
+is byte-identical to canon while **two other files in the same crate differ** — so the trust
+count is **six** distinct contents, not five, and that repo leaves the in-sync group. Only one
+copy survives a whole-crate match.
+
+Same shape as the finding above, one level down: **a match on one file is not evidence about
+the crate**, exactly as a match on an unchanged crate is not evidence about the repo. In both
+cases the check's *scope* was narrower than the *claim* it was used to support.
+
+### I verified the severity myself, and it is much lower than first reported
+
+Specs flagged this as security-core drift — the differing files hold the key-derivation and
+HMAC code, including the two functions the whole g15 join argument was reasoned against. That
+would be serious, so I checked it directly rather than relaying it.
+
+**The production code is byte-identical.** Both diffs fall entirely inside the test modules:
+
+- one file: canon **gained 84 lines of provenance tests** the day *after* that repo vendored;
+  the copy is not wrong, it is one day older.
+- the other file: **a single comment line** inside a test.
+- The two g15-critical functions are byte-identical and at **the same line number** in both.
+
+Method: compared the pre-`#[cfg(test)]` region of each file, with the test region as a
+negative control to prove the comparison could see a difference at all. It could.
+
+**So: no board is running key-derivation or HMAC code that differs from canon.** Specs' method
+finding stands and is valuable; its severity claim does not, and I am not escalating a second
+gate on it.
 
 **The security-relevant copy — the one on the bench — is in the deliberate-pin class and is
 safe today.** Every non-core dataplane copy predates g15, so none of them can carry a join.
