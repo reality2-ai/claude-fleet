@@ -47,12 +47,27 @@ dismiss it. **Android undercut it from its own code:** the value is documented t
 for is single-hop anyway. Meanwhile the field that genuinely controls propagation is set to
 its minimum — the frame's own routing parameters say *don't spray*, on their own authority.
 
-One honest caveat, which specs found by checking android's evidence rather than taking it:
-that comment explains why *android* chose 5 — to mirror core's shipped value — so it does
-not by itself establish that *core's* original choice was nominal rather than deliberate.
-I've asked core directly. The answer doesn't change the recommendation either way, since
-the two arguments above are independent of it, but you should know the chain currently
-stops one step short of the source.
+Specs then checked android's evidence rather than taking it, and found the chain stopped
+one step short: that comment explains why *android* chose 5 — mirroring core's value — not
+why core chose it. So I asked core, and **the answer closes it at the source and goes
+further than the caveat feared.**
+
+Core's deliberate join intent is **one hop, and it says so in a comment**: its real
+sovereign-join producers set the hop limit to 1, one of them annotated *"direct
+point-to-point over L2CAP — no relay"*. The value 5 appears in only two places: a
+cross-vendor test vector pinned for parser compatibility with no hop-budget rationale
+anywhere, and an older board file where *every* frame type is 5. Across the tree, 5 occurs
+24 times on all frame types while every other value appears once. It's the generic default.
+
+So the one datum that looked like the designers provisioning joins to travel turns out to be
+inherited boilerplate, and the considered value — written by the lane that produces the
+frame — is single-hop with an explicit no-relay note. **There is now no surviving argument
+for relaying.**
+
+Core also flagged, without acting on it, one real inconsistency: an older board file emits a
+group-management frame at the generic default of 5 rather than the single-hop value the
+proximity path uses. Almost certainly the same boilerplate, but it is a second producer that
+*would* send such a frame five hops. Your ruling resolves it either way.
 
 ### What you should know before ruling
 **Specs weakened its own case, unprompted.** It had told me proximity justifies
