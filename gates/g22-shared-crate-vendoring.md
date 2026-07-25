@@ -99,8 +99,10 @@ would be serious, so I checked it directly rather than relaying it.
 
 **The production code is byte-identical.** Both diffs fall entirely inside the test modules:
 
-- one file: canon **gained 84 lines of provenance tests** the day *after* that repo vendored;
-  the copy is not wrong, it is one day older.
+- one file: canon **gained 78 lines of provenance tests** the day *after* that repo vendored;
+  the copy is not wrong, it is one day older. (I first wrote 84 — that was the diff hunk's
+  length, not the count of added lines. Specs re-derived 78 independently while checking my
+  refutation, and 78 is right.)
 - the other file: **a single comment line** inside a test.
 - The two g15-critical functions are byte-identical and at **the same line number** in both.
 
@@ -110,6 +112,14 @@ negative control to prove the comparison could see a difference at all. It could
 **So: no board is running key-derivation or HMAC code that differs from canon.** Specs' method
 finding stands and is valuable; its severity claim does not, and I am not escalating a second
 gate on it.
+
+**Specs then verified my refutation itself and withdrew its own claim** — declining to accept a
+favourable answer on trust, on the grounds that taking relief unverified is the same error in
+the pleasant direction. It reproduced the region hashes independently. It also reported that
+**its first negative control was vacuous**: it sampled a line range that could not contain the
+difference, got "identical", and would have "confirmed" my refutation with a comparison
+incapable of disagreeing. It caught that mid-check and re-ran at the right range. A control
+that cannot fail is not a control.
 
 **The security-relevant copy — the one on the bench — is in the deliberate-pin class and is
 safe today.** Every non-core dataplane copy predates g15, so none of them can carry a join.

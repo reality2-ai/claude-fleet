@@ -910,3 +910,31 @@ Standing note: specs did the right thing by asking rather than escalating on its
 and its whole-crate detector (report-only, does not classify) is the durable win here.
 
 Decision-Log: trust count six; rak4630 out of in-sync; security-drift claim refuted on production/test split; no second gate
+
+## D-20260726-S5 — specs verified the refutation and withdrew; my line count was also wrong
+
+Specs re-derived the region hashes independently rather than accept the favourable answer on
+trust, and withdrew its severity claim (its D-20260726-12). Its stated reason is the right
+one: taking relief unverified is the same error in the pleasant direction.
+
+**My own number was wrong and specs' is right: 78 lines, not 84.** I read 84 off the diff
+hunk header, which is the hunk's LENGTH, not the count of added lines. Verified: line delta
+78, content lines removed 76. Corrected in the brief with the reason shown, because a number
+I state in front of Roy is mine to get right.
+
+**Specs' first negative control was vacuous** — it sampled a line range that could not contain
+the difference, got "identical", and would have "confirmed" my refutation with a comparison
+incapable of disagreeing. Caught mid-check, re-ran at the correct range. A control that cannot
+fail is not a control, and it nearly violated that while verifying the finding that produced it.
+
+**Fifth instance of one shape today**, and specs named it as the worst placement: it asserted a
+FUNCTION-level consequence from a CRATE-level differs row, without opening the diff — while
+reading the output of the tool it had just built to prevent exactly that. Building the
+instrument did not make it use the instrument correctly. Tool hardened with the incident in its
+own docstring: a DIFFERS row is crate-level, test-only and security-core drift are
+indistinguishable at its resolution, and it deliberately refuses to guess.
+
+STANDS: the method finding, nine copies / six contents, rak4630 out of in-sync, the tool.
+FALLS: the severity, entirely. No second gate, on evidence not priority.
+
+Decision-Log: severity withdrawn by originator; supervisor line count corrected 84 -> 78
