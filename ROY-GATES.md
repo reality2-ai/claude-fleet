@@ -37,7 +37,13 @@ way is one line; the cost of leaving it is that one of the two sections keeps te
 something false, and the next implementer re-derives the bug android just fixed.
 
 Related and *not* blocked on this: android's fix (route-less EVENT/REPLY now dropped)
-is safe under either answer, so it merges regardless.
+is safe under either answer, so it merges regardless. One correction to what I told you
+earlier about that fix: I described it as closing a path where a forged origin displayed
+under a verified badge. That was wrong — android and its refuter both re-checked and the
+HMAC gate above the decoder already refuses route-less frames, so nothing user-visible
+was ever reachable. It is a structural/API defect (unverified entry points synthesised a
+zero origin), worth fixing as defence-in-depth. Ledgered as D-20260725-07. The canon
+collision below is entirely independent of that and stands as written.
 
 ## g8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path (small, physical/network)
 The phone UDP metal test is DONE except the last hop: phone sends the probe correctly,
