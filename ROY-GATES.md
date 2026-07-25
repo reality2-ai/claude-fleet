@@ -13,6 +13,34 @@ syntax is at the bottom of every brief.
 
 ---
 
+## g15 — may a join request be relayed? (real, canon + security)
+Specs found this by running an audit on its own fix, and it's the one place today where
+the *obviously correct next step* is the dangerous one.
+
+Two specs now disagree about the same frame. R2-WIRE says a join request must be accepted
+even though it carries no origin (that's the ruling in g14). R2-ROUTE says, unconditionally,
+that any frame with no origin must be dropped and never relayed. So one document says
+accept, the other says drop.
+
+The frame itself asks to travel: the shipping join sets a hop limit of **5**, not 1.
+
+**Why this needs you rather than a lane.** Today, joins don't get relayed — but only
+because R2-ROUTE drops them *for the wrong reason* (missing origin, not "joins shouldn't
+travel"). The natural next fix is to make R2-ROUTE honour the new exemption. Do that, and
+joins become relayable across five hops, and a proximity assumption nobody ever wrote down
+disappears silently. R2-PROVISION justifies trust-on-presentation *by* physical proximity
+and selects short-range transports to enforce it; relaying a join through untrusted
+intermediaries weakens exactly that. The guarantee is currently an accident.
+
+**Specs' recommendation:** say the no-relay rule out loud — a join is one hop, hop limit
+should be 1, and a relay must not forward that frame type. That makes the two specs
+consistent and puts the guarantee on an intended rule instead of a coincidence. If you'd
+rather joins *were* relayable, then R2-ROUTE needs the carve-out and the proximity
+argument needs restating honestly.
+
+I've told the fleet: **nobody "fixes" R2-ROUTE until you rule.** It's the natural
+inference and it's the harmful one.
+
 ## g14 — RULED under delegation, not waiting on you (canon) — overrule if you disagree
 I first put this to you as a decision: two things you blessed three weeks apart contradict
 each other. §9.5 (you ratified 2026-06-23) says a frame with no carried origin must always
