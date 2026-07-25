@@ -17,13 +17,14 @@ argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
 
-**[g23 — our working records are published in six public repositories](gates/g23-public-fleet-repo-leak.md)** · **hygiene, not a breach**
-**No keys, no MACs, no personas** — that guard held. What is exposed is structure: **~20
-private-repo-name mentions and ~360 commit-id-shaped tokens across six public repos**, including
-the one that serves the public website. **I first scoped this gate to the repo I was standing in**
-— the class is lane bookkeeping in any published tree, and it is five repos wider than I wrote.
-Five are already pushed and live, and **lane-owned, so your ruling must be dispatched, not
-executed by me**. Rewriting history needs a force-push, which I am forbidden.
+**[g23 — our working records are published in five public repositories](gates/g23-public-fleet-repo-leak.md)** · **hygiene, not a breach**
+**No keys, no MACs, no personas — now checked on all five, not just this one.** What is exposed is
+structure: **~20 private-repo-name mentions and ~360 commit-id-shaped tokens**, including in the
+repo that serves the org's public website. One thing needs your eye: a **trust-group identifier**
+appears in two of the ledgers — not a key, but a *chosen* identifier. **I first scoped this gate to
+the repo I was standing in, then miscounted five repos as six while widening it.** Four are
+lane-owned, so **your ruling must be dispatched, not executed by me**. Rewriting history needs a
+force-push, which I am forbidden.
 → `gate 23: stop publishing bookkeeping` / `make them private` / `scrub forward only` / `rewrite history`
 
 **[g22 — shared crates are vendored per-repo](gates/g22-shared-crate-vendoring.md)** · **a ruling is already lost to it**

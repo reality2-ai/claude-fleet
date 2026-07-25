@@ -1197,3 +1197,31 @@ TWO TELLS BANKED, both specs', both checkable BEFORE knowing who is right:
   licenses reuse.
 
 Decision-Log: own method note corrected; subject-mismatch and evidence-for tells banked
+
+## D-20260726-S16 — g23 is FIVE repos, not six; and my no-keys claim was broader than its check
+
+**TWO ERRORS OF MINE IN ONE GATE, both found by specs enumerating the class independently.**
+
+1. **"Six repositories" is wrong — it is six FILES across FIVE repositories.** One repo carries
+   both a ledger and a snapshot and I counted table rows as repos. I made this miscount IN THE
+   ACT of widening the scope, and reported it to Roy twice. Specs got five, with a positive
+   control proving its comparison discriminated and two genuine nulls. Five stands.
+
+2. **My "no keys, no MACs, no personas" was verified HERE and asserted EVERYWHERE.** A claim
+   broader than its check — the exact error this gate keeps producing, in a security sentence.
+   Now actually checked on all five: no colon-form MACs; every MAC-shaped hex triaged to a UUID
+   segment or a truncated artifact digest; long hex strings are ELF/image digests quoted beside
+   byte sizes; the one key-flavoured passage is a POLICY discussion recording that a raw signing
+   key never reaches a filesystem. No personas.
+
+**ONE NEW CLASS SURFACED, put to Roy rather than filed clean:** a TRUST-GROUP IDENTIFIER appears
+in two public ledgers. Not a key and not derived from one, but a CHOSEN identifier of a real
+trust group, and chosen-versus-derived is Roy's distinction.
+
+Scope stated so it is not read as more: name tokens, commit-id-shaped tokens and the key/MAC/
+persona classes, on ledger and snapshot files ONLY. Zero evidence about any other file.
+
+Specs' framing adopted: the website repo is the one to look at first — whatever the exposure is
+worth on a fleet-tooling repo it is worth more on the org front door.
+
+Decision-Log: g23 corrected to five repos; security classes checked on all five; TG identifier raised
