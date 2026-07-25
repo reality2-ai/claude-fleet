@@ -149,6 +149,9 @@ join and certificate code, which are older there.
 That is a **feature and interop gap, not a key-derivation gap** — a consequence of the
 deliberate pin, resolved at the next re-vendor. Worth knowing because it means the bench cannot
 exercise capability grants at all, which is a different statement from "the bench is behind".
+The group-management, join, certificate, provisioning and revocation code is older there too.
+**Stated in those words deliberately: this is a pin lag due at the next re-vendor, not an
+incident.**
 
 ## Two things that make it worse than ordinary drift
 

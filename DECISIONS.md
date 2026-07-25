@@ -990,3 +990,36 @@ because "verified identical" and "not present to verify" must not be collapsed �
 looks like coverage and is not.
 
 Decision-Log: second bench verified by supervisor; two list items corrected; conclusion unchanged
+
+## D-20260726-S8 — my scope rule was wrong in one direction; and "failing green"
+
+**AMENDMENT TO STANDING METHOD, and the amendment is core's not mine.** I banked the rule as
+"every failure was a check whose scope is NARROWER than the claim". Wrong for one of the six:
+the whole-crate hash that raised the false security alarm was BROADER than the crypto claim —
+it swept in cfg(test) blocks, doc comments and features canon had ADDED, and that breadth is
+what manufactured the alarm. Corrected phrasing taken verbatim:
+
+  **Broader-than-claim over-alarms as much as narrower under-detects.**
+
+Five narrower + one broader. Constructive half: name the unit the claim needs BEFORE choosing
+the check. For "does this board run different crypto" the matched unit was neither file nor
+crate but the DERIVATION FUNCTION BODIES. A line-number check would also have been wrong-scope —
+same body, different line in each tree (canon L145 / bench L120).
+
+**NEW FAILURE CLASS — "FAILING GREEN", reported by specs against itself, third instance today.**
+Two commands broke and still printed a verdict, because the INTERPRETATION WAS WRITTEN INTO THE
+COMMAND BEFORE THE OUTPUT EXISTED: a glob died under zsh while a pre-written label
+"(empty = not called)" presented the failure as the finding; and a lookup returned empty on both
+sides, so comparing TWO EMPTY STRINGS printed IDENTICAL. A pre-committed verdict prints anyway
+when the command breaks. Same family as the vacuous control, one layer down.
+
+**This one lands on me too.** I used `cmd && echo IDENTICAL || echo DIFFERS` repeatedly today,
+including for the capgrant presence check. A broken path produces the negative branch as though
+it were a measurement. My separate positive and negative controls are what kept those honest —
+the command design did not. Fixes: never pre-write the conclusion into the command; pair every
+zero with a positive control in the same invocation.
+
+Also propagated the 84->78 correction and the five->six variant count INSIDE my own standing
+method note, which was still carrying both. Second propagation catch today, same rule.
+
+Decision-Log: scope rule corrected to two-directional; failing-green class recorded; own idiom implicated
