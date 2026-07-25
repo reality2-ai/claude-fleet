@@ -1379,3 +1379,31 @@ My numbers are larger than specs' (87/50 vs 26/12) because I scanned all tracked
 than a subset. Not a correction of its figure — a wider denominator, same conclusion a fortiori.
 
 Decision-Log: flat hostname reading refuted canon-internally; infrastructure subset flagged separately
+
+## D-20260726-S22 — my 32-hex "gap" is a deliberate guard; the fix is by SHAPE not WIDTH
+
+I told Roy the 32-hex zero was "worse still" than specs' finding. **Wrong — it is an intentional
+anti-false-positive guard**, documented in the scanner's own comment: an 8-hex value "must not be
+a slice of a longer hex run (a 64-char KAT key must not light up as four identities)". I read a
+design decision as a defect, in the over-alarm direction. Broader-than-claim again, mine.
+
+**MEASURED INDEPENDENTLY rather than taking specs' figures, negative control returned 0:**
+- 32-hex literals in the corpus: **71** (matches specs exactly)
+- 64-hex literals: **246** (specs 254 — different file-type set, same order, not a correction)
+- UUID-shaped literals: **37**
+
+So widening by WIDTH surfaces ~317 candidates, overwhelmingly KAT vectors — precisely the flood
+the guard prevents. Widening by SHAPE (the dashed 8-4-4-4-12 form, which a contiguous key
+structurally cannot satisfy) surfaces 37 and leaves the guard intact. **The naive fix looks
+obvious and is harmful.** Recorded in the brief for whoever executes it later.
+
+**STANDING FLEET CONSEQUENCE: the identity gate scans COMMIT MESSAGES.** Prose about an identity
+defect can permanently add a candidate to the backlog it documents, and history is not rewritable.
+Write commit messages about identity work as if they were scanned files — they are.
+
+Specs also self-corrected three ways in one pass, including a check whose window POST-DATED the
+change it was hunting: zero on both sides, read as no-change, when the window could not have
+contained it. Same shape as its range-terminator failure this morning. Resolved by widening the
+window until it COULD disagree.
+
+Decision-Log: 32-hex reframed as guard not gap; widening must be by shape; commit messages are scanned

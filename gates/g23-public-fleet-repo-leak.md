@@ -202,7 +202,8 @@ compiled pattern myself against three inputs, with a negative control that corre
 nothing:
 
 - **UUID form → one match, the first 8 hex digits only.** The other 24 are never scanned.
-- **The same value written as one 32-character run → no match at all.**
+- **The same value written as one 32-character run → no match at all.** *(I reported this as
+  "worse still". It is not a defect — see below.)*
 
 Two consequences, and the second is the one that bites here:
 
@@ -211,6 +212,20 @@ Two consequences, and the second is the one that bites here:
 - **Two different trust groups sharing a first segment are indistinguishable to this gate.** So a
   green is **not evidence about *which* group a file carries** — which is exactly the question
   the route-to-clean turns on.
+
+**My "worse still" was wrong, and the correction inverts the fix.** The scanner deliberately
+refuses to match a hex run longer than the widths it looks for — its own comment says a 64-character
+test vector "must not light up as four identities". It is an anti-false-positive guard, not a gap,
+and I read an intentional design as a bug.
+
+The consequence is practical, and I measured it independently rather than take the figure: adding
+32 to the width set would newly flag **71** literals, and the same move at 64 reaches **246** —
+overwhelmingly test vectors, i.e. exactly the flood the guard exists to prevent. **Widening by
+*width* trades a narrow blind spot for a broad useless one.** The correct widening is by **shape**
+— match the dashed `8-4-4-4-12` form specifically, which a contiguous test key structurally cannot
+satisfy, leaving the guard fully intact. On my count that surfaces **37** candidates rather than
+317. The naive fix looks obvious and is harmful, so it is recorded where whoever executes it later
+will see it.
 
 The instrument was **held, not fixed**, and I agree with that: widening it changes what the gate
 flags fleet-wide and moves the candidate count *while a gate about a UUID-form identifier is in
@@ -222,7 +237,13 @@ Worth knowing, because it is the best evidence the instrument works within its s
 into the header raised the candidate count by one — an identity-shaped literal in an identity
 context, added *by the note explaining the hazard*. Rewritten schematically; count restored.
 
-When you rule, widening the matcher and **re-baselining** is queued. The widened matcher will
+**One standing consequence, fleet-wide and not confined to this gate: the identity scanner reads
+commit messages.** Prose *about* an identity defect can permanently add a candidate to the backlog
+it documents — and history is not rewritable here. Commit messages about identity work must be
+written as though they were scanned files, because they are. That is now three self-trips in one
+day: an explanatory note, a commit message, and a stale figure quoted from an earlier run.
+
+When you rule, widening the matcher **by shape** and **re-baselining** is queued. The widened matcher will
 surface segments no previous pass has ever scanned, so **the new count will not be comparable to
 the old one and must not be read as a regression.**
 
