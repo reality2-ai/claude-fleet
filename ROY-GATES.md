@@ -38,7 +38,18 @@ consistent and puts the guarantee on an intended rule instead of a coincidence. 
 rather joins *were* relayable, then R2-ROUTE needs the carve-out and the proximity
 argument needs restating honestly.
 
-I've told the fleet: **nobody "fixes" R2-ROUTE until you rule.** It's the natural
+**It is three places, not one — including live code.** Since I wrote this, the lanes
+found the same unconditional drop in the routing spec, in the wire spec, and in core's
+actual dataplane, where the ingest path drops any frame without an origin and a comment
+three lines below asserts the very rule that just stopped being true. All three are
+frozen. At every one of them, the obvious conformance fix is the harmful one: honour the
+new exemption at any single site and joins silently gain access to the mesh path.
+
+A practical consequence worth knowing: a related dedup fix specs already landed is
+**dead code until you rule** — the new key only applies to frames that currently never
+get that far. Landing it first would look like progress and change nothing.
+
+I've told the fleet: **nobody "fixes" any of the three until you rule.** It's the natural
 inference and it's the harmful one.
 
 ## g14 — RULED under delegation, not waiting on you (canon) — overrule if you disagree
