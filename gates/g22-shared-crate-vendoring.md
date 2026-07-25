@@ -104,10 +104,26 @@ would be serious, so I checked it directly rather than relaying it.
   length, not the count of added lines. Specs re-derived 78 independently while checking my
   refutation, and 78 is right.)
 - the other file: **a single comment line** inside a test.
-- The two g15-critical functions are byte-identical and at **the same line number** in both.
+- The two g15-critical functions are byte-identical. *(They also sit at the same line number on
+  this board — but that is a coincidence of this one tree, not evidence. On the other bench board
+  the same function body sits 25 lines earlier. Line agreement is the wrong axis and I originally
+  wrote it as though it corroborated something.)*
 
 Method: compared the pre-`#[cfg(test)]` region of each file, with the test region as a
 negative control to prove the comparison could see a difference at all. It could.
+
+**The durable form, and it is the one thing from this gate worth carrying to the next
+question.** Four candidate units could answer "does this board run different crypto", and
+**three of them answer confidently wrong**:
+
+| unit | verdict |
+|---|---|
+| the **file** | too narrow — missed the differing file entirely |
+| the **crate** | too broad — swept in tests, doc comments and added features, and *manufactured the false security alarm* |
+| the **line number** | wrong axis — the same body sits at a different line on each board |
+| the **function body** | the only unit that answers the question |
+
+Not *go finer*, not *go coarser*: **name the unit the claim is about, then measure that one.**
 
 **So: no board is running key-derivation or HMAC code that differs from canon.** Specs' method
 finding stands and is valuable; its severity claim does not, and I am not escalating a second

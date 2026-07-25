@@ -1099,3 +1099,29 @@ debugger grant is live and waits on Roy being at the bench.
 Twelve commits held unpushed pending the g23 ruling, since pushing is the action g23 is about.
 
 Decision-Log: none
+
+## D-20260726-S12 — line agreement was the wrong axis, and it was in my brief as evidence
+
+Specs ground-truthed all three trees rather than adjudicate from messages, and it is right:
+my "same line number" line and core's "moved body" finding are BOTH TRUE OF DIFFERENT BOARDS and
+neither refutes the other. Verified myself with controls: canon derive_hive_id L145 /
+trust_group_uuid L241; rak4630 145 / 241 identical; DFR derive_hive_id L120 and
+trust_group_uuid ABSENT. Positive control found the canon symbol, negative control on a nonsense
+symbol returned nothing.
+
+**What needed fixing was not the fact but its STATUS.** My brief presented line agreement as
+though it corroborated the byte-identity. It is a coincidence of one tree. Rewritten to say so
+explicitly, because a reader would otherwise take line agreement as part of the evidence and
+carry the wrong instrument to the next question.
+
+**FOURTH LEVEL ADOPTED into the brief as the durable form (specs'):** four candidate units for
+"does this board run different crypto", THREE ANSWER CONFIDENTLY WRONG — file too narrow (missed
+the differing file), crate too broad (manufactured the false alarm), line number wrong axis (same
+body moved), function body the only one that answers it. Not go-finer, not go-coarser: name the
+unit the claim is about, then measure that.
+
+Third artifact-staleness catch of the day was specs' own tool docstring, and its sweep for it was
+ALSO a failing green — a --include glob died under zsh and BOTH controls returned 0, a broken
+command printing the clean answer while documenting that exact defect. Caught by the controls.
+
+Decision-Log: line-agreement demoted from evidence in the brief; four-unit form adopted
