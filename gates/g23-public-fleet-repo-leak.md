@@ -3,6 +3,40 @@
 **Status:** 🔴 OPEN — no secrets exposed; internal structure is
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → *"read gates/g23 and verify the counts yourself"*
 
+## READ THIS FIRST — it is no longer the biggest thing in this gate
+
+The vendoring-name and dependency-URL material below is real but structural. **The answer to the
+invented-versus-captured question changed the gate's centre of gravity, and this part is about
+your home network.**
+
+The bench-flash lane answered plainly and against itself: **two of the three groups are CAPTURED,
+and they are its rig.** Not documentation examples — an operational test log with measured timings.
+Specifically: **a named home wireless network, four real hosts at specific addresses on that
+subnet, a mesh-VPN presence, per-host service ports, and real sequentially-named boards.**
+
+**And it is not only in the specification files. It is in that lane's own repository — which is
+public, and fully pushed.** I verified: the repo's visibility is public, the file is tracked, it
+carries nine private-range addresses, three mesh-VPN references and a network name, and the lane
+is at zero commits ahead of its remote. **So this is live right now, not pending a push.**
+
+That is a different class from everything else in this gate. Repository names and commit ids are
+*development* structure. **A named home network with host addresses is the physical location and
+topology of where you live and work**, published under the org's name.
+
+**Nothing has been scrubbed and I have told the lane to keep it that way** — for the reason
+established earlier: a scrub destroys the evidence needed to establish what was captured. The lane
+volunteered the finding about its own tree rather than confining its answer to the file I asked
+about, and it is holding for your go-ahead. It can enumerate the exact file-and-line set privately
+on your word.
+
+**The third group is unowned.** The electrical-design lane verified negatively that it is not
+theirs; the bench-flash lane says the subnet is not its dev network either. Under fail-closed it
+stays real with no owner identified. **If it is yours, you are the only one who can say so.**
+
+**What I need from you on this item, in priority order:** (1) go-ahead to enumerate privately,
+(2) a scrub decision for captured values, (3) an answer on the third group. It sits ahead of every
+other half of g23.
+
 ## What I found
 
 `reality2-ai/claude-fleet` is **public** — confirmed from the API, not assumed

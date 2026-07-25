@@ -1488,3 +1488,32 @@ argument. The natural direction is to re-check only what opposes you. Had it don
 number reaches Roy wearing its name, inside a brief I had already "verified".
 
 Decision-Log: cost figures retracted; width-widening inert not harmful; best fix is shape AND width
+
+## D-20260726-S26 — CAPTURED home-network infrastructure is live in a PUBLIC repo
+
+The bench-flash lane answered invented-or-captured plainly and AGAINST ITSELF: groups 2 and 3 are
+CAPTURED and they are its rig. Corroborated in its OWN tracked tree as an operational test log
+with measured timings — a named home wireless network, four real hosts at specific addresses, a
+mesh-VPN presence, per-host service ports, real sequentially-named boards. Not doc examples.
+
+**VERIFIED INDEPENDENTLY, no literals recorded:** that repo's visibility is PUBLIC; the file is
+tracked; it carries 9 private-range addresses, 3 mesh-VPN references and a network name; and the
+lane is at ZERO commits ahead of its remote. **LIVE NOW, not pending a push.** Negative control on
+a non-existent path behaved.
+
+**THIS IS A DIFFERENT CLASS FROM THE REST OF g23.** Repo names and commit ids are development
+structure. A named home network with host addresses is the physical location and topology of where
+Roy lives and works, published under the org name. Gate re-ordered to put it first.
+
+NOT SCRUBBED and the lane instructed to keep it that way: a scrub destroys the evidence of what was
+captured. The lane VOLUNTEERED the finding about its own tree rather than answering only about the
+file asked, and holds for Roy. It can enumerate file:line privately on his word.
+
+**GROUP 1 IS UNOWNED.** The electrical-design lane verified negatively; the bench-flash lane says
+it is a different /24 from its dev net. Fail-closed keeps it real with no owner. Only Roy can
+resolve it.
+
+Both lanes independently confirmed the blind-spot class: a bare SSID, hostname or host address
+carries no identity LABEL, so a labelled-identifier scanner cannot see any of this.
+
+Decision-Log: captured home-network exposure confirmed live in a public repo; enumerate/scrub await Roy
