@@ -12,105 +12,66 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
+**8 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+argument, the options and the ruling syntax.
 
-## g15 — may a join request be relayed? (real, canon + security) — THREE LANES AGREE: NO
-I asked core, android and specs the same question separately, told none of them to
-coordinate, and told core and android not to read specs' reasoning first. **All three said
-no — from three different grounds.** Two of them also found the same second problem
-independently. Detail below, but the headline is that this converged rather than deferred.
+### Blocking a lane right now
 
-**Two specs currently contradict each other about the same frame.** The wire spec says a
-join must be accepted even though it carries no origin; the routing spec says any frame
-with no origin must be dropped and never forwarded. The same unconditional drop also sits
-in core's live dataplane. All three are frozen.
+**[g15 — may a join request be relayed?](gates/g15-join-relay.md)** · canon + security
+Three lanes, asked separately, independently said **no**, on three different grounds. The one
+datum that favoured relaying turned out to be inherited boilerplate — core's real join
+producers set one hop and say *"no relay"* in a comment. Two specs contradict each other about
+this frame; four sites are frozen, and the specs lane is stopped until you rule. A dedup key
+must move in the same ruling.
+→ `gate 15: no relay` / `relay allowed` / `no relay + fix the dedup key` / `what would have to change first`
 
-### The strongest argument, in one sentence
-**A relay cannot authorise a join even in principle.** The frame has no verifiable origin,
-no outer authentication, and its signing key is carried *inside itself* — so anyone can
-mint a validly-signed join. A relay has nothing it can check that separates a real joiner
-from an attacker, and by definition the sender isn't a member yet. Forwarding means every
-node relays attacker-mintable, unattributable frames with a hop budget. (Specs, whose own
-argument is the one below, told me to give you this one instead — it's an impossibility of
-*capability*, where its own is about *consequence*.)
+**[g13 — radar board-fit](gates/g13-radar-board-fit.md)** · tiny, physical
+~29 breadboard columns needed against ~28 available. Marginal enough that only eyeballing the
+real parts settles it. Circuits is idle until you look.
+→ `gate 13: fits` / `rework`
 
-The second argument, independently reached, needs no proximity claim either: **origin-less
-plus relayable equals unmeterable.** The only rate-limiting primitive canon has is a
-per-origin quota — it keys on origin, and a join has none. So an unauthenticated frame
-could traverse five hops with no relay able to throttle it, because the one metering tool
-available needs exactly the field the exemption removes.
+### Security and tooling, open right now
 
-### The best case FOR relaying, and why it collapsed
-The frame sets a hop limit of **5**, not 1 — which looks like the designers provisioning
-joins to travel. That was the one datum troubling both specs and core, and neither would
-dismiss it. **Android undercut it from its own code:** the value is documented there as
-*nominal*, pinned only to match a shipped test vector, because the transport it was written
-for is single-hop anyway. Meanwhile the field that genuinely controls propagation is set to
-its minimum — the frame's own routing parameters say *don't spray*, on their own authority.
+**[g19 — may I patch the flash-authorisation gate?](gates/g19-auth-gate-bypass.md)** · a bypass that has fired
+A bare `VAR=value` prefix hides a flasher from the gate — no check, no audit entry. **My defect:**
+my own grant wording told lanes to use that form. It fired once, on an *offline derive*, not a
+device operation. The number of bypasses is **unknown, not zero**, because nothing detects an
+unlogged operation. Also: grants are never consumed, so every "one attempt only" I wrote was
+prose the gate does not enforce.
+→ `gate 19: you patch it` / `leg 1 only` / `I'll do it` / `defer`
 
-Specs then checked android's evidence rather than taking it, and found the chain stopped
-one step short: that comment explains why *android* chose 5 — mirroring core's value — not
-why core chose it. So I asked core, and **the answer closes it at the source and goes
-further than the caveat feared.**
+**[g17 — may I patch the fleet message transport?](gates/g17-fleet-transport.md)** · one glyph, three failures
+A fixed-string prompt match breaks acknowledgement (hence the duplicate messages — the transport
+retrying, not lanes repeating), overloads the state and metrics, and **disables the anti-garble
+guard**. Content does arrive; integrity is untested. I held off patching because you were away
+and a bad edit costs the ability to report that I broke it.
+→ `gate 17: you patch it` / `I'll patch it` / `defer`
 
-Core's deliberate join intent is **one hop, and it says so in a comment**: its real
-sovereign-join producers set the hop limit to 1, one of them annotated *"direct
-point-to-point over L2CAP — no relay"*. The value 5 appears in only two places: a
-cross-vendor test vector pinned for parser compatibility with no hop-budget rationale
-anywhere, and an older board file where *every* frame type is 5. Across the tree, 5 occurs
-24 times on all frame types while every other value appears once. It's the generic default.
+### The main work
 
-So the one datum that looked like the designers provisioning joins to travel turns out to be
-inherited boilerplate, and the considered value — written by the lane that produces the
-frame — is single-hop with an explicit no-relay note. **There is now no surviving argument
-for relaying.**
+**[g20 — open a new flash grant for the origin hunt?](gates/g20-origin-hunt-grant.md)** · the next step on D5
+The capture campaign closed: 240+ faults, **every one** self-recovered, family ruled at scale.
+Origin is open with a lever — 13 of 18 wild jumps start in a timer-arm call site, 2 in our own
+SPI/LoRa driver. One falsifier needs no hardware and should run first.
+→ `gate 20: open the grant` / `falsifier first` / `hold`
 
-Core also flagged, without acting on it, one real inconsistency: an older board file emits a
-group-management frame at the generic default of 5 rather than the single-hop value the
-proximity path uses. Almost certainly the same boilerplate, but it is a second producer that
-*would* send such a frame five hops. Your ruling resolves it either way.
+**[g18 — D4 and X1 cannot report a fault at all](gates/g18-sibling-artifact-rebuild.md)** · forensics gap
+~40 staged artifacts have **no capture instrument** and a handler that re-faults. The fix exists
+only in the D5 line. Not a brick; but a fault on those boards is silent and unattributable.
+→ `gate 18: rebuild now` / `rebuild before the next multi-board run` / `defer`
 
-### What you should know before ruling
-**Specs weakened its own case, unprompted.** It had told me proximity justifies
-trust-on-presentation. On re-reading, that clause covers only auto-pairing — the mode with
-no cryptographic ceremony — and elsewhere canon *explicitly* admits joins with no physical
-adjacency at all. Its position didn't change; its grounds and confidence did. Its words:
-do not present this as specs being confident on proximity.
+### Small, not urgent
 
-**So this is a new call, not you ratifying your own prior rulings.** Specs volunteered that
-distinction, which is exactly what I'd asked it to separate. What's canon-derived: the
-textual conflict, the hop limit value, the cryptographic trust chain, and that canon admits
-non-proximate joins. What's judgement: whether relaying is a meaningful threat increase,
-and whether a guarantee we currently get by accident is worth preserving deliberately.
+**[g16 — a branch described as containment never was](gates/g16-branch-containment.md)**
+No incident, no exposure, repo private, nothing to undo. A second branch holds sensitive parents
+apart only by not having been merged — a state, not a guarantee, and one merge publishes it
+silently.
+→ `gate 16: delete` / `rewrite` / `accept`
 
-**Two lanes independently flagged a coupling — please rule both together.** The dedup key
-for these frames is currently a single global identifier, which is safe *only* because
-joins aren't flooded. Rule them relayable without fixing that, and it becomes trivially
-collidable the moment the first join travels. Whichever way you go, the key and the relay
-question have to move in the same ruling.
-
-**The honest alternative nobody is pushing:** two lanes noted a modest spec change — a
-defined return path for a relayed join, plus a properly namespaced dedup key — could make
-"yes" safe. So this may be less *is it allowed* than *what would have to change first*.
-
-Recommendation from all three: **no relay — a join is one hop.** Say it explicitly rather
-than leaving it to a drop that happens for an unrelated reason.
-
-## g8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path (small, physical/network)
-The phone UDP metal test is DONE except the last hop: phone sends the probe correctly,
-tuxedo's echo server works, but the datagram never arrives — your WiFi AP has
-client isolation on (wireless client ↔ wireless client blocked; ICMP 100% loss both
-ways). Fix is any ONE of: disable AP client isolation · put tuxedo on ethernet ·
-use a non-isolating SSID. Then composer re-runs (2 min). Not urgent — cell stays
-annotated transport-only either way.
-
-GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20/gates
-
-## g13 — radar board-fit check at the bench (tiny, physical)
-Circuits published the radar XIAO-node spec (docs/radar-xiao-node.md) and flags one
-physical check only you can do: the FRAM 8-pin footprint needs ~29 breadboard columns
-vs the HP9570's ~28 — marginal fit. Eyeball it next time you're at the bench; if it
-doesn't fit, circuits reworks the layout. Nothing else blocks the radar code leg.
-
+**[g8 — AP client isolation blocks the phone↔tuxedo UDP path](gates/g8-ap-client-isolation.md)**
+Cause established, not suspected. Any one of three fixes clears it; composer re-runs in two
+minutes. The capability cell stays honest either way.
+→ `gate 8: ethernet` / `disable isolation` / `other ssid` / `leave it`
 
 ## Not waiting on you
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
@@ -133,9 +94,3 @@ doesn't fit, circuits reworks the layout. Nothing else blocks the radar code leg
 | 10 | v8 OTA radio quiesce | blessed as shaped 07-24 (relay-island dark + collectors-astray accepted); v8 build GO | #d026 | — |
 | 11 | D5 replug / bench USB | closed 07-24 22:5x — tuxedo uplink cable bad (data lines); boards moved to Alfred, all 3 stable; v8.3 cycle firing | #d026 | — |
 | 12 | openocd USB perms (Alfred) | JTAG read executed clean 07-25; the "lock held" reading from that dump was later REFUTED and is retracted | #d026 | [g12](gates/g12-openocd-usb-perms.md) |
-| 16 | Branch-as-containment decision (private lane) | a branch described as holding content back from origin never did; second branch held apart only by not-yet-merged state — delete, rewrite, or accept | — | [g16](gates/g16-branch-containment.md) |
-| 17 | Provider-blind prompt detector (HIGH, delivery integrity) | one glyph check breaks three things: acknowledgement, state/metrics, and the anti-garble defer gate | — | [g17](gates/g17-provider-blind-prompt.md) |
-| 8 | AP client isolation | OPEN — **substance unrecoverable**; carried in status reports all session, never written here, no content found in any repo, log or handoff. Roy states what it was, or it is struck | — | [g8](gates/g8-ap-client-isolation.md) |
-| 13 | Radar board-fit | OPEN — FRAM 8-pin footprint puts modules at ~29 columns vs HP9570 ~28 (73 mm); Roy verifies at bench; circuits idle until ruled | — | [g13](gates/g13-radar-board-fit.md) |
-| 14 | hive_id vs device_id | CONVERTED TO A NOTE 2026-07-25 — specs' §12.5 ruling accepted; no longer a gate | D-20260725-08 | — |
-| 15 | Join relay — may a sovereign JOIN traverse the mesh? | OPEN — 3/3 lanes independently NO, capability argument leading; pro-relay TTL datum undercut at source; 4 sites frozen incl. live dataplane; dedup key dead until ruled; enumeration pass owed either way | — | [g15](gates/g15-join-relay.md) |
