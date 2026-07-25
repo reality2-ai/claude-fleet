@@ -26,8 +26,9 @@ its authority to do so and I think it was right, so this is now a note rather th
 **The argument that decided it — corrected after you refuted the first version.** You asked
 whether a new hive doesn't already have an identity, and that question killed the original
 reasoning, which claimed a joiner had nothing to stamp *by construction*. It does: the
-invitation carries the group key, the derivation is a pure function, so the joiner can
-compute the value perfectly well. What it cannot do is make that value mean anything —
+invitation carries the group public key (which doubles as the group's identifier — not
+any secret material), and the derivation is a pure function, so the joiner can compute
+the value perfectly well. What it cannot do is make that value mean anything —
 nobody else can verify it without the joiner's private master secret, so the stamp would
 carry no attributional weight at all. It would also put a stable per-device-per-group
 pseudonym in the clear, allowing correlation across sessions and retroactive
