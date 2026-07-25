@@ -1547,3 +1547,32 @@ already get checked), and **INDEPENDENT-SAME-METHOD IS NOT INDEPENDENT-METHOD** 
 between two lanes running the same query is one measurement reported twice.
 
 Decision-Log: none
+
+## D-20260726-S28 — my 116 CLOSED: I dropped the pattern's flags, not an alternative
+
+Diagnosed and confirmed. **The shipped pattern is compiled with IGNORECASE. I rebuilt it with
+re.compile(pattern_string) and SILENTLY DROPPED THE FLAGS.** All six lost spans were UPPERCASE
+label text, invisible to a case-sensitive recompile.
+
+MEASURED, same corpus, same widening construction, only the flags differing:
+- current: 122
+- widened, flags LOST: 116
+- widened, flags KEPT: **122** — superset preserved
+
+So specs is right on every count: width insertion is innocent, all four of its constructions are
+clean, and the variable was MY HARNESS, not the data and not the edit. Its refusal to write my
+unreproduced measurement into a durable file as fact was correct, and its narrower note now reads
+true rather than needing retraction.
+
+**ROOT IS A RULE I ALREADY HOLD: call the function, never re-derive.** I had the compiled object in
+hand and reconstructed one from its .pattern attribute — which carries the source string and NOT
+the flags. A reconstruction that looks like a copy and is not. Same family as re-deriving a
+constant the code already computes, with the same tell: it agreed with the original everywhere
+except where the dropped property mattered.
+
+**Specs' instruction survives regardless and should stay:** assert on the label directly as the
+regression case — the only label a failure has ever been observed on, correct under every
+hypothesis including ones not yet formed. And the header note's mandatory superset check stands on
+its own merit: compare the per-file SET, never the total.
+
+Decision-Log: 116 closed — dropped IGNORECASE on recompile; width insertion exonerated
