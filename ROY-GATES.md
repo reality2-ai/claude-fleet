@@ -27,13 +27,15 @@ GitHub: https://github.com/reality2-ai/claude-fleet/tree/gate-heredoc-2026-07-20
 D5 is sitting in its idle-hang state with the crash registers intact, and composer has
 openocd ready to read them over the board's built-in USB-JTAG — no reset, read-only.
 The only blocker is USB permissions (libusb EACCES; the board was never touched).
-Any ONE of these on **Alfred** fixes it:
+**CORRECTED COMMAND (07-25 13:xx):** the original `cp 60-openocd.rules` was run at
+12:41 but cannot work here — those rules grant `GROUP="plugdev"` (a Debian group that
+doesn't exist on Manjaro; nodes stay root:root) plus `uaccess` (local seat only;
+composer works over ssh). This one actually fixes it, on **Alfred**:
 ```
-sudo cp ~/.espressif/tools/openocd-esp32/*/openocd-esp32/share/openocd/contrib/60-openocd.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+sudo sh -c 'printf "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"303a\", MODE=\"0666\"\n" > /etc/udev/rules.d/61-espressif-jtag.rules; udevadm control --reload; udevadm trigger'
 ```
-…or run the openocd command yourself (logged in `/tmp/d5-exccause.log` on Alfred), or
-grant passwordless sudo for openocd. The capture tells us *which* exception and *what
-address* is behind the double-fault the new watchdog only papers over.
+(Espressif VID only, bench machine — composer verifies node perms and attaches
+automatically once it lands.)
 **Update:** the v8.4 flash (with the watchdog) went ahead overnight, so the held window
 was consumed. The capture is still worth having: once you run the sudo, composer can
 pre-arm a JTAG breakpoint at the fault handler and catch the next hang *before* the
