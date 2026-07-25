@@ -670,3 +670,33 @@ framing into Roy's gate g14 before it was that solid — my failure, not specs' 
 g14 itself is UNAFFECTED: the §12.5-vs-§9.5 canon collision exists independently of whether
 any decoder was exploitable.
   Decision-Log: D-20260725-07
+
+## D-20260725-08 — specs' §12.5 ruling ACCEPTED; g14 converted from Roy-gate to Roy-note
+I ruled in D-20260725-06 that choosing between §9.5 and §12.5 was Roy's call and opened it as
+gate g14. Specs then RULED AND LANDED it (R2-WIRE v0.65 @ 3e8d10a8, new normative §9.5.1:
+ROUTE-ORIGIN-1 binds the dedup-keyed types EVENT|REPLY|HEARTBEAT, GROUP_MGMT exempt),
+stating its authority basis plainly and inviting overrule. RULING: ACCEPTED, I was too
+conservative. Specs' basis holds — this decides WHICH of two Roy-blessed clauses governs
+using ordinary interpretive canons (later 2026-07-13 vs 2026-06-23; more specific;
+code-verified against group_mgmt.rs f130edc; golden-backed), not new ground. The decisive
+argument is one I should have reached myself: route_stack[0] is the compressed hive_id derived
+from (master, tg_id), and join_request deliberately zeroes tg_id and target per §16.6 — so the
+ONLY party eligible to send a join has, by construction, no origin to stamp, and obtaining one
+is the point of joining. A MUST that the only eligible party cannot satisfy is a defect in the
+MUST, not a conformance failure by the sender. Stamping anyway would breach the §16.6 privacy
+MUST the zeroing exists to serve, and §9.5's dedup rationale does not reach GROUP_MGMT at all
+(Ed25519 over sequence+timestamp per R2-TRUST §10.2, carried on point-to-point proximity
+transports per R2-PROVISION §3.3.1, not the flood plane).
+Two riders recorded: (1) HEARTBEAT is closed STRICT on CODE not inference (r2-dataplane
+lib.rs:1479-1489 sets has_route:true + route_stack[0]=my_hive with a comment naming
+ROUTE-ORIGIN-1A) — so android keeps heartbeat strict; my earlier merge-narrow order was
+superseded and has been corrected. (2) The ENFORCEMENT SHAPE is now normative in the text:
+per message type, never a blanket pre-check ahead of the type switch, because a blanket check
+rejects the sovereign join and breaks provisioning. That is the anti-re-derivation guard.
+g14 stays on Roy's list, reclassified: ruled under delegation, ledger entry is the revert
+handle, one commit to undo if he reads the delegation narrower than specs and I do.
+FLEET-WIDE LESSON ADOPTED, specs' own words after owning the race it caused: LANE AUTHORITY
+MEANS THE LANE OWNS THE RULING, NOT THAT ITS NEWEST MESSAGE BEATS BETTER EVIDENCE. A fork or
+peer citing a clause the authoritative answer does not address is a FALSIFIER — hold and ask,
+do not comply. This is the failure mode the lane map itself can manufacture.
+  Decision-Log: D-20260725-08
