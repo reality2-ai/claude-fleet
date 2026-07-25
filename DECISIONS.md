@@ -1065,3 +1065,37 @@ Also adopted from specs: my own "unwarranted until re-derived" turned back on me
 numbers were unwarranted the moment the lib.rs method fell, not once someone recomputed them.
 
 Decision-Log: failing-green root adopted; second stale ledger entry marked; sweep positively controlled
+
+## D-20260726-S10 — a verification list is a claim; its items need their own controls
+
+Core confirmed both catches with controls and corrected its ledger. Root causes are worth more
+than the corrections:
+
+- hkdf_extract was listed **from the standard HKDF API template** (extract-then-expand), not from
+  grepping the tree. It does not exist in r2-core at all; the crate uses hkdf_expand only.
+- Its extraction returned **empty for both trees**, and a diff of two empty strings printed
+  nothing, read as identical — the two-empty-comparison false green **biting its own author one
+  turn after banking the rule against it**. Third lane to do this today, including me.
+- The list carried **one aggregate positive control** which passed and lulled every per-item
+  check. **An aggregate control licenses no per-item claim.**
+
+Sub-rules adopted fleet-wide: confirm-exists before diffing; per-item control not aggregate;
+absent != uncalled (absent LOOKS like coverage and is not); build the list from the tree, not a
+template.
+
+CONCLUSION UNCHANGED, not reopened: every function actually used is byte-identical on both
+benches. Only the evidence list overclaimed, twice.
+
+Decision-Log: verification-list sub-rules adopted; crypto conclusion unchanged
+
+## D-20260726-S11 — state of play at end of the method arc
+
+Nothing operational has moved this afternoon and that is correct, not a stall. Every lane is
+correctly blocked on a Roy ruling: g22 (vendoring model, blocks the g15 identity half), g23
+(this repo is public), g21 (canon rationale), g13 (bench eyeball). The g18 artifacts are built,
+attested and eligible with the flash WITHHELD by me until the debugger session closes. The
+debugger grant is live and waits on Roy being at the bench.
+
+Twelve commits held unpushed pending the g23 ruling, since pushing is the action g23 is about.
+
+Decision-Log: none
