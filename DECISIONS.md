@@ -643,3 +643,30 @@ insider-only (the path needs a VALID HMAC; usb.rs deliver_wire surfaces EVENT|RE
 "live remote dedup-poisoning" was too strong. The accurate statement is a fabricated origin
 rendered as a verified claim — a real defect, narrow reach.
   Decision-Log: D-20260725-06
+
+## D-20260725-07 — correction to D-20260725-06: android severity was overclaimed twice
+Append-only correction, not a rewrite. D-20260725-06 recorded the android route-less defect
+as "a fabricated origin rendered as a verified claim — a real defect, narrow reach". THAT IS
+FALSE and I am striking it. Android verified firsthand (and android-codex independently
+reached it) that core-ffi/src/wire.rs:342-351 runs verify_compact() BEFORE
+decoded_from_compact, and r2-core crates/r2-wire/src/hmac.rs authenticated_bytes_compact does
+`let origin = msg.route.and_then(|r| r.origin())?;` — returning None for route=None, with an
+explicit comment that origin must NOT be fabricated so the caller drops it. So a route-less
+frame FAILS HMAC and never reaches the synthesising decoder; usb.rs deliver_wire emits
+Dropped, never Event. parse_bridge_stream's callers are all #[cfg(test)]. Core had already
+killed the fabrication class upstream (F1-CODE).
+CORRECTED SEVERITY: a STRUCTURAL/API defect — the unverified structure-only entry points
+(decode_frame/decode_compact_frame) synthesised origin 0, an A3 violation and a latent trap
+for any future caller that decodes without verifying. Real and worth fixing as
+defence-in-depth; NOT user-visible, NOT an hk-holder exploit (an hk holder cannot do it
+either — the HMAC span cannot be computed at all without a carried origin).
+PROCESS NOTE, the reason this entry exists: severity moved three times (remote dedup
+poisoning -> insider-only fabricated-origin -> structural/API only), and every correction
+came from a lane re-reading its own claim, never from a downstream check. The first framing
+reasoned forward from a type-gate to the UI without checking the HMAC gate UPSTREAM of it.
+STANDING RULE: user-visible severity requires tracing the FULL path including every gate
+above the one you are looking at, before the claim leaves the lane. I propagated the second
+framing into Roy's gate g14 before it was that solid — my failure, not specs' or android's.
+g14 itself is UNAFFECTED: the §12.5-vs-§9.5 canon collision exists independently of whether
+any decoder was exploitable.
+  Decision-Log: D-20260725-07
