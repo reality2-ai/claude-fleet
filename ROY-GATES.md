@@ -13,6 +13,32 @@ syntax is at the bottom of every brief.
 
 ---
 
+## g14 — two of your own rulings contradict: can a join frame carry no route? (real, canon)
+Specs found a genuine collision between two things you blessed three weeks apart, and
+it can't be fixed as a defect because either answer adds new normative ground.
+
+- **§9.5 (you ratified 2026-06-23):** a frame with R = 0 — no carried origin — is
+  non-conformant and MUST be dropped. "There is no valid route-less frame."
+- **§12.5 (you GO'd 2026-07-13):** the shipping sovereign join sends header byte
+  `0x20`. Decode it: version 00, type 100 (GROUP_MGMT), flags 000 — that *is* R = 0.
+
+So canon specifies a route-less join frame and separately forbids all route-less
+frames. Core's `group_mgmt.rs` implements the join as specified.
+
+**Specs' recommendation for your batch:** §12.5 is right and §9.5 overreached. A joiner
+has no hive_id to stamp — that's the thing it's joining to obtain; target and tgid are
+deliberately zeroed for §16.6 privacy; and §9.5's dedup rationale doesn't bite here
+because GROUP_MGMT isn't deduplicated by (msg_id, origin) at all — it's Ed25519-signed
+with sequence and timestamp per §10.2. Proposed shape: scope ROUTE-ORIGIN-1 to
+deliverable/deduped types, and name the bootstrap exemption explicitly in §9.5.
+
+Ledgered as D-20260725-05 @ 67cda01e, **not landed** — waiting on you. Ruling either
+way is one line; the cost of leaving it is that one of the two sections keeps teaching
+something false, and the next implementer re-derives the bug android just fixed.
+
+Related and *not* blocked on this: android's fix (route-less EVENT/REPLY now dropped)
+is safe under either answer, so it merges regardless.
+
 ## g8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path (small, physical/network)
 The phone UDP metal test is DONE except the last hop: phone sends the probe correctly,
 tuxedo's echo server works, but the datagram never arrives — your WiFi AP has

@@ -621,3 +621,25 @@ completed D-20260721-04, caught by supervisor-codex, verified in composer's ledg
 composer's pre-revocation duplicate zip b95f6ee6 quarantined to ~/duplicates/, canonical
 d51b5b86 staging untouched.
   Decision-Log: #d026
+
+## D-20260725-06 — supervisor classification: canon collision is Roy's, not a defect fix
+Specs found R2-WIRE §12.5 (Roy-GO 2026-07-13: sovereign join sends header byte 0x20, which
+decodes to type GROUP_MGMT with flags 000, i.e. R = 0) contradicting §9.5 (Roy-ratified
+2026-06-23: any R = 0 frame is non-conformant and MUST be dropped). Specs landed its
+sibling item D-20260725-04 unilaterally as a DEFECT fix — correctly, since that one only
+restated an existing Roy ruling into a section contradicting it — and explicitly declined
+to extend that basis here. RULING: the classification is right. Either answer to §12.5-vs-§9.5
+adds normative ground that neither ruling covers, so it is Roy's call, ledgered by specs as
+D-20260725-05 @ 67cda01e NOT LANDED and surfaced as gate g14 with specs' recommendation
+(§12.5 right, §9.5 overreached; scope ROUTE-ORIGIN-1 to deliverable/deduped types, name the
+bootstrap exemption). Two supporting rulings: (1) android's fix 24664d67 merges regardless —
+it drops route-less EVENT|REPLY, which both readings require, and leaves GROUP_MGMT
+permissive, which §12.5 requires; android's refusal to obey specs' overbroad "drop every
+type" instruction is VINDICATED by canon and specs has retracted the instruction. (2) The
+HEARTBEAT arm is OPEN, not blessed — nobody has established whether heartbeat origin rides
+route_stack[0] or the payload be32; no lane may tighten or bless it on assumption.
+SEVERITY CORRECTION accepted from specs, against my own board framing: the android defect is
+insider-only (the path needs a VALID HMAC; usb.rs deliver_wire surfaces EVENT|REPLY only), so
+"live remote dedup-poisoning" was too strong. The accurate statement is a fabricated origin
+rendered as a verified claim — a real defect, narrow reach.
+  Decision-Log: D-20260725-06
