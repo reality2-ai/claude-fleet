@@ -50,3 +50,42 @@ week. But there is no multi-board run scheduled, so it does not need to happen t
 ## Ruling syntax
 
 "gate 18: rebuild now" / "gate 18: rebuild before the next multi-board run" / "gate 18: defer"
+
+---
+
+## RULING (Roy, 2026-07-26): *"g18 rebuild now."*
+
+## MY CORRECTION TO THAT RULING WAS WRONG. The ruling was right as given.
+
+After Roy ruled, I told him the brief's premise was wrong — that this was a **code port**,
+not a rebuild, because the capture instrument existed in only one platform source. Core
+checked and the correction is itself wrong:
+
+**xiaobridge and fakesensor are FEATURE VARIANTS of `platforms/dfr1195`, not separate
+platforms.** That source carries `HANG_CAP`, `__user_exception` and the reprint
+**unconditionally**; `default-features=false` is set **platform-wide**, so the strong
+handler symbol wins for every build; and all three boards are the same silicon on the same
+target. **A rebuild of those features from HEAD carries the full instrument.** The ~40
+staged artifacts are simply **stale** — built before the instrument landed.
+
+**So it is a plain build order after all**, and Roy's original ruling stands unchanged.
+
+### How I got it wrong — a verified fact carrying an unverified inference
+
+I grepped the platform sources for the instrument and found it in `dfr1195` only. **That
+fact is true.** I then *inferred* that the XIAO and sensor artifacts must therefore come
+from some other platform — and never checked which platform actually produces them.
+
+The same shape had already bitten me that morning on the gates file: a matcher that saw only
+table rows returned nothing, and I concluded the gates had never been written when they were
+in the prose above it. Verified premise, unverified inference, published both times.
+
+## What now happens
+
+Hive rebuilds the **xiaobridge** and **fakesensor** features from `dfr1195` HEAD. The
+**two-leg eligibility test** then gates the flash: capture instrument present, *then* handler
+call-free within its true extent. Nothing is ported and nothing is shared-moduled — it is
+already one shared source.
+
+The genuinely separate platforms (esp32, nrf54, linux, manage, trouble-test) *do* lack the
+instrument, but none of them is on the bench roster.
