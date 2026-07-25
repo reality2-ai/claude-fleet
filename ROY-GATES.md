@@ -24,28 +24,35 @@ join must be accepted even though it carries no origin; the routing spec says an
 with no origin must be dropped and never forwarded. The same unconditional drop also sits
 in core's live dataplane. All three are frozen.
 
-### The strongest argument, and it needs no proximity claim
-**Origin-less plus relayable equals unmeterable.** The only rate-limiting primitive canon
-has is a per-origin broadcast quota — it keys on origin. A join frame has no origin. So a
-non-member could emit an unauthenticated frame that traverses five hops and *cannot be
-quota-limited by any relay*, because the one metering tool available needs exactly the
-field the exemption removes. This is canon-derived and survived every counter-argument the
-lanes could mount.
+### The strongest argument, in one sentence
+**A relay cannot authorise a join even in principle.** The frame has no verifiable origin,
+no outer authentication, and its signing key is carried *inside itself* — so anyone can
+mint a validly-signed join. A relay has nothing it can check that separates a real joiner
+from an attacker, and by definition the sender isn't a member yet. Forwarding means every
+node relays attacker-mintable, unattributable frames with a hop budget. (Specs, whose own
+argument is the one below, told me to give you this one instead — it's an impossibility of
+*capability*, where its own is about *consequence*.)
 
-Android reached the same place from the other side: **a relay cannot authorise a join even
-in principle.** No verifiable origin, no outer authentication, and the signing key is
-carried *inside* the frame — so anyone can mint a validly-signed join. A relay has nothing
-it can check that separates a real joiner from an attacker, and by definition the sender
-isn't a member yet. Forwarding means every node relays attacker-mintable, unattributable
-frames with a hop budget.
+The second argument, independently reached, needs no proximity claim either: **origin-less
+plus relayable equals unmeterable.** The only rate-limiting primitive canon has is a
+per-origin quota — it keys on origin, and a join has none. So an unauthenticated frame
+could traverse five hops with no relay able to throttle it, because the one metering tool
+available needs exactly the field the exemption removes.
 
 ### The best case FOR relaying, and why it collapsed
 The frame sets a hop limit of **5**, not 1 — which looks like the designers provisioning
 joins to travel. That was the one datum troubling both specs and core, and neither would
-dismiss it. **Android dissolved it from its own code:** the value is documented there as
+dismiss it. **Android undercut it from its own code:** the value is documented there as
 *nominal*, pinned only to match a shipped test vector, because the transport it was written
 for is single-hop anyway. Meanwhile the field that genuinely controls propagation is set to
-its minimum — the frame's own routing parameters say *don't spray*.
+its minimum — the frame's own routing parameters say *don't spray*, on their own authority.
+
+One honest caveat, which specs found by checking android's evidence rather than taking it:
+that comment explains why *android* chose 5 — to mirror core's shipped value — so it does
+not by itself establish that *core's* original choice was nominal rather than deliberate.
+I've asked core directly. The answer doesn't change the recommendation either way, since
+the two arguments above are independent of it, but you should know the chain currently
+stops one step short of the source.
 
 ### What you should know before ruling
 **Specs weakened its own case, unprompted.** It had told me proximity justifies
