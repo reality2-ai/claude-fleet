@@ -34,9 +34,12 @@ Shared crates are **vendored per repository with no shared source**:
 | `r2-trust` | **nine** | **six** — corrected again; see the whole-crate note below |
 | `r2-dataplane` | **five** | **four** — only core's carries the g15 fix (join-carry: core 11, all four others 0) |
 
-**The pairing is itself evidence, and it is good news.** Three pairs agree *exactly*. That
-looks like a handful of sync events, not nine independent forks — which probably makes the
-vendoring model tractable rather than hopeless.
+**The pairing is itself evidence, and it is good news — and it survived the whole-crate
+recount, which I checked rather than assumed.** Nine copies resolve to **three exact pairs and
+three singletons**. That looks like a handful of sync events, not nine independent forks, which
+probably makes the vendoring model tractable rather than hopeless. (I verified the pairs
+whole-crate, with a known-different pair as a control to prove the comparison could see a
+difference.)
 
 Neither anthill nor r2-composer path-deps core's copy; both point at their own local
 `crates/r2-trust`. Core's is not upstream of anything.
@@ -44,10 +47,17 @@ Neither anthill nor r2-composer path-deps core's copy; both point at their own l
 **This contradicts the stated R2 map principle: core is sole-canonical, downstream never
 forks.** In practice downstream has forked, quietly, and the forks are already divergent.
 
-**Not every copy is a defect.** Core has since classified the class — independently
+**Not every copy is a defect.** Core has since classified the class, independently
 re-enumerating rather than trusting the handed set, and reporting that it had under-sized the
-gate the same way I did. Its figures match specs': nine trust copies in five variants, five
-dataplane copies in four.
+gate the same way I did.
+
+**I had written that its figures *matched* specs', and offered the agreement as corroboration.
+Striking that, not just correcting it.** The two lanes agreed because they ran the **same
+partial check** — both hashed `src/lib.rs` alone. Core could not have disagreed. The
+concordance carried **zero information** and this brief was presenting it to you as
+confirmation. Specs caught it, and caught it as an instance of the very rule this gate
+produced: *an agreement test carries information only if disagreement was possible.* The
+number was wrong **and the reason it looked trustworthy was wrong**, which is the worse half.
 
 ## It is not nine-way chaos — but the classes are **per crate, not per repo**
 
@@ -56,7 +66,7 @@ level, core re-verified and agreed, and **the corrected shape is a (repo × crat
 
 | class | state |
 |---|---|
-| **In sync** | the core source, plus copies that match canon on the trust crate |
+| **In sync** | **one copy only** — a forensic snapshot that matches canon whole-crate, by design. Under the old `lib.rs`-only check this group looked larger |
 | **Deliberate vendor / deliberate pin** | one explicit vendor commit, zero unique lines, four behind. Two more are an **explicit security re-vendor pin** — the bench firmware is *intentionally* pinned, and its commit gap **is the pin**, not drift |
 | **Stale, none on the bench** | two May initial-commits; one March copy that has grown its own join-code content |
 
@@ -66,7 +76,7 @@ dataplane copy, the crate that *did* move (it gained the g15 fix), is the pre-g1
 
 > **A content match on a crate that never changed is not evidence of sync.** It is evidence
 > of nothing having happened. A repo-keyed obligation would mark that repo *needs nothing*
-> while one of its crates sits at a distinct pre-g15 variant.
+> while its crates sit at distinct variants.
 
 This is why the obligation you rule must key on **(repo, crate, pinned-core-sha)**. Repo-level
 is not a coarser version of the right answer; it is the wrong answer.
@@ -107,7 +117,7 @@ Nothing to hot-fix.
 
 ## Two things that make it worse than ordinary drift
 
-**The version signal is dead.** **Every** copy declares `version = "0.1.0"` while being five
+**The version signal is dead.** **Every** copy declares `version = "0.1.0"` while being six
 different implementations. Specs' standing cross-repo drift check is a **version-gap
 comparison** — chosen precisely because it is race-proof where byte-identity is not — and it
 is **blind here**. Content hash is the only detector that works. A drift detector that cannot
@@ -150,7 +160,7 @@ stated ahead of time rather than argued later, and it is right to.
 ## What is blocked meanwhile
 
 Core will **not** start the g15 identity half until this rules — correctly. That work lands
-in `r2-trust`, and landing it in one of **five divergent variants** is exactly the risk. It also
+in `r2-trust`, and landing it in one of **six divergent variants** is exactly the risk. It also
 declined to treat this as maintenance, which is the right instinct: **integration is a
 decision, not housekeeping.**
 
