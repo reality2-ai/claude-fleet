@@ -1284,3 +1284,34 @@ credential candidates unresolved, report-only) and explicitly does not claim cle
 posture under fail-closed.
 
 Decision-Log: TG-identifier question re-framed to canon's test; private-does-not-remediate recorded
+
+## D-20260726-S19 — the accept lean is canon-backed, and canon's boundary is stated not claimed
+
+Specs bounded its OWN fail-closed argument prospectively, before it could be turned against the
+accept it then supported: read without a bound, "unconfirmed provenance is treated as real" makes
+every unlisted string secret-until-certified, which would swallow the dependency-URL subclass and
+contradict the umbrella definition at R2-SECRETS:25. The bound: 2:33 governs the PROVENANCE OF A
+VALUE ALREADY INSIDE A CUSTODY CATEGORY; it does not expand the categories. Verified the umbrella
+line myself.
+
+So the two halves genuinely differ in canon status. TG identifier: NAMED in the custody set.
+Dependency URL: in NO category — a public code-host name identifies no device/persona/deployment/
+operator, an org/repo path is source-control structure, a 40-char rev identifies a commit. The
+infrastructure bullet does list "hostnames" flatly, and I am SHOWING that step rather than
+asserting past it: the umbrella disciplines the list, and a public third-party code host is not a
+hostname identifying a real deployment.
+
+**BOUNDARY STATED, NOT CLAIMED (specs', adopted):** canon does not adjudicate repo names EITHER
+WAY. Absence of a category, not an exemption written for them. If Roy wants source-control
+structure in custody that is a canon ADDITION, and he should be told which of the two he is doing.
+
+**AND SPECS READ THE CREDENTIAL FILE RATHER THAN TRUST MY DESCRIPTION.** My wording — "explains
+the credential arrangement" — read worse than the file is. It is five comment lines plus one
+setting: fetching reuses the git credential helper already on dev boxes and CI, so no separate
+deploy key. NO token name, NO path, NO key location. I verified the whole file (7 lines). Brief
+corrected; my phrasing was the defect.
+
+Added to the reframe at specs' suggestion: a dependency declaration is also DURABLE in a way prose
+is not — load-bearing, so it cannot drift out on its own, and every future consumer re-states it.
+
+Decision-Log: accept lean grounded in canon text; category-absence stated as absence not exemption

@@ -66,8 +66,12 @@ Specs found it and I verified it, then found it is **wider than either of us had
 
 A public repository's `Cargo.toml` declares its dependencies with the **full URL of a private
 repository** and a **pinned 40-character commit id** — thirteen such lines in one file alone —
-and its cargo config states in plain words that the remote is private and explains the
-credential arrangement used to fetch it.
+and its cargo config states in plain words that the remote is private. **I said that file
+"explains the credential arrangement", which reads worse than it is — specs read the file rather
+than trust my description, and it was right to.** It is five comment lines and one setting: it
+says fetching reuses the git credential helper already present on dev machines and CI so no
+separate deploy key need be minted. **No token name, no path, no key location.** Nothing there to
+upgrade the finding.
 
 I then asked how many public repos do this. **Seven of the ten**, across roughly **48 files**.
 Positive and negative controls both behaved.
@@ -81,6 +85,34 @@ vendor the dependency, or make the dependency repo public.
 It also reframes the whole gate. Prose mentions are an accident of bookkeeping. **A dependency
 declaration is a deliberate, structural, machine-readable statement that a private repository
 exists at a specific address and that this public code is built from a specific commit of it.**
+And unlike prose it is **durable**: it is load-bearing, so it cannot drift out on its own, and
+every future consumer of that repo re-states it.
+
+### Why the two halves have different canon status — and where canon simply stops
+
+The identifier and the dependency URL are **not** the same problem wearing different clothes, and
+the difference is in the text rather than in convenience:
+
+- The secrets canon defines a real value as one that *"is derived from, or uniquely identifies, a
+  real device, persona, deployment, or operator"*, then lists categories under that umbrella.
+  Trust-group identifiers are **named** in that list.
+- A dependency URL is in **no category**. A public code-host name identifies no device, persona,
+  deployment or operator; an organisation/repository path is source-control structure; a
+  40-character revision identifies a commit, not a person or a board. The infrastructure category
+  does list *hostnames* flatly — but the umbrella disciplines the list, and a public third-party
+  code host is not a hostname that identifies a real deployment. **That is the load-bearing step,
+  so I am showing it rather than asserting the conclusion.**
+- **The fail-closed clause does not close this gap.** Read without a bound it would make every
+  unlisted string secret-until-certified, which would swallow the dependency URLs too — and
+  contradict the umbrella definition. It governs the **provenance of a value already inside a
+  custody category**; it does not create categories. Specs bounded its own earlier argument on
+  this point *before* it could be turned against the accept it then supported, which is the
+  reason the split holds.
+
+**Stated honestly rather than claimed: canon does not adjudicate repository names either way.**
+This is the **absence of a category**, not an exemption written for them. If you want
+source-control structure in custody, that is a **canon addition**, not a reading of the present
+text — and you should know which of the two you are doing when you rule.
 
 ### On the count, since specs and I reported different numbers
 
