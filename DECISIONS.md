@@ -966,3 +966,27 @@ I had corrected the number where Roy would read it and left it wrong where the f
 Issuing a correction does feel like completing one.
 
 Decision-Log: converged on severity; capgrant residual recorded; own ledger corrected on propagation check
+
+## D-20260726-S7 — I verified the second bench board myself; two items in the list do not hold
+
+Core extended the crypto refutation to the DFR active bench. **My brief was claiming "no board
+runs differing key-derivation" on evidence from ONE board** — the rak only. Scope of check
+narrower than scope of claim, mine this time, and it would have been the sixth instance today.
+So I re-ran it rather than adopt the assurance.
+
+CONFIRMED on dfr1195-fw-wt: derive_hive_id, derive_mesh_key, hkdf_expand, hmac_compact,
+hmac_extended all byte-identical to canon (line numbers differ; bodies do not). Extractor
+validated by positive control against a function known present in both trees.
+
+TWO ITEMS IN CORE'S LIST DO NOT HOLD, reported because a verification list is itself a claim:
+- **hkdf_extract does not exist anywhere in r2-core** — 0 hits across the trust crate, no
+  `fn hkdf_extract` in the repo. It cannot have been verified byte-identical to a canon that
+  does not contain it.
+- **trust_group_uuid is ABSENT from the DFR bench crate entirely** (0 hits), not merely
+  "not called in bench shipped code". Absent and uncalled are different claims.
+
+Neither changes the conclusion: every function actually used checks out on both boards. Recorded
+because "verified identical" and "not present to verify" must not be collapsed — the second one
+looks like coverage and is not.
+
+Decision-Log: second bench verified by supervisor; two list items corrected; conclusion unchanged

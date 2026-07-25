@@ -126,8 +126,18 @@ safe today.** Every non-core dataplane copy predates g15, so none of them can ca
 Nothing to hot-fix.
 
 Core then took the check a third level down — past whole-crate hashing to **the function bodies
-themselves** — and confirmed it independently: on *both* bench boards, every derivation and HMAC
-function is byte-identical to canon. So the g15 derivation is intact on metal.
+themselves** — and covered *both* bench boards, where my own check had only covered one. **My
+brief was claiming "no board" on evidence from a single board**, so I re-ran it myself on the
+other rather than adopt the assurance: every derivation and HMAC function actually used is
+byte-identical to canon there too, extractor validated against a function known present in both
+trees. **The g15 derivation is intact on metal, and that now rests on two boards checked
+directly.**
+
+Two small inaccuracies in the verification list, reported because a list of checks is itself a
+claim: one named function **does not exist anywhere in canon**, so it cannot have been verified
+against it; and another was described as *not called* on the bench when it is in fact **absent
+from the bench crate entirely**. Neither changes the conclusion — every function that *is* used
+checks out — but "verified identical" and "not present to verify" are different statements.
 
 ### The one residual that is real, and it is not crypto
 
