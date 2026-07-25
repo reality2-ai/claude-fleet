@@ -237,6 +237,21 @@ checkpointable_git() {
 # Command-wrappers that pass through to another program (`env espflash …`,
 # `timeout 60 espflash …`, `sudo openssl genpkey …`). The gate must look THROUGH
 # these, or a wrapper defeats the basename match and the op runs silently.
+# A bare shell assignment prefix is a wrapper too: in `VAR=value espflash …` the
+# ASSIGNMENT is the first token, so the look-through never fires and the real program is
+# invisible to the gate — no check, no USED line. This has fired (g19).
+#
+# It MUST be tested against the RAW token, never the basename: `${first##*/}` reduces
+# `R2_OTA_TARGET=/dev/serial/by-id/…` to the path tail, so an assignment whose value is a
+# PATH stops looking like an assignment — and a device path is exactly the real bypass
+# shape. Testing the basename fixes `FOO=bar` and misses the case that actually occurred.
+#
+# Fail-safe direction: matching here can only cause MORE segments to be scanned for a
+# flasher, never fewer. A false positive costs a prompt; the false negative is the hole.
+_hs_is_assign() {
+  [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]
+}
+
 _hs_is_wrapper() {
   case "$1" in
     env|command|sudo|doas|nice|ionice|chrt|nohup|setsid|stdbuf|time|timeout|xargs|\
@@ -560,7 +575,7 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
     _hs_flash_or_mint "$base" "$seg" && return 0
     # look THROUGH a command-wrapper (env/sudo/timeout/nice/bash -c … <flasher>):
     # re-classify every token's basename so the wrapper can't hide the real op.
-    if _hs_is_wrapper "$base"; then
+    if _hs_is_wrapper "$base" || _hs_is_assign "$first"; then
       read -ra segtoks <<<"$seg"
       for tb in "${segtoks[@]}"; do
         [[ "${tb##*/}" == git ]] && continue
