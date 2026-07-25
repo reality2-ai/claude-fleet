@@ -1436,3 +1436,22 @@ literals regardless of provenance. **GUARDING A DIFFERENT PREDICATE FROM THE ONE
 two bullets after writing the precaution.
 
 Decision-Log: infrastructure subset live; green-covers-labelled-only recorded; hardware lanes asked
+
+## D-20260726-S24 — circuits: not mine, verified negatively in its own tree
+
+Circuits answered the invented-versus-captured question cleanly and NEGATIVELY-VERIFIED it rather
+than just asserting: zero RFC1918 /24s across its markdown, toml, conf and py files; no rig-map or
+roster file exists in its repo; its authored docs carry no host lists or board rosters. No edits
+made, read-only grep only, as instructed.
+
+Its split of the three groups is sound: the two private subnets are NETWORK infrastructure and not
+the electrical-design lane's domain at all; the board-roster group belongs to the bench-flash lane
+plus Roy's roster confirmation. It notes the physical board LABELS are Roy-confirmed, while the
+rig-map capture and any host/site values are not its to certify.
+
+**It explicitly declined to guess** — "a wrong guess certifies a real value synthetic, the failure
+you flagged". Correct, and the reason the question was asked answer-only.
+
+Now waiting on the bench-flash lane for groups (1)-(3), and specs owns the canonical-spec files.
+
+Decision-Log: none
