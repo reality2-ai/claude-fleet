@@ -1,7 +1,7 @@
 # Gate 20 — open a new flash grant for the origin hunt?
 
 **Status:** 🟢 OPEN — the next real step on D5; nothing authorised until you rule
-**Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → *"read gates/g20 and r2-core/DECISIONS.md D-20260726-01"*
+**Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → *"read gates/g20 and the core lane's DECISIONS.md D-20260726-01"*
 
 ## Where the D5 work stands
 

@@ -37,7 +37,7 @@ design; gated on securing USB bridge + §10.5 merge-reflash; flash per-op grante
 
 ## BLE board-to-board (b) — pre-metal COMPLETE, queued behind diag campaign
 
-Core increment 2 landed dfr1195-fw-blerole c01c9db9 (08fa87ed threads
+Core increment 2 landed the board firmware lane c01c9db9 (08fa87ed threads
 profile.ble_role into ble_task + boot-print; c01c9db9 initiator scan-dial:
 captures first valid-R2 acceptor BdAddr, N=5 empty windows => hive_id fallback;
 cocbench BENCH_ADDR cfg-split). Composer delivered D4 initiator blob sha256

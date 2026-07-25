@@ -12,17 +12,27 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**9 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**5 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
 
+**[g23 — this repo is public and our own ledger is in it](gates/g23-public-fleet-repo-leak.md)** · **hygiene, not a breach**
+`reality2-ai/claude-fleet` is public (verified from the API) and the branch we commit to is pushed
+to it. **No keys, no MACs, no personas** — that guard held. What is exposed is structure: four
+private repo names, one private branch name, and **93 commit-id-shaped tokens** in the ledger.
+**I was adding to it** — yesterday's gate brief named a private repo; scrubbed forward now.
+History needs your ruling: rewriting it means force-push, which I am forbidden.
+→ `gate 23: make it private` / `scrub forward only` / `rewrite history` / `stop publishing the ledger`
+
 **[g22 — shared crates are vendored per-repo](gates/g22-shared-crate-vendoring.md)** · **a ruling is already lost to it**
 Your g15 dataplane fix landed in core's crate; the firmware builds from **its own vendored copy** and
 the new signal appears 10 times in core's and **0 times in the firmware's**. So the change is real,
-tested, ledgered — and does not reach metal. `r2-trust` has **three** divergent copies, all declaring
-the same version, which blinds the drift check. Contradicts core-is-sole-canonical. Blocks the g15
-identity half; core correctly refuses to start it until you rule.
+tested, ledgered — and does not reach metal. **Corrected since first written: `r2-trust` has NINE
+copies in FIVE variants, not three** — my scoping error, caught by specs before you ruled. Every copy
+declares the same version, which blinds the drift check. Contradicts core-is-sole-canonical. **The
+bench is safe** — an unfixed copy cannot carry a join at all, which is the intended zero-hop state.
+Blocks the g15 identity half; core correctly refuses to start it until you rule.
 → `gate 22: path-dep canonical` / `sync procedure` / `accept the forks` / `dataplane now, trust later`
 
 
@@ -39,43 +49,7 @@ One narrow question survives: §8.2 says the narrow key is sound *because these 
 real parts settles it. Circuits is idle until you look.
 → `gate 13: fits` / `rework`
 
-### Security and tooling, open right now
-
-**[g19 — may I patch the flash-authorisation gate?](gates/g19-auth-gate-bypass.md)** · a bypass that has fired
-A bare `VAR=value` prefix hides a flasher from the gate — no check, no audit entry. **My defect:**
-my own grant wording told lanes to use that form. It fired once, on an *offline derive*, not a
-device operation. The number of bypasses is **unknown, not zero**, because nothing detects an
-unlogged operation. Also: grants are never consumed, so every "one attempt only" I wrote was
-prose the gate does not enforce.
-→ `gate 19: you patch it` / `leg 1 only` / `I'll do it` / `defer`
-
-**[g17 — may I patch the fleet message transport?](gates/g17-fleet-transport.md)** · one glyph, three failures
-A fixed-string prompt match breaks acknowledgement (hence the duplicate messages — the transport
-retrying, not lanes repeating), overloads the state and metrics, and **disables the anti-garble
-guard**. Content does arrive; integrity is untested. I held off patching because you were away
-and a bad edit costs the ability to report that I broke it.
-→ `gate 17: you patch it` / `I'll patch it` / `defer`
-
-### The main work
-
-**[g20 — open a new flash grant for the origin hunt?](gates/g20-origin-hunt-grant.md)** · the next step on D5
-The capture campaign closed: 240+ faults, **every one** self-recovered, family ruled at scale.
-Origin is open with a lever — 13 of 18 wild jumps start in a timer-arm call site, 2 in our own
-SPI/LoRa driver. One falsifier needs no hardware and should run first.
-→ `gate 20: open the grant` / `falsifier first` / `hold`
-
-**[g18 — D4 and X1 cannot report a fault at all](gates/g18-sibling-artifact-rebuild.md)** · forensics gap
-~40 staged artifacts have **no capture instrument** and a handler that re-faults. The fix exists
-only in the D5 line. Not a brick; but a fault on those boards is silent and unattributable.
-→ `gate 18: rebuild now` / `rebuild before the next multi-board run` / `defer`
-
 ### Small, not urgent
-
-**[g16 — a branch described as containment never was](gates/g16-branch-containment.md)**
-No incident, no exposure, repo private, nothing to undo. A second branch holds sensitive parents
-apart only by not having been merged — a state, not a guarantee, and one merge publishes it
-silently.
-→ `gate 16: delete` / `rewrite` / `accept`
 
 **[g8 — AP client isolation blocks the phone↔tuxedo UDP path](gates/g8-ap-client-isolation.md)**
 Cause established, not suspected. Any one of three fixes clears it; composer re-runs in two
@@ -83,6 +57,10 @@ minutes. The capability cell stays honest either way.
 → `gate 8: ethernet` / `disable isolation` / `other ssid` / `leave it`
 
 ## Not waiting on you
+- **D4/X1 flash of the g18 rebuild** — built, attested, eligible. Held by supervisor until the
+  D5 debugger session closes; one grant at a time. No ruling needed from you.
+- **g19 legs 2 and 3** (audit-log location, one-shot grant consumption) and **g17 state/metric
+  separation** — ruled by you, work in progress, not gates.
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
 - Multi-hive / multi-TG scale-out — gated on the below-TG substrate lock (the table
   is the gate-keeper, not a ruling).
@@ -104,4 +82,5 @@ minutes. The capability cell stays honest either way.
 | 11 | D5 replug / bench USB | closed 07-24 22:5x — tuxedo uplink cable bad (data lines); boards moved to Alfred, all 3 stable; v8.3 cycle firing | #d026 | — |
 | 12 | openocd USB perms (Alfred) | JTAG read executed clean 07-25; the "lock held" reading from that dump was later REFUTED and is retracted | #d026 | — |
 | 14 | R=0 join frame — §9.5 vs §12.5 canon collision | CONVERTED to a note: specs RULED and landed it (R2-WIRE v0.65 §9.5.1 ROUTE-ORIGIN-1 binds EVENT/REPLY/HEARTBEAT, GROUP_MGMT exempt); supervisor accepted — I had been too conservative, it decides which of two blessed clauses governs, not new ground | D-20260725-08 | — |
+| 18 | D4/X1 have no fault-capture instrument | **rebuild now** (Roy 2026-07-26) — EXECUTED: both variants built and attested, two-leg eligibility PASS on both, positive+negative controls run. **No flash taken**; flash held by supervisor until the D5 debugger session closes (one grant at a time). Note the rebuild does **not** carry the g15 join fix — different branch, and g18 was forensics, not join | — | [g18](gates/g18-sibling-artifact-rebuild.md) |
 | 15 | Join relay — may a sovereign JOIN traverse the mesh? | **RELAY PERMITTED; NO HOP BUDGET** (Roy 2026-07-26): intended case is **ZERO hops — direct connection**, physical presence; relay allowed when needed under the same single-hop rule (worked example: a UDP hive) = **at most one** intermediary. Lanes' NO was against mesh FLOODING and survives intact. Origin-less drop needs a join exception; hop semantics 0 direct / ≤1 relayed; 5 is boilerplate. **Dedup key NOT settled — g21** | — | [g15](gates/g15-join-relay.md) |

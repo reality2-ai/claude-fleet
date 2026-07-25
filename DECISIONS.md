@@ -811,3 +811,31 @@ file and four fleet messages. Had a grant been live, that is the artefact a lane
 from. **When a refuter says "remove", the burden is on the restorer, not the remover** — I should
 have had to prove the method works, not merely find its removal broad.
   Decision-Log: D-20260725-11
+
+## D-20260726-S1 — g22 denominator corrected, and g23 opened on this repo's own publication
+
+**g22 denominator was wrong and it was my error.** I handed specs a named set of three
+trees; it verified exactly those three rather than enumerating the class. Real figures:
+`r2-trust` = nine copies in five distinct contents; `r2-dataplane` = five copies, only the
+core lane's carrying the g15 fix. A policy argued from "three" would have left six copies
+outside its own blast radius. Specs caught and corrected itself before the gate ruled.
+Brief updated. **Method:** when handed a set, ask whether it is the population before
+verifying its members.
+
+**Bench safety stated ahead of the argument:** an unfixed vendored dataplane cannot carry a
+join at all, so zero-hop joins work and zero-hop is the intended case. Obligation is at the
+next vendored sync. NOT a bench hot-fix — the risk is a well-meaning half-carriage.
+
+**g18 executed, flash withheld.** Both variants built and attested, two-leg eligibility PASS
+on both, positive and negative controls run. No flash taken. Supervisor holds the flash until
+the debugger session on the capture board closes: one grant at a time.
+
+**g23 opened.** This repository is public and the branch we commit to is pushed to it. No
+keys, MACs or personas — that guard held. Exposed instead: four private repo names, one
+private branch name, 93 commit-id-shaped tokens in this ledger. Private names scrubbed
+forward from the gate briefs and RESUME; published history untouched, because rewriting it
+needs force-push, which is forbidden without an explicit lift. **The guard I was applying
+covered content generated for publication and never asked whether the notebook itself was
+published.**
+
+Decision-Log: g22 corrected (nine not three); g18 flash withheld pending debugger session; g23 opened
