@@ -25,7 +25,10 @@ appears in two of the ledgers, **and I asked you the wrong question about it** �
 governs it, the test is real-provenance not chosen-versus-derived, *chosen is on the real side*,
 and it is **not** in the synthetic allowlist so it is treated as real until certified. **Going
 private does not remediate it** (canon says *any* repo). The real question is *which* trust group
-it is — its owner can answer that, and that answer is the whole decision. **And the bigger half is not
+it is — its owner can answer that, and that answer is the whole decision. **Caveat, found by the
+lane that owns the certification tool and reported against its own interest:** the scanner reads
+only the first 8 hex digits of a UUID-form identifier, so allowlisting one **certifies a fragment**
+and a green cannot tell two groups apart. Instrument held, not fixed, so it does not pre-empt you. **And the bigger half is not
 prose at all:** **seven of ten public repos declare a git dependency on a private repo URL with a
 pinned commit id**, ~48 files, stated in plain words as private. **That cannot be scrubbed** — the
 URL is load-bearing — so it needs its own answer: accept, vendor, or make the dep repo public.

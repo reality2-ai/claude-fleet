@@ -168,6 +168,37 @@ literal in any tracked file of any repo**.
    identifies a real deployment, it does not. **That is a question of *which* group, answerable
    by its owner — and it is the entire decision.**
 
+**But that route is weaker than I described it, and the lane that owns the allowlist said so
+against its own interest.** The certification scanner matches **contiguous** hex runs after an
+identity label. A trust-group identifier in UUID form is `8-4-4-4-12` with dashes. I ran the
+compiled pattern myself against three inputs, with a negative control that correctly returned
+nothing:
+
+- **UUID form → one match, the first 8 hex digits only.** The other 24 are never scanned.
+- **The same value written as one 32-character run → no match at all.**
+
+Two consequences, and the second is the one that bites here:
+
+- **Allowlisting a UUID-form value certifies a fragment, not the value** — and it silences any
+  other identity sharing those first 8 digits.
+- **Two different trust groups sharing a first segment are indistinguishable to this gate.** So a
+  green is **not evidence about *which* group a file carries** — which is exactly the question
+  the route-to-clean turns on.
+
+The instrument was **held, not fixed**, and I agree with that: widening it changes what the gate
+flags fleet-wide and moves the candidate count *while a gate about a UUID-form identifier is in
+front of you*. Changing the instrument mid-ruling pre-empts the ruling. It is documented in the
+file's header instead — non-normative and invariant across every outcome you might choose.
+
+Worth knowing, because it is the best evidence the instrument works within its stated width:
+**the explanatory note tripped its own gate on first draft.** A literal example identifier written
+into the header raised the candidate count by one — an identity-shaped literal in an identity
+context, added *by the note explaining the hazard*. Rewritten schematically; count restored.
+
+When you rule, widening the matcher and **re-baselining** is queued. The widened matcher will
+surface segments no previous pass has ever scanned, so **the new count will not be comparable to
+the old one and must not be read as a regression.**
+
 **Is** internal structure: which private repositories exist, one private branch name, and
 enough commit ids to fingerprint development history. On its own each is small; together
 they are a map of a private codebase published under a public org. This is the class you

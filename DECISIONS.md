@@ -1315,3 +1315,37 @@ Added to the reframe at specs' suggestion: a dependency declaration is also DURA
 is not — load-bearing, so it cannot drift out on its own, and every future consumer re-states it.
 
 Decision-Log: accept lean grounded in canon text; category-absence stated as absence not exemption
+
+## D-20260726-S20 — the route-to-clean I gave Roy certifies a fragment
+
+Specs found that the allowlist it owns IS the fleet certification instrument, so it is not a
+bystander on g23 — the route-to-clean I described executes as an edit in its tree. It went to
+check whether that route actually executes. It half-does.
+
+**VERIFIED BY ME, running the compiled pattern rather than reading it**, with a negative control
+returning nothing so the test discriminates:
+- UUID-form identifier after an identity label: ONE match, THE FIRST 8 HEX DIGITS ONLY. The other
+  24 are never scanned.
+- The same value as one contiguous 32-char run: NO MATCH AT ALL.
+
+Consequences: allowlisting a UUID-form value CERTIFIES A FRAGMENT and silences any other identity
+sharing those 8 digits; and two trust groups sharing a first segment are INDISTINGUISHABLE to the
+gate — which is exactly the question my route-to-clean turns on. **A green here is not evidence
+about WHICH group a file carries.**
+
+**HELD NOT FIXED, and I agree:** widening changes what the gate flags fleet-wide and moves the
+count while a gate about a UUID-form identifier is in front of Roy. Documented in the header
+instead — non-normative, invariant across outcomes, per the ratified hazard-note precedent.
+
+**The note tripped its own gate on first draft** — a literal example identifier raised the count
+by one, added BY THE NOTE EXPLAINING THE HAZARD. Rewritten schematically. Reported rather than
+quietly fixed, correctly: the instrument catching its own documentation is the best evidence it
+works within its stated width.
+
+Queued on Roy's ruling: widen the matcher, RE-BASELINE, re-triage. The widened matcher surfaces
+segments never scanned, so the new count will NOT be comparable and must not be read as regression.
+
+A proposed remedy needs an emitter exactly as a requirement does. I proposed one and did not check
+it had one; the lane that would execute it checked, and reported against its own interest.
+
+Decision-Log: route-to-clean qualified — allowlisting certifies a fragment; instrument held not fixed
