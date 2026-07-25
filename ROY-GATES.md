@@ -19,17 +19,26 @@ each other. §9.5 (you ratified 2026-06-23) says a frame with no carried origin 
 be dropped. §12.5 (you GO'd 2026-07-13) specifies the sovereign join as header byte `0x20`,
 which decodes to a GROUP_MGMT frame with no origin — the thing §9.5 forbids.
 
-**Specs ruled it and landed it** (R2-WIRE v0.65, new normative §9.5.1): the drop rule binds
-the deduplicated types — EVENT, REPLY, HEARTBEAT — and GROUP_MGMT is exempt. I accepted its
-authority to do so and I think it was right, so this is now a note rather than a gate.
+**Specs ruled it and landed it** (R2-WIRE §9.5.1, now at v0.67): the drop rule binds
+EVENT, REPLY, HEARTBEAT and CAPABILITY, and GROUP_MGMT is the one exempt type. I accepted
+its authority to do so and I think it was right, so this is now a note rather than a gate.
 
-The argument that decided it: the origin field is derived from the group identity, and a
-join request deliberately zeroes that identity for privacy — so the only party who can
-legitimately send a join has, by construction, nothing to stamp, and getting an identity is
-precisely what it is joining to do. A requirement the only eligible sender cannot satisfy is
-a defect in the requirement. Stamping one anyway would breach the privacy rule the zeroing
-exists to serve, and the anti-duplicate reasoning behind §9.5 doesn't apply to joins at all —
-they're signed with a sequence and timestamp, and travel point-to-point rather than flooding.
+**The argument that decided it — corrected after you refuted the first version.** You asked
+whether a new hive doesn't already have an identity, and that question killed the original
+reasoning, which claimed a joiner had nothing to stamp *by construction*. It does: the
+invitation carries the group key, the derivation is a pure function, so the joiner can
+compute the value perfectly well. What it cannot do is make that value mean anything —
+nobody else can verify it without the joiner's private master secret, so the stamp would
+carry no attributional weight at all. It would also put a stable per-device-per-group
+pseudonym in the clear, allowing correlation across sessions and retroactive
+de-anonymisation once membership is learned elsewhere. Note that this is *linkability*, not
+disclosure: the value is a one-way derivation and does not reveal which group is being
+joined — an earlier version of this note overstated that too. And the anti-duplicate
+reasoning behind §9.5 doesn't reach joins at all: they're signed with a sequence and
+timestamp, and travel point-to-point rather than flooding.
+
+Your one-sentence question forced both of those corrections into the spec (v0.66) within
+minutes. This paragraph was the last place the refuted version was still standing.
 
 **If you read the delegation more narrowly than we did, say so and it reverts in one commit**
 (ledger D-20260725-08 in claude-fleet, specs' own entry D-20260725-06).
