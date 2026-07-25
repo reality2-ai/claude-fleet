@@ -894,8 +894,12 @@ same shape one level down: a match on one file is not evidence about the crate.
 security core: hkdf.rs holds derive_hive_id and trust_group_uuid, the functions the g15
 join-carriage argument turned on, and wire_hmac.rs is the HMAC span. Direct check:
 
-- hkdf.rs diff = ONE hunk at line 464; #[cfg(test)] begins at 289. Canon GAINED 84 lines of
-  provenance tests on 07-19, one day after rak vendored on 07-18.
+- hkdf.rs diff = ONE hunk at line 464; #[cfg(test)] begins at 289. Canon GAINED ~~84~~ **78**
+  lines of provenance tests on 07-19, one day after rak vendored on 07-18.
+  [CORRECTED in D-20260726-S5 — 84 was the diff hunk header's LENGTH, not the added-line count.
+  Marked in place rather than rewritten, so the sequence stays legible. Found by grepping my OWN
+  artifacts for the stale figure after specs reported the same non-propagating-retraction failure
+  in its ledger: I had corrected the brief and left my ledger carrying the wrong number.]
 - wire_hmac.rs diff = ONE COMMENT LINE inside a test; #[cfg(test)] begins at 105, hunk at 152.
 - Pre-#[cfg(test)] regions of both files: IDENTICAL. Negative control (test regions) DIFFERS,
   proving the comparison could see a difference.
@@ -938,3 +942,27 @@ STANDS: the method finding, nine copies / six contents, rak4630 out of in-sync, 
 FALLS: the severity, entirely. No second gate, on evidence not priority.
 
 Decision-Log: severity withdrawn by originator; supervisor line count corrected 84 -> 78
+
+## D-20260726-S6 — converged; and my own retraction had not propagated either
+
+Core cleared the alarm a third level down — function bodies, not whole-crate hashes — and
+confirmed independently that every derivation and HMAC function is byte-identical to canon on
+BOTH bench boards. Specs had already verified and withdrawn. Converged on all sides: severity
+falls, count six stands, one true whole-crate match, no second gate.
+
+**REAL RESIDUAL, verified by me rather than relayed:** the active bench pin is MISSING
+capgrant.rs entirely — CapabilityGrant appears in 0 of its files against 2 in canon. Group
+management, join and certificate code are older there too. Feature/interop gap, NOT a
+key-derivation gap; resolved at next re-vendor. Recorded in the brief because "the bench cannot
+exercise capability grants at all" is a different claim from "the bench is behind".
+
+**SPECS' PROPAGATION LESSON APPLIED TO ME, AND IT CAUGHT SOMETHING.** Specs found its own
+retraction had not reached the entry it superseded, and named the rule: a retraction is not done
+when it is issued, it is done when it reaches every artifact carrying the claim. I grepped my own
+artifacts on that basis and found D-20260726-S4 still carrying the wrong 84-line figure I had
+already corrected in the brief. Marked in place with a forward pointer rather than rewritten.
+
+I had corrected the number where Roy would read it and left it wrong where the fleet would.
+Issuing a correction does feel like completing one.
+
+Decision-Log: converged on severity; capgrant residual recorded; own ledger corrected on propagation check

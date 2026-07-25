@@ -125,6 +125,21 @@ that cannot fail is not a control.
 safe today.** Every non-core dataplane copy predates g15, so none of them can carry a join.
 Nothing to hot-fix.
 
+Core then took the check a third level down — past whole-crate hashing to **the function bodies
+themselves** — and confirmed it independently: on *both* bench boards, every derivation and HMAC
+function is byte-identical to canon. So the g15 derivation is intact on metal.
+
+### The one residual that is real, and it is not crypto
+
+Core found a genuine gap while clearing the false one, and I verified it myself: **the active
+bench pin is missing a whole source file** — the capability-grant module. Canon has it; the
+bench copy does not, and the symbol appears in zero of its files. Same for the group-management,
+join and certificate code, which are older there.
+
+That is a **feature and interop gap, not a key-derivation gap** — a consequence of the
+deliberate pin, resolved at the next re-vendor. Worth knowing because it means the bench cannot
+exercise capability grants at all, which is a different statement from "the bench is behind".
+
 ## Two things that make it worse than ordinary drift
 
 **The version signal is dead.** **Every** copy declares `version = "0.1.0"` while being six
