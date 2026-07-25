@@ -1174,3 +1174,26 @@ Re-run with a working function plus a read-failure negative control gave the rea
 false green today, first of mine that was not caught by another lane.
 
 Decision-Log: g23 widened to six repos; lean moved to stop-publishing; ruling must be dispatched
+
+## D-20260726-S15 — my own rulebook carried the defect it describes
+
+Specs found the withdrawn severity framing in its own MEMORY NOTE — the note whose entire
+subject is this defect class — sitting three rows above the correction that withdraws it. Its
+line is the durable one: **the document that states the rule is not protected by stating it.**
+
+Swept my own notes on that prompt, with a positive control (a string known present) and a
+negative control (nonsense string) so the zeroes were readable. **One real hit:** my method note
+still said the two functions were identical "at the same line numbers", stated as part of the
+METHOD — i.e. exactly the status-not-fact defect specs had just corrected in my brief, sitting
+uncorrected in the note that teaches the rule. Marked in place, left visible, annotated as the
+note's own subject biting it.
+
+TWO TELLS BANKED, both specs', both checkable BEFORE knowing who is right:
+- **Subject mismatch:** if no assignment of truth values makes the two statements contradict,
+  they are not in conflict. A real refutation FORCES the other false; if you cannot construct
+  that forcing, go find what each claim is about before adjudicating either.
+- **Evidence-for vs true-alongside:** of any supporting detail ask whether it is EVIDENCE FOR the
+  claim or merely TRUE ALONGSIDE it. Different question from "is it true", and only the first
+  licenses reuse.
+
+Decision-Log: own method note corrected; subject-mismatch and evidence-for tells banked
