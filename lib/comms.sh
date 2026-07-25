@@ -174,7 +174,13 @@ _fleet_line_has_real_input() {
     -e "s/${on}[^${off}]*${off}//g" \
     -e "s/${on}[^${off}]*\$//g" \
     -e "s/[${on}${off}]//g")"
+  # Strip whichever prompt glyph this provider uses (g17). BOTH are required: if only ❯ is
+  # stripped, a Codex line keeps its › — which is non-space — so the box reads as PERMANENTLY
+  # OCCUPIED, the defer gate defers forever and nothing is ever delivered to that lane. A
+  # fail-closed break, but a total one: fixing the grep without fixing this is worse than
+  # leaving both alone.
   line="${line#❯}"
+  line="${line#›}"
   line="${line//$' '/}"
   line="${line//[[:space:]]/}"
   [[ -n "$line" ]]
@@ -195,7 +201,13 @@ _fleet_line_has_real_input() {
 # delivering, never toward never-delivering.
 fleet_input_busy() {
   local to="$1" line
-  line="$(fleet_tmux capture-pane -e -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | grep -aF '❯' | tail -n1)" || return 1
+  # PROVIDER-AWARE (g17): Claude panes prompt with ❯, Codex panes with › — verified on live
+  # panes, not assumed. A fixed-string match on one glyph never matched the other, so for
+  # those lanes this returned "not busy" unconditionally, which broke THREE things at once:
+  # the submit path never saw its own message land and requeued it (the duplicate messages),
+  # the state/metrics recorded dead-letters as delivered, and the defer gate below never
+  # deferred — so the anti-garble guard was off and a paste could land on existing input.
+  line="$(fleet_tmux capture-pane -e -p -t "$FLEET_TMUX_SESSION:$to" 2>/dev/null | grep -aE '❯|›' | tail -n1)" || return 1
   [[ -z "$line" ]] && return 1
   _fleet_line_has_real_input "$line"
 }

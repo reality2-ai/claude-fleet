@@ -62,3 +62,45 @@ controls above are concrete enough to prove it rather than hope.
 ## Ruling syntax
 
 "gate 17: you patch it" / "gate 17: I'll patch it" / "gate 17: defer"
+
+---
+
+## RULING (Roy, 2026-07-26)
+
+*"yes, patch the fleet message transport"* → *"go with recommended fix"*.
+
+## LANDED — provider-aware matching, verified on live panes
+
+**Ground truth first, not codex's report:** captured every live pane. Claude lanes show `❯`
+and zero `›`; Codex lanes show `›` and zero `❯`. The fixed-string match never saw the latter.
+
+**TWO sites needed the fix, and the second is the one that would have bitten.**
+`_fleet_line_has_real_input` *strips* the prompt glyph before deciding whether anything
+real remains. Fixing only the grep would have left a Codex line holding its `›` — which is
+non-space — so the box would read **permanently occupied**, the defer gate would defer
+forever, and **nothing would ever be delivered to those lanes**. Fail-closed, but total. A
+half-fix here is worse than no fix.
+
+### Controls — all pass
+
+**Unit, both glyphs** (production predicate, not a copy): Claude empty → clear · Claude with
+input → busy · **Codex empty → clear** (the new case; before the fix this returned *busy*) ·
+Codex with input → busy.
+
+**Differential on a live Codex pane:** old fixed-string match = **0** lines; new match = **1**.
+
+**Live end-to-end** — one real message sent through the real path: record shows
+`delivered=true, attempts=None, dead=None`. **Delivered first attempt, no retry, no
+dead-letter** — against the historical pattern of `attempts=5, dead=true, delivered=true`.
+
+### What this fixes, and what it does not
+
+**Fixed:** the acknowledgement path, therefore the duplicate messages (they were the
+transport retrying, never a lane repeating itself), and the **anti-garble defer gate**, which
+had been off for those lanes throughout.
+
+**Still owed — the state/metric separation.** Codex's point stands: for a *genuine* failure
+the state is still overloaded. `comms.sh` writes a dead-letter as `delivered=true` **and**
+`dead=true`; the failure counter accumulates **attempts, not messages**; and the reporter
+equates `delivered=false` with undelivered. Those need dead / attempted / submitted /
+acknowledged modelled separately. Next increment.
