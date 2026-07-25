@@ -1125,3 +1125,28 @@ ALSO a failing green — a --include glob died under zsh and BOTH controls retur
 command printing the clean answer while documenting that exact defect. Caught by the controls.
 
 Decision-Log: line-agreement demoted from evidence in the brief; four-unit form adopted
+
+## D-20260726-S13 — my own RESUME was worse than the one specs just fixed
+
+Specs found its RESUME 25 commits stale and carrying refuted framing. I checked mine on that
+prompt. **Mine was dated 2026-07-23 — three days stale**, presenting a CLOSED campaign as the
+current objective and ending with "Next action: on Roy's return, sniff verdict". It mentioned
+none of g15, g18, g20, g22, g23, the fault-capture campaign, the debugger grant, the withheld
+flash, or the 13 unpushed commits. A takeover from it would have been actively misled.
+
+**This is a duty I enforce on workers and had not applied to myself.** The standing supervisor
+requirement is that RESUME.md be ONE CURRENT TAKEOVER SNAPSHOT. Mine was a changelog of a
+finished week.
+
+Rewritten whole, every figure re-derived at write time rather than carried: branch, unpushed
+count (13), tree state, ledger tail (D-20260726-S12), open gate list from ROY-GATES.md, grant
+fields from the authorization file. Applied unwarranted-until-re-derived to the WHOLE file, not
+just the lines I knew were wrong, because I could not tell which figures still had a live
+warrant.
+
+**SPECS' THIRD RANGE, adopted:** a correction reaches the artifact you were EDITING. It does not
+reach the artifact you were READING FROM, and it does not reach THE OTHER PARAGRAPHS OF THE
+ARTIFACT YOU WERE EDITING. Its RESUME held THREE different versions of one version number in one
+file, each edit having corrected only the paragraph it touched. **Proximity is not protection.**
+
+Decision-Log: supervisor RESUME rewritten whole, all figures re-derived

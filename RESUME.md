@@ -1,71 +1,88 @@
-# RESUME — claude-fleet
+# RESUME — claude-fleet (supervisor)
 
-Updated 2026-07-23 (overnight). COEX CAMPAIGN CLOSED — PASS (#d008). This repo:
-branch `gate-heredoc-2026-07-20`, tip pushed (ahead=0); remote `master` deliberately
-lags the branch (merge = a later stake-in-ground step, Roy-gated).
+**Updated 2026-07-26.** Takeover snapshot. Every figure below was re-derived from the
+repo at write time, not carried forward from the previous version — the file it replaced
+was three days stale and still presented a closed campaign as the current objective.
 
-## Objective — ACHIEVED
+## Objective right now
 
-XIAO key-10 = 0x25 sustained 41.6 s contiguous (4x the >=10 s bar), 2026-07-23
-overnight under Roy's #d007 grant. Root was NEVER an RX defect: sniff (corpus-proven
-filter) + console correlation refuted all three pre-registered signatures; cause =
-30 s keepalive cadence vs 8 s ADMIT_W window (structural, intentional design).
-Fix = benchkeepalive 8000->4000 + densify riding (core bee0e996); hive images
-XIAO d12ddcc8 / D4 d818ffda; composer flashed under per-op .fleet/flash-authorization
-grants, banners app@0x20000 + personas intact; 0x24 sustained 94.2 s pre-pump; CoC
-pump at fresh XIAO BLE addr lit bit0 => 0x25. v7-diag images (8a6dea89/3b412e54)
-ARCHIVED unflashed. Boards left meshing, soak logger + tuxedo keep-awake running.
-Morning items for Roy: see DECISIONS.md #d008 (window design tension, persistent
-pump, composer manifest.json dirty file, blerole flash slot).
+**Nothing is executing. Every lane is blocked on a Roy ruling, and that is correct.**
+The work of the day was a gate arc plus a long method exchange, not code. Do not start
+work to fill the gap — the blocks are deliberate.
 
-## 2026-07-23 (day) — hive-first design note CLOSED end-to-end
+## Repo state — ground truth
 
-Roy ruled all §6 items (#d009 secured-bridge + merge-reflash, #d010 tier-2).
-Executed: R2-COMPLEX-HIVE v0.12 (specs cc70ca3 — §11.1 secured-bridge arm, new
-§10.5 merge-reflash), R2-WEB v0.11 (98804ce — §1.0 dev-ensemble privilege ceiling),
-specs ledger D-20260723-03/-04; android note e06af14 FROZEN + FULLY CITED (markers
-e4c4afa/1b8516d/8bcf4ee). Sole open item: §6 (d) detach/reattach, DEFERRED to
-increment-5 by ruling. Increment 5 (XIAO internal Usb=4 attach) canon-legal as
-design; gated on securing USB bridge + §10.5 merge-reflash; flash per-op granted.
+- Branch `gate-heredoc-2026-07-20`. **13 commits unpushed.** Tree clean.
+- **The unpushed state is deliberate**: pushing is the exact action gate 23 is about.
+  Do not push until Roy rules g23.
+- Remote `master` deliberately lags this branch (merge is a later Roy-gated step).
+- Ledger tail: `D-20260726-S12`. Twelve supervisor entries today.
 
-## Recent repo changes (this branch)
+## Open gates — all waiting on Roy
 
-- `hooks/git/pre-push` sk-key scan v3: two-stage boundary + run>=40 + >=2 digits
-  (8535c9d; falsifier exchange with composer, reference impl r2-composer
-  tools/key-hygiene.sh 80cc2bb). Accepted edge logged in DECISIONS.md.
-- DECISIONS.md carries both rounds (d54e6d3 superseded by 8535c9d).
+Full briefs in `gates/`, index in `ROY-GATES.md`. Five open: **g23, g22, g21, g13, g8**.
 
-## BLE board-to-board (b) — pre-metal COMPLETE, queued behind diag campaign
+- **g23 — this repo is public.** `reality2-ai/claude-fleet` is public (verified from the
+  API). No keys, MACs or personas — that guard held. Exposed: four private repo names,
+  one private branch name, ~93 commit-id-shaped tokens in the ledger. Private names
+  scrubbed **forward**; published history untouched because removing it needs a
+  force-push, which is forbidden without an explicit lift.
+- **g22 — shared crates are vendored per-repo.** Blocks the g15 identity half. Roy's g15
+  dataplane fix landed in core's crate; the firmware builds from its own vendored copy,
+  so the ruling does not reach metal. Nine trust copies / six contents; three classes
+  (in-sync, deliberate-pin, stale). **Bench is safe** — an unfixed copy cannot carry a
+  join at all, which is the intended zero-hop state. Obligation must key on
+  **(repo, crate, pinned-canon-sha)**. Supervisor lean: fix the mechanism that exists.
+- **g21 — dedup key.** Canon already ruled it normatively. One narrow question survives.
+- **g13 — radar board-fit.** Physical; Roy eyeballs it after soldering.
+- **g8 — AP client isolation.** Small, not urgent.
 
-Core increment 2 landed the board firmware lane c01c9db9 (08fa87ed threads
-profile.ble_role into ble_task + boot-print; c01c9db9 initiator scan-dial:
-captures first valid-R2 acceptor BdAddr, N=5 empty windows => hive_id fallback;
-cocbench BENCH_ADDR cfg-split). Composer delivered D4 initiator blob sha256
-a55810f9d25e... (48B RPF1, b[6]=0x01, b[4]=0x02 Bridge ground-truthed vs
-e4031efd:3347 — b[6] sole behavioral delta), on alfred:~/d4-initiator.role;
-gen-role CLI = composer 4a4b0cb. XIAO gets NO blob (absent = acceptor-only,
-bit0-proven role preserved). Bake input: DFR_ROLE_PATH=~/d4-initiator.role.
-DONE bar = seen-on-metal (boot-print + scan-to-connect handoff); flash rides a
-LATER Roy per-op grant, never conflated with the 78177f50 diag flow.
+## Live grant
 
-## Fleet state
+`.fleet/flash-authorization` holds a **read-only debugger grant** (`target=D5-037bf5b9`,
+`artifact=jtag-read-callback-baseline`). Authorises ONE session: breakpoint, read memory,
+detach. **No flash, no write, no erase.** Operator is composer. **Roy must be on-hand** —
+a dropped session likely leaves the board dark and recovery is a physical reset.
 
-#d006 standing (drain-first, ownership registry, report-don't-act) — working.
-All five lanes completed the offline-window slate 2026-07-22 eve; Roy standing
-order active: when idle, commit+push everything (ahead=0 vs ls-remote) + README/
-docs currency pass, public-hygiene-gated. Android junit execution bench-gated
-(no local JDK17 — ruled no install). Known defect: fleet mail queue can LOSE
-queued messages (2 suspected losses this session) — re-verify queued sends landed.
+**g18 artifacts are built, attested and eligible — and the flash is WITHHELD by me** until
+that debugger session closes. One grant at a time. Hive has been told not to ask again.
 
-## Verification
+## Standing bars in force
 
-Latest full local pass (2026-07-21): smoke 213/213; robustness 39/39; window
-allocation 93/93; liveness 12/12; faculty 99/99; ask isolation 59/59;
-multi-workspace 6/6; config 10/10; commit-msg 9/9; firmware gate 63/63.
-Pre-push v3 pattern: six-fixture control run green 2026-07-22 (production-extracted).
+- **No bench hot-fix of the vendored dataplane.** An unfixed copy cannot carry a join,
+  which is the safe intermediate state. The fix lands at the next re-vendor.
+- **Identity half of g15 held** until g22 rules. A half-carriage is worse than none.
+- Reset rules unchanged: `espflash reset` FORBIDDEN on S3; raw tty RTS/EN is not a reset
+  on this chip; permitted resets are `espflash monitor` CTRL+R or Roy's physical button.
+- One serial opener (composer). Core scores from the score log only.
 
-## Next action
+## Known-state, not incidents
 
-On Roy's return: sniff verdict -> relay to core/hive -> either flash grant flow
-(XIAO-RX-side: composer two-party SHA verify, then run-6 with counter split) or
-re-aim at D4-TX diag. Before starting agents elsewhere run `fleet doctor`.
+- The active bench pin **lacks the capability-grant module entirely**; group-management,
+  join, certificate, provisioning and revocation code is older there. **Feature/interop
+  lag from a deliberate pin, due at the next re-vendor — not an incident.**
+- Crypto verified byte-identical to canon on **both** bench boards, checked directly.
+
+## Method earned today — five rules, all paid for
+
+1. **Ask what a command prints when it is BROKEN.** If that equals what it prints when the
+   finding is absent, the check is worthless before it runs. Four false greens today share
+   that root; three lanes, none caught by its own author.
+2. **Scope mismatch in either direction.** Broader-than-claim over-alarms as much as
+   narrower under-detects. Name the unit the claim is about, then measure that one —
+   file / crate / line-number / function-body, and three of those four answer confidently
+   wrong.
+3. **A retraction is done when it reaches every artifact carrying the claim**, not when it
+   is issued. It does not reach the artifact you read from, and it does not reach the other
+   paragraphs of the artifact you edited. **Proximity is not protection.**
+4. **Unwarranted until re-derived.** A claim whose source method was discredited is not
+   automatically wrong, but it carries no warrant until recomputed.
+5. **A verification list is itself a claim.** Per-item control, not aggregate;
+   confirm-exists before diffing; **absent ≠ uncalled**; build the list from the tree, not
+   from an API template.
+
+## Next action for whoever takes over
+
+**Wait.** Check `fleet brief` and the inbox, relay any Roy ruling to the owning lane, and
+otherwise hold. Do not push, do not flash, do not start the identity half, do not
+re-litigate g22 — it is verified as far as it can go without a ruling.
