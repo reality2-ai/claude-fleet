@@ -95,3 +95,56 @@ to a drop that happens for an unrelated reason.
 ## Ruling syntax
 
 "gate 15: no relay" / "gate 15: relay allowed" / "gate 15: no relay + fix the dedup key" / "gate 15: what would have to change first"
+
+---
+
+## RULING (Roy, 2026-07-26)
+
+**Verbatim:** *"yes, a join request can be relayed using the same single hop rule. For
+example, I might need to relay the join via a UDP hive. But generally, join is intended to
+be 'physical presense' ie, zero hops - direct connection."*
+
+**Relay is PERMITTED. The hop budget is not.**
+
+- **Intended case: ZERO hops — a direct connection.** Physical presence, joiner to target,
+  no intermediary at all. This is what a join normally is.
+- **Relay is allowed when needed**, under the *same single-hop rule*: the worked example is
+  a **UDP hive** standing between joiner and target. That is **at most one** intermediary,
+  not a budget to spend.
+
+So the hop field is not "5, meaning travel"; it is **0 normally, at most 1 when carried.**
+
+## Why the lanes' "no" survives this intact
+
+All three argued against **multi-hop mesh flooding** — an origin-less frame propagating
+across a budget of 5, unmeterable because the only rate-limiting primitive keys on the
+field a join lacks. **Nothing in this ruling grants that.** Their strongest argument — *a
+relay cannot authorise a join even in principle* — is also untouched: under this ruling the
+intermediary is not asked to authorise anything, and the endpoint still does.
+
+They were answering *may a join be flooded?* The answer to that is still no. The question
+Roy has answered is *may a join be carried by one intermediary?* — which none of them was
+asked, and which the frozen unconditional drop forbids by accident rather than by design.
+
+## Consequences
+
+- **The unconditional origin-less drop needs a join exception.** The routing spec and core's
+  live dataplane both drop any frame lacking an origin. That is now too broad — it is what
+  made "no relay" true by accident, which is precisely what the gate existed to replace with
+  a deliberate answer.
+- **The specs contradiction resolves toward the wire spec:** a join must be accepted although
+  it carries no origin.
+- **Hop semantics are now explicit: 0 direct, ≤1 relayed.** The generic default of 5 remains
+  boilerplate; core's single-hop producers were already right, and the older board file
+  emitting 5 is a defect to fix rather than a precedent.
+- **The dedup key is NOT settled by this ruling.** Two lanes asked for both together; only
+  the relay half is ruled. Reopened as **g21** rather than assumed.
+
+## Owed under this ruling
+
+- **Specs works the mechanism**: whether the intermediary **forwards** the frame or
+  **terminates and re-originates** it. Materially different implementations, and the
+  UDP-hive example fits either. Specs owns this; it is unfrozen to do it.
+- **The post-ruling enumeration pass**, owed either way, now runs — across all four frozen
+  sites plus orphan 5.
+- **Core** revisits the unconditional drop; **android** notes the decoder consequence.

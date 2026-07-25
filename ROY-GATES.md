@@ -12,18 +12,10 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**8 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**7 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
-
-**[g15 — may a join request be relayed?](gates/g15-join-relay.md)** · canon + security
-Three lanes, asked separately, independently said **no**, on three different grounds. The one
-datum that favoured relaying turned out to be inherited boilerplate — core's real join
-producers set one hop and say *"no relay"* in a comment. Two specs contradict each other about
-this frame; four sites are frozen, and the specs lane is stopped until you rule. A dedup key
-must move in the same ruling.
-→ `gate 15: no relay` / `relay allowed` / `no relay + fix the dedup key` / `what would have to change first`
 
 **[g13 — radar board-fit](gates/g13-radar-board-fit.md)** · tiny, physical
 ~29 breadboard columns needed against ~28 available. Marginal enough that only eyeballing the
@@ -95,3 +87,4 @@ minutes. The capability cell stays honest either way.
 | 11 | D5 replug / bench USB | closed 07-24 22:5x — tuxedo uplink cable bad (data lines); boards moved to Alfred, all 3 stable; v8.3 cycle firing | #d026 | — |
 | 12 | openocd USB perms (Alfred) | JTAG read executed clean 07-25; the "lock held" reading from that dump was later REFUTED and is retracted | #d026 | — |
 | 14 | R=0 join frame — §9.5 vs §12.5 canon collision | CONVERTED to a note: specs RULED and landed it (R2-WIRE v0.65 §9.5.1 ROUTE-ORIGIN-1 binds EVENT/REPLY/HEARTBEAT, GROUP_MGMT exempt); supervisor accepted — I had been too conservative, it decides which of two blessed clauses governs, not new ground | D-20260725-08 | — |
+| 15 | Join relay — may a sovereign JOIN traverse the mesh? | **RELAY PERMITTED; NO HOP BUDGET** (Roy 2026-07-26): intended case is **ZERO hops — direct connection**, physical presence; relay allowed when needed under the same single-hop rule (worked example: a UDP hive) = **at most one** intermediary. Lanes' NO was against mesh FLOODING and survives intact. Origin-less drop needs a join exception; hop semantics 0 direct / ≤1 relayed; 5 is boilerplate. **Dedup key NOT settled — g21** | — | [g15](gates/g15-join-relay.md) |
