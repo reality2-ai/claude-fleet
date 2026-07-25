@@ -17,13 +17,14 @@ argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
 
-**[g23 — this repo is public and our own ledger is in it](gates/g23-public-fleet-repo-leak.md)** · **hygiene, not a breach**
-`reality2-ai/claude-fleet` is public (verified from the API) and the branch we commit to is pushed
-to it. **No keys, no MACs, no personas** — that guard held. What is exposed is structure: four
-private repo names, one private branch name, and **93 commit-id-shaped tokens** in the ledger.
-**I was adding to it** — yesterday's gate brief named a private repo; scrubbed forward now.
-History needs your ruling: rewriting it means force-push, which I am forbidden.
-→ `gate 23: make it private` / `scrub forward only` / `rewrite history` / `stop publishing the ledger`
+**[g23 — our working records are published in six public repositories](gates/g23-public-fleet-repo-leak.md)** · **hygiene, not a breach**
+**No keys, no MACs, no personas** — that guard held. What is exposed is structure: **~20
+private-repo-name mentions and ~360 commit-id-shaped tokens across six public repos**, including
+the one that serves the public website. **I first scoped this gate to the repo I was standing in**
+— the class is lane bookkeeping in any published tree, and it is five repos wider than I wrote.
+Five are already pushed and live, and **lane-owned, so your ruling must be dispatched, not
+executed by me**. Rewriting history needs a force-push, which I am forbidden.
+→ `gate 23: stop publishing bookkeeping` / `make them private` / `scrub forward only` / `rewrite history`
 
 **[g22 — shared crates are vendored per-repo](gates/g22-shared-crate-vendoring.md)** · **a ruling is already lost to it**
 Your g15 dataplane fix landed in core's crate; the firmware builds from **its own vendored copy** and

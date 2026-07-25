@@ -1150,3 +1150,27 @@ ARTIFACT YOU WERE EDITING. Its RESUME held THREE different versions of one versi
 file, each edit having corrected only the paragraph it touched. **Proximity is not protection.**
 
 Decision-Log: supervisor RESUME rewritten whole, all figures re-derived
+
+## D-20260726-S14 — g23 is six repositories, not one; my own gate was scoped to where I stood
+
+**I scoped g23 to the repository I happened to be standing in.** The class is LANE BOOKKEEPING
+PUBLISHED IN A PUBLIC TREE, and five other public repos carry a ledger or a takeover snapshot.
+Seventh instance of the day's shape, mine, and this one was inside a gate I had already put in
+front of Roy.
+
+Measured (roles not names, since this file is itself published): ~20 private-repo-name mentions
+and ~360 commit-id-shaped tokens across SIX public repositories, one of which SERVES THE PUBLIC
+WEBSITE. Five are already pushed and live; only this repo's recent commits are held.
+
+Consequence for the ruling: going private no longer covers the class, since the website repo
+cannot go private. Supervisor lean moved to STOP PUBLISHING LANE BOOKKEEPING IN PUBLIC TREES,
+uniformly. And whatever Roy rules must be DISPATCHED — five of six are lane-owned and I do not
+write to lane repos.
+
+**MY FIRST BLAST-RADIUS COMMAND FAILED GREEN.** A shell construct that does not word-split under
+this shell silently produced all zeros across every repo — indistinguishable from a clean result,
+and I would have reported "no other repo is affected". The separate positive control caught it.
+Re-run with a working function plus a read-failure negative control gave the real numbers. Fifth
+false green today, first of mine that was not caught by another lane.
+
+Decision-Log: g23 widened to six repos; lean moved to stop-publishing; ruling must be dispatched

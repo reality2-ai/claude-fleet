@@ -1,4 +1,4 @@
-# Gate 23 — the fleet repo is public, and our own working records are in it
+# Gate 23 — our working records are published in six public repositories
 
 **Status:** 🔴 OPEN — no secrets exposed; internal structure is
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → *"read gates/g23 and verify the counts yourself"*
@@ -20,6 +20,34 @@ Counts I ran on the **published refs**, not the working tree:
 
 Four repositories in the org are private and named in these files. Public ones named
 alongside them are fine and I have left those alone.
+
+## IT IS NOT ONE REPOSITORY — IT IS SIX
+
+**This is a correction to my own gate, found after I wrote it.** I scoped g23 to the repository
+I happened to be standing in. The class is *lane bookkeeping published in a public repository*,
+and five other public repos carry a ledger or a takeover snapshot:
+
+| public repo (by role) | file | private repo names | commit-id-shaped tokens |
+|---|---|---|---|
+| the fleet tooling repo *(this one)* | ledger | 8 | 98 |
+| a build/artifact lane | ledger | 5 | 57 |
+| same lane | snapshot | 4 | 24 |
+| a tooling lane | ledger | 0 | 172 |
+| a workshop lane | snapshot | 0 | 9 |
+| **the public website repo** | snapshot | 3 | 0 |
+
+Roughly **20 private-repo-name mentions and ~360 commit-id-shaped tokens across six public
+repositories** — and the last row is the repository that *serves the public site*.
+
+**Two things follow.** The exposure is already **pushed and live** in those five; only this
+repo's recent commits are held. And **I cannot fix them** — they are lane-owned and I do not
+write to lane repos, so whatever you rule has to be dispatched to owners rather than executed
+by me.
+
+Method note, since it is the day's pattern one more time: my first blast-radius command
+**failed green** — a shell construct that does not word-split silently returned all zeros, which
+reads exactly like a clean result. The separate positive control caught it. Numbers above are
+from the corrected run, with a read-failure negative control.
 
 ## What this is, and what it is not
 
@@ -53,26 +81,30 @@ until you rule.
 
 ## The decision
 
-- **Make the repo private.** One action, closes the whole class immediately, needs no
-  rewrite. Costs whatever the public repo was *for* — and I do not know that reason, so I
-  cannot weigh it for you.
+- **Make the repos private.** Closes the class immediately, needs no rewrite. But it now means
+  *six* repositories, one of which serves the public website and plainly cannot go private —
+  so this option no longer covers the whole class on its own.
 - **Scrub forward only, accept the history.** Cheapest. The existing exposure stays
   readable; only new material is clean. Defensible if the exposure is judged low-value.
 - **Rewrite the branch history and force-push.** Removes it from the default view. Does not
   remove it from forks, clones, or anything already cached. **Force-push is currently
   forbidden to me**, so this needs your explicit lift.
-- **Stop publishing the ledger.** Keep the fleet tooling public and move the working
-  records — ledger, RESUME, gates — out of the published tree. Structural fix rather than a
-  cleanup, and it is the only option that stops the next instance.
+- **Stop publishing lane bookkeeping anywhere public** *(supervisor lean)*. Keep the tooling and
+  the site public; move ledgers, snapshots and gate briefs out of published trees. Structural
+  rather than a cleanup, applies uniformly across all six, and it is the only option that stops
+  the next instance.
 
 ## Supervisor lean
 
-**Make it private if the public repo has no active audience; otherwise stop publishing the
-ledger.** Both close the class. Scrub-forward alone does not — this repo is *where the fleet
-writes things down*, so the same leak recurs the next time a lane cites a path. I would not
-rewrite history: it buys little against forks and caches, and force-push carries its own
-risk.
+**Stop publishing lane bookkeeping in public trees, uniformly across all six.** Going private
+no longer covers the class now that the public website repo is in it. Scrub-forward alone does
+not close it either — these repos are *where the fleet writes things down*, so the same leak
+recurs the next time any lane cites a path. I would not rewrite history: it buys little against
+forks and caches, and force-push carries its own risk.
+
+**Whatever you rule, it has to be dispatched** — five of the six are lane-owned and I do not
+write to lane repos.
 
 ## Ruling syntax
 
-"gate 23: make it private" / "gate 23: scrub forward only" / "gate 23: rewrite history" / "gate 23: stop publishing the ledger"
+"gate 23: stop publishing bookkeeping" / "gate 23: make them private" / "gate 23: scrub forward only" / "gate 23: rewrite history"
