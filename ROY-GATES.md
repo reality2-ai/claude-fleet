@@ -42,6 +42,12 @@ watchdog resets it. Same one command, same value — just no longer time-critica
 now THE blocker for OTA (it pre-empts every OTA window; the radio-mask fixes all work).
 This sudo gives the fastest root-cause read — JTAG catches the fault registers live.
 The firmware-side alternative (v8.6 exception hook) is being designed in parallel.
+**Update 07-25 (midday) — time-boxed bonus:** D5 is right now sitting in a NEW failure
+state the firmware instrument can't see: its radio RX silently wedged (TX fine, peers
+alive, no crash — plausibly the same memory corruption landing somewhere non-fatal).
+The board is alive, so JTAG can inspect the wedged state read-only, no reset. Window:
+until the v8.7.1 flash goes out (~2h). Run the sudo above and composer attaches before
+the flash; after that the state is gone. Same command, still valuable afterwards too.
 
 ## Not waiting on you
 - Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
