@@ -701,3 +701,45 @@ MEANS THE LANE OWNS THE RULING, NOT THAT ITS NEWEST MESSAGE BEATS BETTER EVIDENC
 peer citing a clause the authoritative answer does not address is a FALSIFIER — hold and ask,
 do not comply. This is the failure mode the lane map itself can manufacture.
   Decision-Log: D-20260725-08
+
+## D-20260725-10 — the reset-method constraint I authored was STATE-BLIND; amended, not withdrawn
+Codex flagged a residual contradiction in composer's rewritten RESUME.md: :50 lists raw tty
+RTS-EN among the valid resets while :27-33 record that exact pulse failing to boot the board and
+ending with RTS possibly asserted. Verified at the artifact, both lines, in the current file.
+Composer did not author the contradiction. I DID. The sentence "reset = raw tty RTS-EN / monitor
+CTRL+R / Roy button only" is my standing constraint, first written into grant v4 on 07-24 and
+transcribed faithfully into composer/RESUME.md:50, r2-core/RESUME.md, r2-hive/RESUME.md:143 and
+claude-fleet/DECISIONS.md:534. A constraint copied verbatim into four repos is not four
+confirmations of it.
+
+CODEX'S REMEDY IS OVER-BROAD AND ITS MEMORY CITATION IS THE WRONG POLARITY, both worth stating
+because a wrong restoration costs as much as a wrong retraction:
+  (a) It asked to remove raw RTS-EN as a reset method generally. The evidence does not support
+      that. From a RUNNING APP the pulse is PROVEN to reboot the board: 07-25 14:37, DTR held 1,
+      0x26 to 0x26, uptime seq 93 -> 15, board recovered, cat pid 127379 continuous. It works. Its
+      only defect there is that rst:0x15 flushes the USB-CDC so the boot burst is lost — a
+      capture limitation, not a reset failure.
+  (b) It cited memory as recording raw DTR/RTS "ineffective on S3". Memory records the OPPOSITE
+      polarity: main.rs:64-65 warns the console is DTR/RTS-HAZARDOUS because opening the
+      USB-Serial-JTAG line CAN RESET A RUNNING BOARD INTO ROM DOWNLOAD MODE. Too effective in the
+      wrong direction, not ineffective. That is a stronger argument than the one offered, and it
+      argues for a state qualifier rather than removal.
+
+THE ACTUAL DEFECT IS THAT MY CONSTRAINT NAMED A METHOD WITHOUT NAMING THE STATE IT APPLIES FROM.
+Same pulse, three device states, three different outcomes:
+  RUNNING APP        -> reboots (rst:0x15), boot decode lost to the CDC flush. PROVEN.
+  ROM DOWNLOAD MODE  -> did NOT boot it (07-26 ~03:0x, zero re-enum, zero DISCONNECT, 6.5 min
+                        silence). Mechanism UNSETTLED: held-in-reset vs genuine download mode,
+                        OPPOSITE fixes. One observation, not a rule.
+  TTY OPEN/TOGGLE    -> can knock a running board INTO download mode. HAZARD, not a reset.
+CONSTRAINT AMENDED accordingly: raw tty RTS-EN is authorized ONLY from a state where the app is
+running, and is NOT a recovery path out of ROM download mode. Recovery from download mode needs
+the discriminating read FIRST (report DTR/RTS line state, de-assert RTS if set, report before
+changing) and fresh authority — never a retry of the pulse that already failed there.
+
+GENERAL RULE BANKED: A METHOD CONSTRAINT WITHOUT A PRECONDITION IS A LICENCE IN EVERY STATE. The
+enumeration at withdrawal time has a mirror at AUTHORIZATION time: when I name a permitted method
+I must name the state it is permitted FROM, or a lane will reach for it in the one state where it
+is refuted. Also: a constraint I wrote and four lanes transcribed is the single hardest kind of
+error to see, because every downstream copy reads as independent corroboration of it.
+  Decision-Log: D-20260725-10
