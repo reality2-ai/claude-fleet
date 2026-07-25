@@ -22,7 +22,9 @@ You ruled relay permitted. Executing it, specs found the dedup path drops an ori
 at its *target* — a different code path the relay exception does not reach. So the relay half
 is permitted and the dedup half still forbids it. Specs correctly refused to patch it, because
 patching the drop *is* choosing the key.
-→ `gate 21: sender_pk + sequence` / `keep global, scoped` / `specs proposes`
+Same shape now confirmed in THREE trees (canon, core dataplane, android one-edit-away). **Rider: rule
+that dedup must be TYPE-AWARE** — placement, not key, so it holds whichever key you pick.
+→ `gate 21: sender_pk + sequence` / `keep global, scoped` / `specs proposes` (+ `rider: yes`)
 
 
 **[g13 — radar board-fit](gates/g13-radar-board-fit.md)** · tiny, physical
