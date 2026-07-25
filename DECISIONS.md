@@ -1604,3 +1604,36 @@ and reaches consumers at the NEXT RE-VENDOR — still no bench hot-fix, and no f
 this ruling.
 
 Decision-Log: g22 RULED — sync procedure with versioning; identity half unblocked; no flash implied
+
+## D-20260726-30 — PUSHED; and my ledger IDs are unparseable by the fleet's own gate
+
+**Roy 2026-07-26: "G23, push".** Done — 30 commits, `1e29813..d240956`, non-force. g23 and every
+other brief are now on the remote (18 of 18). The hold was mine, not Roy's, and it had become
+circular: he could not rule on a gate he could not read because I withheld the push that publishes
+it.
+
+**THE PUSH WAS BLOCKED FIRST, AND THE CAUSE WAS NOT WHAT IT LOOKED LIKE.** One commit failed the
+pre-push decision check. My immediate hypothesis — a blank line splitting the trailer paragraph, so
+git's parser could not see it — was PLAUSIBLE AND WRONG. I read the hook instead of acting on the
+story:
+
+  `^Decision-Log: (none|D-[0-9]{8}-[0-9]{2}...)$` — it requires **NN, two digits, no letter**.
+
+**I invented the `-S<n>` supervisor-scoped ID format this session, and it does not conform. 29 of
+my 30 commits fail the trailer test.** They passed only because they ALSO touched DECISIONS.md,
+which satisfies the check's other branch. **The gate was effectively fail-open for me all day**,
+and surfaced only on the single commit that happened not to edit the ledger.
+
+That is the day's own lesson landing on my bookkeeping: a check that passes for an unrelated reason
+is not evidence the thing it checks is sound.
+
+**Fix applied, minimal and non-destructive:** replayed the range with the one blocking commit's
+trailer corrected to `Decision-Log: none` (accurate — it applied D-20260726-S4 and made no new
+decision). Backup ref `refs/keep/pre-trailer-fix-20260726` kept; final tree verified IDENTICAL to
+the pre-fix tree; 30 commits preserved; no force-push. **From here supervisor entries use the
+conforming `D-YYYYMMDD-NN` form** — this entry is the first.
+
+Open question for Roy, not blocking: whether the existing `-S<n>` entries should be renumbered or
+left as historical record with this note as the pointer. I lean leave-and-point.
+
+Decision-Log: none
