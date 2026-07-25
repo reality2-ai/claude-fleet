@@ -13,37 +13,33 @@ syntax is at the bottom of every brief.
 
 ---
 
-## g14 — two of your own rulings contradict: can a join frame carry no route? (real, canon)
-Specs found a genuine collision between two things you blessed three weeks apart, and
-it can't be fixed as a defect because either answer adds new normative ground.
+## g14 — RULED under delegation, not waiting on you (canon) — overrule if you disagree
+I first put this to you as a decision: two things you blessed three weeks apart contradict
+each other. §9.5 (you ratified 2026-06-23) says a frame with no carried origin must always
+be dropped. §12.5 (you GO'd 2026-07-13) specifies the sovereign join as header byte `0x20`,
+which decodes to a GROUP_MGMT frame with no origin — the thing §9.5 forbids.
 
-- **§9.5 (you ratified 2026-06-23):** a frame with R = 0 — no carried origin — is
-  non-conformant and MUST be dropped. "There is no valid route-less frame."
-- **§12.5 (you GO'd 2026-07-13):** the shipping sovereign join sends header byte
-  `0x20`. Decode it: version 00, type 100 (GROUP_MGMT), flags 000 — that *is* R = 0.
+**Specs ruled it and landed it** (R2-WIRE v0.65, new normative §9.5.1): the drop rule binds
+the deduplicated types — EVENT, REPLY, HEARTBEAT — and GROUP_MGMT is exempt. I accepted its
+authority to do so and I think it was right, so this is now a note rather than a gate.
 
-So canon specifies a route-less join frame and separately forbids all route-less
-frames. Core's `group_mgmt.rs` implements the join as specified.
+The argument that decided it: the origin field is derived from the group identity, and a
+join request deliberately zeroes that identity for privacy — so the only party who can
+legitimately send a join has, by construction, nothing to stamp, and getting an identity is
+precisely what it is joining to do. A requirement the only eligible sender cannot satisfy is
+a defect in the requirement. Stamping one anyway would breach the privacy rule the zeroing
+exists to serve, and the anti-duplicate reasoning behind §9.5 doesn't apply to joins at all —
+they're signed with a sequence and timestamp, and travel point-to-point rather than flooding.
 
-**Specs' recommendation for your batch:** §12.5 is right and §9.5 overreached. A joiner
-has no hive_id to stamp — that's the thing it's joining to obtain; target and tgid are
-deliberately zeroed for §16.6 privacy; and §9.5's dedup rationale doesn't bite here
-because GROUP_MGMT isn't deduplicated by (msg_id, origin) at all — it's Ed25519-signed
-with sequence and timestamp per §10.2. Proposed shape: scope ROUTE-ORIGIN-1 to
-deliverable/deduped types, and name the bootstrap exemption explicitly in §9.5.
+**If you read the delegation more narrowly than we did, say so and it reverts in one commit**
+(ledger D-20260725-08 in claude-fleet, specs' own entry D-20260725-06).
 
-Ledgered as D-20260725-05 @ 67cda01e, **not landed** — waiting on you. Ruling either
-way is one line; the cost of leaving it is that one of the two sections keeps teaching
-something false, and the next implementer re-derives the bug android just fixed.
-
-Related and *not* blocked on this: android's fix (route-less EVENT/REPLY now dropped)
-is safe under either answer, so it merges regardless. One correction to what I told you
-earlier about that fix: I described it as closing a path where a forged origin displayed
-under a verified badge. That was wrong — android and its refuter both re-checked and the
-HMAC gate above the decoder already refuses route-less frames, so nothing user-visible
-was ever reachable. It is a structural/API defect (unverified entry points synthesised a
-zero origin), worth fixing as defence-in-depth. Ledgered as D-20260725-07. The canon
-collision below is entirely independent of that and stands as written.
+One thing worth your attention regardless: this surfaced because specs told android to drop
+route-less frames of *every* type, android complied over an automated reviewer that had
+correctly said "hold, there's an unaddressed clause here", and only then did specs find
+§12.5. Specs owned that publicly and issued the correction I've adopted fleet-wide — a lane
+owning a ruling doesn't make its newest message beat better evidence; a peer citing a clause
+your answer doesn't address is a falsifier, and the right move is to hold and ask.
 
 ## g8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path (small, physical/network)
 The phone UDP metal test is DONE except the last hop: phone sends the probe correctly,
