@@ -844,7 +844,15 @@ Decision-Log: g22 corrected (nine not three); g18 flash withheld pending debugge
 
 Core swept and classified the vendoring class independently (its D-20260726-07), and
 reported that it too had under-sized the gate by verifying the handed set instead of
-enumerating. Its counts match specs': trust nine copies / five variants, dataplane five / four.
+enumerating. ~~Its counts match specs': trust nine copies / five variants, dataplane five / four.~~
+[SUPERSEDED, marked in place not deleted, scoped to what survives. WHAT STANDS: core did
+independently re-enumerate, and the class finding (vendoring is per-repo, divergence is real,
+the version signal is dead) is untouched. WHAT FALLS: (1) the NUMBERS — trust is nine copies /
+SIX contents, per D-20260726-S4; (2) more importantly the FRAMING — I offered core's agreement
+with specs as CORROBORATION when both had run the same lib.rs-only check, so core could not
+have disagreed and the concordance carried zero information. I struck that from the brief and
+left it standing here. Found by sweeping my own artifacts after specs reported the identical
+failure in two of its entries.]
 **Two lanes made the same scoping error on a set I supplied.** That is a supervisor defect,
 not two worker defects.
 
@@ -1023,3 +1031,37 @@ Also propagated the 84->78 correction and the five->six variant count INSIDE my 
 method note, which was still carrying both. Second propagation catch today, same rule.
 
 Decision-Log: scope rule corrected to two-directional; failing-green class recorded; own idiom implicated
+
+## D-20260726-S9 — the failing-green root, and a second stale entry in my own ledger
+
+**SPECS' GENERALISATION, adopted as standing method and the sharpest thing to come out of
+today:**
+
+  **Ask what this command prints if it is BROKEN. If that is the same thing it prints when the
+  finding is absent, the check is worthless before it is run.**
+
+Four false greens today share exactly that root: a pre-written label under a dead glob; a
+comparison of two empty strings printing IDENTICAL; a negative control sampling a window that
+could not contain the difference; and a sed range terminator that MATCHED THE SEARCH TARGET, so
+every entry reported the pointer present. Not carelessness — a structural property of the check.
+
+**Specs was saved by an IMPOSSIBILITY, not by diligence:** entries written before D-10 cannot
+cite D-10, so "pointer present: 1" on all of them was arithmetically impossible. That is the
+capability-impossibility test applied to one's own instrument rather than to a protocol party.
+It generalises past protocol arguments and I am recording it as such.
+
+**AND IT FOUND A SECOND STALE ENTRY IN MINE.** D-20260726-S2 still carried "nine copies / five
+variants" AND the corroboration framing I had struck from the brief. So I corrected the framing
+where Roy reads it and left it standing where the fleet reads it — the same split as the 84/78
+figure, twice in one day. Marked in place with the pointer SCOPED to what survives vs what
+falls, per specs' method.
+
+**MY OWN SWEEP WAS ITSELF A FAILING-GREEN CHECK** and I ran the test on it before trusting it:
+a mistyped pattern prints "(none)", identical to a clean result. Positive control with a string
+known present returned FOUND; a nonsense string returned none. Control passed, so the sweep's
+negatives are readable.
+
+Also adopted from specs: my own "unwarranted until re-derived" turned back on me — its D-08
+numbers were unwarranted the moment the lib.rs method fell, not once someone recomputed them.
+
+Decision-Log: failing-green root adopted; second stale ledger entry marked; sweep positively controlled
