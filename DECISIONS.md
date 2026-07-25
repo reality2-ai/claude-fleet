@@ -1407,3 +1407,32 @@ contained it. Same shape as its range-terminator failure this morning. Resolved 
 window until it COULD disagree.
 
 Decision-Log: 32-hex reframed as guard not gap; widening must be by shape; commit messages are scanned
+
+## D-20260726-S23 — the infrastructure subset is a live finding, and a green covers labelled only
+
+My refusal to let the reductio launder the infrastructure subset found a real item. Specs measured
+it with controls: most IS cleared synthetic-by-construction (vendor default gateways, protocol
+defaults, doc examples, generic schematic names — constants identify no deployment). THREE GROUPS
+ARE NOT: two private subnets each carrying several specific hosts (lab-shaped, home/office-shaped)
+and a set of sequentially-named boards with rig-roster shape. No documented default among them.
+
+Deliberately NOT remediated, and the reason is one I would not have reached: A SCRUB WOULD DESTROY
+THE EVIDENCE needed to answer invented-versus-captured. Fail-closed treats them as real meanwhile.
+Four affected files are canonical specs, so edits are gated regardless. Dispatched the
+invented-versus-captured question to the hardware lanes; nothing captured gets allowlisted.
+
+**THIRD BLIND SPOT, VERIFIED BY ME:** a hostname of the form r2-<8hex>.local embeds a derived
+device identifier. Ran the pattern: mDNS form NO MATCH, same value as a labelled field MATCHES,
+negative control 0. The detector discriminates; the hostname form is structurally invisible.
+
+**THE LINE THAT MATTERS FLEET-WIDE:** this detector finds LABELLED identifiers and is blind to
+identifiers EMBEDDED IN A STRUCTURED NAME — dashed UUID, contiguous hex run (deliberate KAT
+guard), hostname. **A GREEN FROM THIS GATE IS EVIDENCE ABOUT LABELLED IDENTIFIERS ONLY.** That is
+the honest scope of every clean identity scan run to date and belongs wherever those are cited.
+
+Specs' fourth self-trip is the sharpest of the four: the bullet SAYING no literal values are
+recorded RECORDED ONE. Its precaution was "record no REAL values"; the gate flags identity-SHAPED
+literals regardless of provenance. **GUARDING A DIFFERENT PREDICATE FROM THE ONE THAT GOVERNS**,
+two bullets after writing the precaution.
+
+Decision-Log: infrastructure subset live; green-covers-labelled-only recorded; hardware lanes asked

@@ -129,12 +129,44 @@ Two precisions, both specs', both worth keeping:
   the rule *governs*, not with its own text. "Self-refuting" would have been the better line and
   a false one.
 
-**One genuine subset should not be laundered by that argument, so I am separating it.** Most of
-those 50 hosts are third-party documentation and plainly identify no R2 deployment. But a handful
-are different in kind: **a private-range IP address, an R2-owned service hostname, and a
-local-network device name.** Those are the class the infrastructure category actually means. The
-reductio does not clear them, and they are outside this gate's scope — flagged here so they are
-not silently absorbed into it.
+**One genuine subset should not be laundered by that argument, so I separated it** — and it
+turned out to be a live finding rather than a caveat. Most of those 50 hosts are third-party
+documentation and plainly identify no R2 deployment. But private-range addresses, service
+hostnames and local-network device names are the class the infrastructure category actually means,
+and the reductio does not clear them.
+
+Specs measured that subset, with controls. Most of it **is** cleared as synthetic-by-construction —
+vendor default gateways, protocol defaults, documentation examples, generic schematic names.
+Vendor and protocol constants identify no deployment. **Three groups are not cleared**, and all
+three have *the shape of capture rather than invention*: two private subnets each carrying several
+specific hosts (one lab-shaped, one home/office-shaped), and a set of sequentially-named boards
+with the shape of a rig roster. Not a documented default among them.
+
+**Whether those were invented or captured is answerable only by whoever ran the hardware**, and
+fail-closed treats them as real meanwhile. It has deliberately **not** been remediated, for a
+reason I would not have thought of: **a scrub would destroy the evidence needed to answer the
+question.** Four of the affected files are canonical specs, so edits are gated anyway. I have
+asked the hardware lanes the invented-versus-captured question; nothing gets allowlisted that
+turns out to have been captured.
+
+### The one line from all of this that belongs in front of you
+
+A third blind spot turned up in the same pass: a hostname of the form `r2-<8 hex>.local` embeds
+what is almost certainly a **derived device identifier** — and the gate cannot see it. I ran the
+pattern myself: the mDNS form returns **no match**, while the *same value written as a labelled
+field* matches, and a negative control returns nothing. So the detector discriminates fine; the
+hostname form is **structurally invisible** to it.
+
+That makes three, and they share one shape:
+
+> **This detector finds *labelled* identifiers. It is blind to identifiers *embedded in a
+> structured name*** — a dashed UUID, a contiguous hex run (deliberately, to protect test
+> vectors), and now a hostname.
+>
+> **A green from this gate is evidence about labelled identifiers only.**
+
+That sentence is the honest scope of every clean identity scan we have run, and it should sit
+wherever those scans are cited.
 
 **Stated honestly rather than claimed: canon does not adjudicate repository names either way.**
 This is the **absence of a category**, not an exemption written for them. If you want
