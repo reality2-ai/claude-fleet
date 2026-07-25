@@ -1349,3 +1349,33 @@ A proposed remedy needs an emitter exactly as a requirement does. I proposed one
 it had one; the lane that would execute it checked, and reported against its own interest.
 
 Decision-Log: route-to-clean qualified — allowlisting certifies a fragment; instrument held not fixed
+
+## D-20260726-S21 — the flat hostname reading is REFUTED, and one subset must not be laundered by it
+
+Specs turned my shown-step into evidence, canon-internal. I re-ran it wider with a nonsense-scheme
+negative control (0, so the matcher discriminates): across 234 tracked documents the specification
+corpus cites **87 URLs across 50 distinct public hostnames**, the public code host 15 times,
+alongside standards bodies, vendors, academic archives, news sites.
+
+**Under the flat reading of the infrastructure category, every one is a real value, and real
+values MUST NOT appear as a literal in any tracked file of any repo. The flat reading puts the
+specification corpus in violation of its own rule.** A reading that makes canon violate canon is
+refuted, not outvoted. Roy does not need to prefer the umbrella reading; he needs to see the
+alternative is unavailable.
+
+**TWO PRECISIONS, specs', kept because they are different claims:** this REFUTES the competitor,
+it does NOT PROVE the umbrella reading was intended — it leaves mine standing unopposed, which is
+enough to act on and is not positive proof. And R2-SECRETS.md ITSELF CITES NO URL (verified, 0),
+so this is a collision with the corpus the rule GOVERNS, not with its own text. "Self-refuting"
+would have been the better line and a false one.
+
+**ONE SUBSET I AM SEPARATING SO THE REDUCTIO DOES NOT LAUNDER IT:** most of the 50 hosts are
+third-party documentation and identify no R2 deployment. But a private-range IP address, an
+R2-owned service hostname and a local-network device name are different in kind — that IS the
+class the infrastructure category means. The reductio does not clear them. Outside g23's scope,
+flagged in the brief so they are not silently absorbed.
+
+My numbers are larger than specs' (87/50 vs 26/12) because I scanned all tracked markdown rather
+than a subset. Not a correction of its figure — a wider denominator, same conclusion a fortiori.
+
+Decision-Log: flat hostname reading refuted canon-internally; infrastructure subset flagged separately

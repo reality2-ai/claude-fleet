@@ -109,6 +109,33 @@ the difference is in the text rather than in convenience:
   this point *before* it could be turned against the accept it then supported, which is the
   reason the split holds.
 
+**And that step now has evidence behind it, of the strongest kind available — canon-internal.**
+Specs measured the specification corpus; I re-ran it wider and with a nonsense-scheme negative
+control that correctly returned nothing. Across 234 tracked documents: **87 URLs spanning 50
+distinct public hostnames**, the public code host appearing 15 times, alongside standards bodies,
+component vendors, academic archives and news sites.
+
+**Under the flat reading, every one of those is a real value — and real values must not appear as
+a literal in any tracked file of any repo. The flat reading puts the specification corpus in
+violation of its own rule.** That is not a competing interpretation to be weighed; it is a
+refuted one.
+
+Two precisions, both specs', both worth keeping:
+
+- **This refutes the competitor; it does not prove the umbrella reading was intended.** It leaves
+  that reading standing unopposed, which is enough to act on and is not the same as positive
+  proof. The weaker true statement beats the stronger convenient one.
+- **The rule file itself cites no URL** — I checked, zero. So this is a collision with the corpus
+  the rule *governs*, not with its own text. "Self-refuting" would have been the better line and
+  a false one.
+
+**One genuine subset should not be laundered by that argument, so I am separating it.** Most of
+those 50 hosts are third-party documentation and plainly identify no R2 deployment. But a handful
+are different in kind: **a private-range IP address, an R2-owned service hostname, and a
+local-network device name.** Those are the class the infrastructure category actually means. The
+reductio does not clear them, and they are outside this gate's scope — flagged here so they are
+not silently absorbed into it.
+
 **Stated honestly rather than claimed: canon does not adjudicate repository names either way.**
 This is the **absence of a category**, not an exemption written for them. If you want
 source-control structure in custody, that is a **canon addition**, not a reading of the present
