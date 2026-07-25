@@ -29,7 +29,7 @@ History needs your ruling: rewriting it means force-push, which I am forbidden.
 Your g15 dataplane fix landed in core's crate; the firmware builds from **its own vendored copy** and
 the new signal appears 10 times in core's and **0 times in the firmware's**. So the change is real,
 tested, ledgered — and does not reach metal. **Twice re-sized since I first wrote it:** three copies →
-nine (my scoping error) → **three clean classes** once core swept and classified. Not chaos: 3 in sync,
+nine, then **six whole-crate variants** once the comparison stopped hashing one file — and **three classes**. Not chaos: 3 in sync,
 3 deliberate (incl. an **explicit security pin** on the bench), 3 stale and none of them on the bench.
 **The bench is safe** — an unfixed copy cannot carry a join at all, which is the intended zero-hop
 state. Real gap is narrow: no working drift detector, no standing re-vendor obligation — and it
