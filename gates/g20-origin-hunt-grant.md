@@ -56,3 +56,51 @@ it confirms, the grant gets written against a much sharper question.
 ## Ruling syntax
 
 "gate 20: open the grant" / "gate 20: falsifier first" / "gate 20: hold"
+
+---
+
+## RULING (Roy, 2026-07-26): *"yes, open the new flash grant"*
+
+## FALSIFIER RESULT — CLEAN NEGATIVE. The leading hypothesis is OUT.
+
+I said the source falsifier should run first because it might change what the hunt asks
+for. **It did, and it eliminated my own conjecture.**
+
+Core ran it at the binary level on the sha-verified deployed image. Three legs:
+
+1. **`Cache_Suspend_ICache`, `Cache_Freeze` and the disable-cache symbols are ABSENT from
+   the image.** The only cache symbols present are `Cache_Suspend/Resume_DCache` — **data**
+   cache. The instruction cache is never suspended, so a cache-off instruction fetch
+   **cannot occur**.
+2. `Cache_Suspend_DCache` has exactly **one** caller: boot-time cache-mode configuration.
+   One-time, DCache-only, cannot cause an instruction-fetch fault.
+3. **`phy_enter_critical` contains no cache operation at all** — it disassembles to an
+   interrupt-level raise, a spinlock and a memory barrier. The cache stays **on**, so even a
+   function faulting inside a phy critical window fetches normally.
+
+**Cache-suspend does not go from leading to established. It is eliminated.** It was *my*
+conjecture, I argued it was stronger than the alternative, and core weighted it leading on
+my framing. The binary says no.
+
+**Residual, stated honestly by core:** opaque blobs performing direct cache-register writes
+with no linked symbol cannot be excluded by symbols alone. Unsupported, and phy is
+demonstrably cache-on — but not zero.
+
+## What the grant must now ask
+
+The hunt re-points to **data/pointer corruption** — of the coex `osi_funcs` and timer
+callback pointers, or of return/call targets. That is **the a0-versus-static-target seam**:
+the saved caller says the faulting function was entered from a direct call whose target is
+statically fixed, yet the fault landed elsewhere.
+
+**Not a fetch failure. A wrong-target-execution question.** The grant asks about pointer
+and target integrity, not cache windows — which is a different instrument and a different
+capture.
+
+## Standing rules carried into the hunt
+
+- Resolve every symbol from the image matching the flashed build; an address is
+  per-artifact, the property is not.
+- The lock symbol is a pointer, not the object — read the pointer, then dereference.
+- Two-leg grant eligibility: capture instrument present, then handler call-free within its
+  true extent.
