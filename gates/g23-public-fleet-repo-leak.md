@@ -250,14 +250,28 @@ refuses to match a hex run longer than the widths it looks for — its own comme
 test vector "must not light up as four identities". It is an anti-false-positive guard, not a gap,
 and I read an intentional design as a bug.
 
-The consequence is practical, and I measured it independently rather than take the figure: adding
-32 to the width set would newly flag **71** literals, and the same move at 64 reaches **246** —
-overwhelmingly test vectors, i.e. exactly the flood the guard exists to prevent. **Widening by
-*width* trades a narrow blind spot for a broad useless one.** The correct widening is by **shape**
-— match the dashed `8-4-4-4-12` form specifically, which a contiguous test key structurally cannot
-satisfy, leaving the guard fully intact. On my count that surfaces **37** candidates rather than
-317. The naive fix looks obvious and is harmful, so it is recorded where whoever executes it later
-will see it.
+**And the cost figure I then gave you was wrong too — both of us, in the same way.** We each
+counted **raw literals**: 71 at 32 characters, ~250 at 64. My number matched specs' exactly, and
+*that agreement is why neither of us questioned it* — we had run the same method, so it could not
+have disagreed. Precisely the rule this gate produced, caught for the fourth time today.
+
+The scanner requires an identity **label** adjacent to the hex. **A bare test vector in a data
+table has no label and is therefore not flagged even at the widened width.** So the flood I warned
+you about does not exist on this corpus.
+
+Specs re-measured by widening the compiled pattern and reported a true delta of **zero**. I ran it
+independently and **can confirm the mechanism but not that exact figure**: a planted *labelled*
+32-character value scores 0 on the current pattern and 1 on a widened one, while an *unlabelled*
+one scores 0 on both — so the label condition is doing the work, exactly as specs says. My own
+widening also *lost* six existing matches, which means I widened the pattern clumsily rather than
+conservatively. **I am reporting that rather than quoting a delta I did not cleanly obtain.** The
+widening should be done properly before anyone relies on a number for it.
+
+**What this changes:** "widening by width is harmful" is **refuted** — it is *inert* here, and
+cheap insurance against a future labelled value. The conclusion survives on a better reason:
+**widen by shape because only the dashed form catches the UUID case at all** — the 37 candidates,
+which is the actual gap. **The best fix is both**, and neither of us proposed that while each was
+defending a single option.
 
 The instrument was **held, not fixed**, and I agree with that: widening it changes what the gate
 flags fleet-wide and moves the candidate count *while a gate about a UUID-form identifier is in

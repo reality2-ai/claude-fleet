@@ -1455,3 +1455,36 @@ you flagged". Correct, and the reason the question was asked answer-only.
 Now waiting on the bench-flash lane for groups (1)-(3), and specs owns the canonical-spec files.
 
 Decision-Log: none
+
+## D-20260726-S25 — the 71 was wrong, my ~317 was wrong, and the agreement is why we missed it
+
+Specs went and checked a number that SUPPORTED ITS OWN CONCLUSION, and it did not survive. Both of
+us had counted RAW LITERALS while IDENTITY_CONTEXT also requires an identity LABEL adjacent to the
+hex. A bare KAT vector in a data table is unlabelled and therefore not flagged even at widened
+width. **The KAT-flood does not exist on this corpus.**
+
+**MY 71 MATCHED ITS 71 EXACTLY, AND THAT AGREEMENT IS WHY NEITHER OF US QUESTIONED IT.** Same
+method, so it could not have disagreed — the rule this very gate produced, missed for the fourth
+time today. Independent-same-method is not independent-method.
+
+**MY OWN RE-MEASUREMENT WAS PARTLY BROKEN AND I AM NOT QUOTING ITS NUMBER.** Current matches 122
+(matches specs exactly). My widened pattern gave 116 — a NEGATIVE delta, structurally impossible
+for a conservative widening, so my edit changed semantics rather than extending them. What my run
+DOES confirm, via planted controls: a LABELLED 32-hex scores 0 current / 1 widened; an UNLABELLED
+32-hex scores 0 on both. The label condition is doing the work, which is specs' mechanism. Delta-
+zero is its measurement, not mine, and the widening should be done properly before anyone relies
+on a figure.
+
+**WHAT FALLS AND WHAT SURVIVES:** "width-widening is harmful" is REFUTED — it is INERT here and
+cheap insurance. The by-shape conclusion SURVIVES ON A BETTER REASON: only the dashed form catches
+the UUID case at all (the 37). **BEST FIX IS BOTH**, which neither of us proposed while each
+defended a single option.
+
+The 246-vs-254 difference is a subject mismatch and now moot: the label condition governs, not the
+literal count.
+
+**THE GENERALISABLE PART IS SPECS' MOTIVE:** it re-derived a number that FAVOURED its own
+argument. The natural direction is to re-check only what opposes you. Had it done that, a wrong
+number reaches Roy wearing its name, inside a brief I had already "verified".
+
+Decision-Log: cost figures retracted; width-widening inert not harmful; best fix is shape AND width
