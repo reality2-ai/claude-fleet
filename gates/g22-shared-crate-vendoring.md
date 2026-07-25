@@ -19,15 +19,20 @@ wrong; the dependency graph simply does not connect them.
 
 The first version of this brief said three. That number came from **me**: I handed specs a
 named set of three trees and it verified exactly those three, rather than enumerating the
-class. Specs caught it and corrected itself before you ruled. A policy argued from "three"
-would have left **six copies outside its own blast radius**.
+class. A policy argued from "three" would have left **six copies outside its own blast
+radius**.
+
+Both lanes caught it and corrected themselves before you ruled. I recorded it as wholly my
+error; **specs declined the absolution** and asked for it to read as shared, on the grounds
+that it ran the search and owns its scope — it could have asked whether three was the
+population. That is the more useful version, so it stands as shared.
 
 Shared crates are **vendored per repository with no shared source**:
 
 | crate | copies | distinct contents |
 |---|---|---|
 | `r2-trust` | **nine** | **five** — one shared by three repos, one by two, three singletons |
-| `r2-dataplane` | **five** | only core's carries the g15 fix (join-carry: core 11, all four others 0) |
+| `r2-dataplane` | **five** | **four** — only core's carries the g15 fix (join-carry: core 11, all four others 0) |
 
 **The pairing is itself evidence, and it is good news.** Three pairs agree *exactly*. That
 looks like a handful of sync events, not nine independent forks — which probably makes the
@@ -44,17 +49,31 @@ re-enumerating rather than trusting the handed set, and reporting that it had un
 gate the same way I did. Its figures match specs': nine trust copies in five variants, five
 dataplane copies in four.
 
-## It is not nine-way chaos — it is three classes
+## It is not nine-way chaos — but the classes are **per crate, not per repo**
 
-| class | copies | state |
-|---|---|---|
-| **In sync, no action** | 3 | the core source, a forensic snapshot that matches *by design*, and one board's worktree |
-| **Deliberate vendor / deliberate pin** | 3 | one explicit vendor commit, zero unique lines, four behind. Two more are an **explicit security re-vendor pin** — the bench firmware is *intentionally* pinned, and its 57-commit gap **is the pin**, not drift |
-| **Stale, none on the bench** | 3 | two are May initial-commits; one is a March copy that has grown its own join-code content |
+Core's first classification was repo-keyed. Specs caught that this is false at the crate
+level, core re-verified and agreed, and **the corrected shape is a (repo × crate) matrix**:
+
+| class | state |
+|---|---|
+| **In sync** | the core source, plus copies that match canon on the trust crate |
+| **Deliberate vendor / deliberate pin** | one explicit vendor commit, zero unique lines, four behind. Two more are an **explicit security re-vendor pin** — the bench firmware is *intentionally* pinned, and its commit gap **is the pin**, not drift |
+| **Stale, none on the bench** | two May initial-commits; one March copy that has grown its own join-code content |
+
+**The trap, and it is a sharp one.** One repo re-vendored *both* crates on the same day. Its
+trust copy equals canon — but **only because canon's trust crate has not moved since**. Its
+dataplane copy, the crate that *did* move (it gained the g15 fix), is the pre-g15 pin. So:
+
+> **A content match on a crate that never changed is not evidence of sync.** It is evidence
+> of nothing having happened. A repo-keyed obligation would mark that repo *needs nothing*
+> while one of its crates sits at a distinct pre-g15 variant.
+
+This is why the obligation you rule must key on **(repo, crate, pinned-core-sha)**. Repo-level
+is not a coarser version of the right answer; it is the wrong answer.
 
 **The security-relevant copy — the one on the bench — is in the deliberate-pin class and is
-safe today.** Nothing to hot-fix. That is core's judgement after a full sweep, not an
-assumption.
+safe today.** Every non-core dataplane copy predates g15, so none of them can carry a join.
+Nothing to hot-fix.
 
 ## Two things that make it worse than ordinary drift
 
@@ -75,11 +94,11 @@ the vendor and re-vendor commits are real, deliberate and dated. Three things ar
 it, and core recommends supplying those rather than re-architecting:
 
 - **Fix the mechanism you already have** *(core's recommendation)*. Three parts: **(a)** a drift
-  detector that works — per-crate version bumps, or a content-hash manifest, since the version
-  string is dead; **(b)** a standing **re-vendor obligation** that carries the g15 dataplane fix
-  and the identity half to the bench pin at the next flash; **(c)** explicit *consumer* /
-  *sync-on-demand* labels on the three stale copies, so their lag is **known state rather than
-  something rediscovered**.
+  detector that works — **per-(repo, crate) content hash**, since the version string is dead on
+  every copy; **(b)** a standing **re-vendor obligation** keyed on **(repo, crate,
+  pinned-core-sha)** that carries the g15 dataplane fix and the identity half to the bench pin at
+  the next flash; **(c)** explicit *consumer* / *sync-on-demand* labels on the three stale copies,
+  so their lag is **known state rather than something rediscovered**.
 - **Path-dep the canonical crates.** Downstream points at the core lane's `crates/*`. Matches
   the stated principle and kills the class permanently — but it **dissolves the deliberate
   security pin**, which was chosen for a reason. Every downstream also inherits core's churn.

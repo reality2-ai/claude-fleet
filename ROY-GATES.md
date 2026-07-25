@@ -32,8 +32,10 @@ tested, ledgered — and does not reach metal. **Twice re-sized since I first wr
 nine (my scoping error) → **three clean classes** once core swept and classified. Not chaos: 3 in sync,
 3 deliberate (incl. an **explicit security pin** on the bench), 3 stale and none of them on the bench.
 **The bench is safe** — an unfixed copy cannot carry a join at all, which is the intended zero-hop
-state. Real gap is narrow: no working drift detector, no standing re-vendor obligation.
-**My lean flipped** — path-dep would dissolve that deliberate pin. Blocks the g15 identity half.
+state. Real gap is narrow: no working drift detector, no standing re-vendor obligation — and it
+must key on **(repo, crate, sha)**, because *a content match on a crate that never moved is not
+evidence of sync*. **My lean flipped** — path-dep would dissolve that deliberate pin.
+Blocks the g15 identity half.
 → `gate 22: fix the mechanism` / `path-dep canonical` / `accept the forks`
 
 

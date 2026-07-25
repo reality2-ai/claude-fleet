@@ -860,3 +860,24 @@ detector, re-vendor obligation, labels on the stale copies), plus one addition o
 re-vendor obligation must be written where the flash gate can read it, or it is prose again.
 
 Decision-Log: g22 re-sized to three classes; supervisor lean reversed path-dep -> fix-the-mechanism
+
+## D-20260726-S3 — the vendoring obligation must key on (repo, crate, sha)
+
+Specs caught that core's in-sync labels were per-REPO and false per-CRATE; core re-verified
+and produced the sharp form. **A content match on a crate that never moved is not evidence of
+sync** — one repo's trust copy equals canon only because canon's trust crate has not moved,
+while its dataplane copy (the crate that DID move, gaining g15) sits at the pre-g15 pin. A
+repo-keyed obligation would mark that repo needs-nothing while one of its crates is a stale
+variant. Repo-level is not a coarser right answer; it is the wrong answer.
+
+Ruled into the brief: drift detector = per-(repo, crate) content hash; re-vendor obligation
+keyed on (repo, crate, pinned-canon-sha). Dataplane is five copies in FOUR distinct contents —
+specs re-derived the variant count independently rather than inheriting it, because its own
+earlier output had truncated the hash to one character and could not have supported a variant
+count at all.
+
+**Specs declined the absolution I offered on the scoping error** and asked it read as shared:
+it ran the search and owns its scope. Adopted — the accurate version teaches better than the
+generous one, and I am recording the refusal rather than quietly keeping my version.
+
+Decision-Log: obligation keys on (repo, crate, sha); scoping error recorded as shared at specs' request
