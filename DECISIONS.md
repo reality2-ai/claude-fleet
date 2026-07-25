@@ -743,3 +743,71 @@ I must name the state it is permitted FROM, or a lane will reach for it in the o
 is refuted. Also: a constraint I wrote and four lanes transcribed is the single hardest kind of
 error to see, because every downstream copy reads as independent corroboration of it.
   Decision-Log: D-20260725-10
+
+## D-20260725-11 — correction to D-20260725-10: codex's original remedy was RIGHT and I over-restored
+Append-only correction, ~40 minutes after the entry it corrects. TWO errors of mine, one of them
+the more expensive kind because it RESTORED something to a permitted list.
+
+ERROR 1 — I CHECKED THE WRONG ARTIFACT AND CALLED A CORRECT CITATION REVERSED. Codex cited
+`reference-espflash-reset-usbjtag-hazard.md:23-29`. I read `esp32-flash-safety-block-recipe-preamble.md`
+in a DIFFERENT memory corpus, found the hazard framing, and declared codex's polarity backwards.
+The file codex named exists at
+`~/.claude/projects/-home-roycdavies-Development-R2-r2-composer/memory/` and says, verbatim:
+"⚠⚠ **Raw DTR/RTS pulse does NOT reset the ESP32-S3 NATIVE USB-JTAG** (confirmed 2026-07-24): a
+pyserial DTR-high + RTS-pulse (classic UART auto-reset) did NOT reboot D5 — the FIRE seq kept
+CLIMBING (194→328), no boot banner. The S3 USB-Serial-JTAG peripheral does not map DTR/RTS to
+CHIP_PU/GPIO0 like a USB-UART bridge does." Codex's citation was exact. Mine was a different file
+saying a different thing. **There is more than one memory corpus, so "I checked memory" does not
+identify what I checked** — cite corpus AND path, as codex did and I did not.
+
+ERROR 2, THE SUBSTANTIVE ONE — MY "PROVEN FROM A RUNNING APP" LEG DOES NOT SURVIVE THE MECHANISM.
+I rested it on the 07-25 14:37 event: DTR held 1, modem bits 0x26 to 0x26, uptime seq 93 → 15,
+board recovered, logger pid continuous. Re-examined against the mechanism above:
+  - **seq 93 → 15 proves a reboot happened. It does not prove the PULSE caused it.**
+  - The reset class observed on that boot was **rst:0x3 RTC_SW_SYS_RST / CoreSw — a SOFTWARE
+    reset**, which is what the fault handler emits, NOT what an EN toggle emits. The rst:0x15 that
+    would have evidenced an externally-driven reset was never observed; it was **inferred to be
+    inside the lost boot burst**, an inference made to preserve the hypothesis.
+  - `/tmp/d5-score.log` contains exactly THREE rst:0x15 banners, all at lines 32/251/356, all
+    early, and all accounted for at log:185 as flash + 2 manual — which PREDATE the first RTS-EN
+    attempt (log:185 still calls RTS-EN a "fallback" not yet used). **No rst:0x15 anywhere in the
+    corpus is attributable to a raw pulse.**
+  - "0x26 to 0x26" means the modem bits were UNCHANGED across the operation — if anything,
+    evidence the pulse left no trace on the lines.
+  - v8.7.3 gave us the base rate we lacked then: **the board self-resets via rst:0x3 CoreSw on
+    cadence, roughly every 600 log lines, four times in the last stretch alone.** A coincident
+    self-reset inside the 14:37 window is not a stretch; it is the expected behaviour.
+SO THE FULL EVIDENCE SET IS: 07-24 pyserial DTR+RTS = no reboot, cleanly observed, seq kept
+climbing. 07-25 14:37 = a reboot of the WRONG CLASS, better explained by the handler. 07-26
+post-write = no boot. **Raw RTS/DTR has NEVER been observed to reset this board, and there is no
+physical path by which it could: the S3 native USB-Serial-JTAG does not map those lines to
+CHIP_PU/GPIO0.** A mechanism argument beats three rounds of circumstantial log-reading, and it was
+available in the corpus the whole time.
+
+RULING, superseding D-20260725-10's permitted list: **RAW TTY RTS/EN IS REMOVED AS A RESET METHOD
+ENTIRELY** — not state-qualified, removed. It is not a reset from a running app, not a recovery
+from download mode, not a fallback. Permitted resets on D5: `espflash monitor` CTRL+R (real
+USB-JTAG reset-to-run, presents rst:0x15, proven) and Roy's physical button (proven). `espflash
+reset` stays FORBIDDEN. `espflash flash --after hard-reset` does reset correctly (observed
+CoreUsbUart) but is a flash operation requiring its own grant. D-20260725-10's state-qualification
+INSIGHT stands as a general rule; its application to this method was wrong because the method
+never belonged on the list.
+
+SIDE EFFECT — A CARRIED-FORWARD UNKNOWN RESOLVES, AND AN ORPHANED GROUND APPEARS. The "held-in-reset
+vs genuine ROM download mode" ambiguity carried in composer/RESUME.md:27-33 needs NEITHER hypothesis:
+if the pulse never resets, then `--after no-reset` simply left the board unbooted and nothing
+subsequently booted it, which fits every observation with no extra entity. Simplest account, not a
+proof — the discriminating line-state read remains owed before any future action, and NOTHING here
+authorizes one. Separately, `r2-core/DECISIONS.md:275-276` grounds a conclusion on "RTS-EN drives
+CHIP_PU ⇒ rst:0x15 USB-CDC re-enum blackout": **that ground is now false.** The CONCLUSION (a
+manual reset cannot capture its own boot decode) still holds for the resets that are real —
+CTRL+R and espflash-driven ones do present rst:0x15/CoreUsbUart and do flush the CDC — but core
+must re-ground it rather than inherit it. Enumeration run in the same turn per standing practice.
+
+LESSON, and it is the one I keep re-learning from the other side: **A WRONG RESTORATION IS THE
+EXPENSIVE DIRECTION.** Codex made a correct call; I declined it as over-broad on evidence I had
+not re-examined, and put a refuted method back on a permitted list in a landed decision, a memory
+file and four fleet messages. Had a grant been live, that is the artefact a lane would have acted
+from. **When a refuter says "remove", the burden is on the restorer, not the remover** — I should
+have had to prove the method works, not merely find its removal broad.
+  Decision-Log: D-20260725-11
