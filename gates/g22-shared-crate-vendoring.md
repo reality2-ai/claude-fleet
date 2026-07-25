@@ -39,10 +39,22 @@ Neither anthill nor r2-composer path-deps core's copy; both point at their own l
 **This contradicts the stated R2 map principle: core is sole-canonical, downstream never
 forks.** In practice downstream has forked, quietly, and the forks are already divergent.
 
-**Not every copy is a defect.** One firmware tree is a *forensic snapshot* by name and matches
-core exactly; another reads like a pinned experiment. Some variants are surely intentional.
-Which are by-design vs stale vs forked is core's classification, not specs' and not yours —
-specs deliberately supplied the denominator only.
+**Not every copy is a defect.** Core has since classified the class — independently
+re-enumerating rather than trusting the handed set, and reporting that it had under-sized the
+gate the same way I did. Its figures match specs': nine trust copies in five variants, five
+dataplane copies in four.
+
+## It is not nine-way chaos — it is three classes
+
+| class | copies | state |
+|---|---|---|
+| **In sync, no action** | 3 | the core source, a forensic snapshot that matches *by design*, and one board's worktree |
+| **Deliberate vendor / deliberate pin** | 3 | one explicit vendor commit, zero unique lines, four behind. Two more are an **explicit security re-vendor pin** — the bench firmware is *intentionally* pinned, and its 57-commit gap **is the pin**, not drift |
+| **Stale, none on the bench** | 3 | two are May initial-commits; one is a March copy that has grown its own join-code content |
+
+**The security-relevant copy — the one on the bench — is in the deliberate-pin class and is
+safe today.** Nothing to hot-fix. That is core's judgement after a full sweep, not an
+assumption.
 
 ## Two things that make it worse than ordinary drift
 
@@ -58,15 +70,22 @@ signal to tell you which**.
 
 ## The decision
 
-- **Path-dep the canonical crates.** Downstream points at the core lane's `crates/*`. Matches the
-  stated principle, kills the class permanently. Costs: cross-repo path dependencies, and
-  every downstream inherits core's churn.
-- **Define an explicit sync procedure.** Keep the copies, add a mechanical check that a copy
-  matches canon at a declared version — which means versions must actually move, since the
-  current signal conveys nothing.
+The classification changes what is actually on the table. **A sync mechanism already exists** —
+the vendor and re-vendor commits are real, deliberate and dated. Three things are missing from
+it, and core recommends supplying those rather than re-architecting:
+
+- **Fix the mechanism you already have** *(core's recommendation)*. Three parts: **(a)** a drift
+  detector that works — per-crate version bumps, or a content-hash manifest, since the version
+  string is dead; **(b)** a standing **re-vendor obligation** that carries the g15 dataplane fix
+  and the identity half to the bench pin at the next flash; **(c)** explicit *consumer* /
+  *sync-on-demand* labels on the three stale copies, so their lag is **known state rather than
+  something rediscovered**.
+- **Path-dep the canonical crates.** Downstream points at the core lane's `crates/*`. Matches
+  the stated principle and kills the class permanently — but it **dissolves the deliberate
+  security pin**, which was chosen for a reason. Every downstream also inherits core's churn.
 - **Accept the forks deliberately** — declare each an independent implementation with its own
-  owner, and stop calling core canonical for those crates. Honest, but it is a different
-  architecture from the one the map states.
+  owner, and stop calling core canonical for those crates. Honest, but a different architecture
+  from the one the map states.
 
 ## The bench is safe, and this is on the record before anyone reaches for it
 
@@ -89,12 +108,18 @@ decision, not housekeeping.**
 Note this is **not** fixed by merging branches. The copies live in different *repositories*;
 a branch merge carries nothing between them.
 
-## Supervisor lean
+## Supervisor lean — **revised, and I am saying why**
 
-**Path-dep the canonical crates for `r2-dataplane` first, then `r2-trust`.** The dataplane
-case is not hypothetical — it is already swallowing a ruling you made this morning. Trust can
-follow deliberately, since drifting a *trust* crate is the one with real consequences.
+**Fix the mechanism.** I previously leaned path-dep-the-canonical-crates, dataplane first. That
+lean was formed when the picture was "nine divergent copies with a dead version signal". Under
+the classification it is wrong: **path-dep would dissolve a deliberate security pin** that was
+chosen on purpose, and it would be me overriding a decision I had not known existed.
+
+What is actually broken is narrower — no drift detector, and no standing obligation to carry a
+landed fix to the pin at the next re-vendor. Both are supplyable without changing the
+architecture. The one thing I would add to core's three: **the re-vendor obligation should be
+written where the flash gate can see it**, or it is prose again.
 
 ## Ruling syntax
 
-"gate 22: path-dep canonical" / "gate 22: sync procedure" / "gate 22: accept the forks" / "gate 22: dataplane now, trust later"
+"gate 22: fix the mechanism" / "gate 22: path-dep canonical" / "gate 22: accept the forks"

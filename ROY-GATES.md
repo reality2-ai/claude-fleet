@@ -28,12 +28,13 @@ History needs your ruling: rewriting it means force-push, which I am forbidden.
 **[g22 — shared crates are vendored per-repo](gates/g22-shared-crate-vendoring.md)** · **a ruling is already lost to it**
 Your g15 dataplane fix landed in core's crate; the firmware builds from **its own vendored copy** and
 the new signal appears 10 times in core's and **0 times in the firmware's**. So the change is real,
-tested, ledgered — and does not reach metal. **Corrected since first written: `r2-trust` has NINE
-copies in FIVE variants, not three** — my scoping error, caught by specs before you ruled. Every copy
-declares the same version, which blinds the drift check. Contradicts core-is-sole-canonical. **The
-bench is safe** — an unfixed copy cannot carry a join at all, which is the intended zero-hop state.
-Blocks the g15 identity half; core correctly refuses to start it until you rule.
-→ `gate 22: path-dep canonical` / `sync procedure` / `accept the forks` / `dataplane now, trust later`
+tested, ledgered — and does not reach metal. **Twice re-sized since I first wrote it:** three copies →
+nine (my scoping error) → **three clean classes** once core swept and classified. Not chaos: 3 in sync,
+3 deliberate (incl. an **explicit security pin** on the bench), 3 stale and none of them on the bench.
+**The bench is safe** — an unfixed copy cannot carry a join at all, which is the intended zero-hop
+state. Real gap is narrow: no working drift detector, no standing re-vendor obligation.
+**My lean flipped** — path-dep would dissolve that deliberate pin. Blocks the g15 identity half.
+→ `gate 22: fix the mechanism` / `path-dep canonical` / `accept the forks`
 
 
 **[g21 — the dedup key](gates/g21-join-dedup-key.md)** · **much smaller than I first wrote**

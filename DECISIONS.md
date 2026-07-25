@@ -839,3 +839,24 @@ covered content generated for publication and never asked whether the notebook i
 published.**
 
 Decision-Log: g22 corrected (nine not three); g18 flash withheld pending debugger session; g23 opened
+
+## D-20260726-S2 — g22 re-sized a second time; supervisor lean reversed
+
+Core swept and classified the vendoring class independently (its D-20260726-07), and
+reported that it too had under-sized the gate by verifying the handed set instead of
+enumerating. Its counts match specs': trust nine copies / five variants, dataplane five / four.
+**Two lanes made the same scoping error on a set I supplied.** That is a supervisor defect,
+not two worker defects.
+
+**It is not nine-way chaos: 3 in sync, 3 deliberate, 3 stale and none on the bench.** The
+bench firmware sits in the deliberate class — an explicit security re-vendor pin — so its
+commit gap IS the pin, not drift.
+
+**Supervisor lean reversed, recorded rather than quietly swapped.** I had leaned path-dep the
+canonical crates. That lean was formed against "nine divergent copies"; under the
+classification it would dissolve a deliberate security pin chosen on purpose — me overriding a
+decision I did not know existed. New lean: fix the mechanism that already exists (drift
+detector, re-vendor obligation, labels on the stale copies), plus one addition of mine — the
+re-vendor obligation must be written where the flash gate can read it, or it is prose again.
+
+Decision-Log: g22 re-sized to three classes; supervisor lean reversed path-dep -> fix-the-mechanism
