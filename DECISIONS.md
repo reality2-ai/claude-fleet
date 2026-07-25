@@ -622,7 +622,8 @@ composer's pre-revocation duplicate zip b95f6ee6 quarantined to ~/duplicates/, c
 d51b5b86 staging untouched.
   Decision-Log: #d026
 
-## D-20260725-06 — supervisor classification: canon collision is Roy's, not a defect fix
+## D-20260725-09 — supervisor classification: canon collision is Roy's, not a defect fix
+*(RE-ID: this entry was first written as D-20260725-06 and collided with r2-specifications' own D-20260725-06, which is specs' §12.5 RULING — a different decision in a different ledger. Specs' -06 keeps the number: it is committed, pushed, and cited in the R2-WIRE v0.65 changelog and in messages to android. This younger, uncited entry moves. Every in-repo reference below to "D-20260725-06" means THIS entry, now -09; an unqualified D-20260725-06 elsewhere means specs' ruling.)*
 Specs found R2-WIRE §12.5 (Roy-GO 2026-07-13: sovereign join sends header byte 0x20, which
 decodes to type GROUP_MGMT with flags 000, i.e. R = 0) contradicting §9.5 (Roy-ratified
 2026-06-23: any R = 0 frame is non-conformant and MUST be dropped). Specs landed its
@@ -645,7 +646,7 @@ rendered as a verified claim — a real defect, narrow reach.
   Decision-Log: D-20260725-06
 
 ## D-20260725-07 — correction to D-20260725-06: android severity was overclaimed twice
-Append-only correction, not a rewrite. D-20260725-06 recorded the android route-less defect
+Append-only correction, not a rewrite. D-20260725-09 (formerly -06, see its re-ID note) recorded the android route-less defect
 as "a fabricated origin rendered as a verified claim — a real defect, narrow reach". THAT IS
 FALSE and I am striking it. Android verified firsthand (and android-codex independently
 reached it) that core-ffi/src/wire.rs:342-351 runs verify_compact() BEFORE
@@ -672,7 +673,7 @@ any decoder was exploitable.
   Decision-Log: D-20260725-07
 
 ## D-20260725-08 — specs' §12.5 ruling ACCEPTED; g14 converted from Roy-gate to Roy-note
-I ruled in D-20260725-06 that choosing between §9.5 and §12.5 was Roy's call and opened it as
+I ruled in D-20260725-09 (formerly -06) that choosing between §9.5 and §12.5 was Roy's call and opened it as
 gate g14. Specs then RULED AND LANDED it (R2-WIRE v0.65 @ 3e8d10a8, new normative §9.5.1:
 ROUTE-ORIGIN-1 binds the dedup-keyed types EVENT|REPLY|HEARTBEAT, GROUP_MGMT exempt),
 stating its authority basis plainly and inviting overrule. RULING: ACCEPTED, I was too
