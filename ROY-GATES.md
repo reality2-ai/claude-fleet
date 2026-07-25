@@ -12,10 +12,19 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**8 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**9 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
+
+**[g22 — shared crates are vendored per-repo](gates/g22-shared-crate-vendoring.md)** · **a ruling is already lost to it**
+Your g15 dataplane fix landed in core's crate; the firmware builds from **its own vendored copy** and
+the new signal appears 10 times in core's and **0 times in the firmware's**. So the change is real,
+tested, ledgered — and does not reach metal. `r2-trust` has **three** divergent copies, all declaring
+the same version, which blinds the drift check. Contradicts core-is-sole-canonical. Blocks the g15
+identity half; core correctly refuses to start it until you rule.
+→ `gate 22: path-dep canonical` / `sync procedure` / `accept the forks` / `dataplane now, trust later`
+
 
 **[g21 — the dedup key](gates/g21-join-dedup-key.md)** · **much smaller than I first wrote**
 You said check canon first, and canon had already ruled it: `GROUP_MGMT` dedups on `msg_id` alone,
