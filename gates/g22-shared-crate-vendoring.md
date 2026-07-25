@@ -1,6 +1,12 @@
 # Gate 22 — shared crates are vendored per-repo, and it already broke a ruling
 
-**Status:** 🔴 OPEN — **blocks the g15 identity half**; contradicts a stated R2 principle
+**Status:** ✅ RULED 2026-07-26 — **"gate 22: sync procedure — use versioning"** (Roy)
+
+> **The ruling.** Keep the vendored copies. Do not path-dep, do not declare the forks
+> independent. Add an explicit sync procedure, and make **versioning** the drift signal —
+> which means versions must actually move, since every copy currently declares the same one.
+> The g15 identity half is unblocked; it lands in canon and reaches consumers at the next
+> re-vendor.
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → *"read gates/g22 and the Cargo manifests it names"*
 
 ## The live consequence, first

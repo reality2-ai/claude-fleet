@@ -12,7 +12,7 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**5 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**4 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
@@ -44,20 +44,6 @@ pinned commit id**, ~48 files, stated in plain words as private. **That cannot b
 URL is load-bearing — so it needs its own answer: accept, vendor, or make the dep repo public.
 Lane-owned throughout, so **your ruling must be dispatched, not executed by me**.
 → `gate 23: stop publishing bookkeeping` / `make them private` / `scrub forward only` / `rewrite history`
-
-**[g22 — shared crates are vendored per-repo](gates/g22-shared-crate-vendoring.md)** · **a ruling is already lost to it**
-Your g15 dataplane fix landed in core's crate; the firmware builds from **its own vendored copy** and
-the new signal appears 10 times in core's and **0 times in the firmware's**. So the change is real,
-tested, ledgered — and does not reach metal. **Twice re-sized since I first wrote it:** three copies →
-nine, then **six whole-crate variants** once the comparison stopped hashing one file — and **three classes**. Not chaos: 3 in sync,
-3 deliberate (incl. an **explicit security pin** on the bench), 3 stale and none of them on the bench.
-**The bench is safe** — an unfixed copy cannot carry a join at all, which is the intended zero-hop
-state. Real gap is narrow: no working drift detector, no standing re-vendor obligation — and it
-must key on **(repo, crate, sha)**, because *a content match on a crate that never moved is not
-evidence of sync*. **My lean flipped** — path-dep would dissolve that deliberate pin.
-Blocks the g15 identity half.
-→ `gate 22: fix the mechanism` / `path-dep canonical` / `accept the forks`
-
 
 **[g21 — the dedup key](gates/g21-join-dedup-key.md)** · **much smaller than I first wrote**
 You said check canon first, and canon had already ruled it: `GROUP_MGMT` dedups on `msg_id` alone,
@@ -106,4 +92,5 @@ minutes. The capability cell stays honest either way.
 | 12 | openocd USB perms (Alfred) | JTAG read executed clean 07-25; the "lock held" reading from that dump was later REFUTED and is retracted | #d026 | — |
 | 14 | R=0 join frame — §9.5 vs §12.5 canon collision | CONVERTED to a note: specs RULED and landed it (R2-WIRE v0.65 §9.5.1 ROUTE-ORIGIN-1 binds EVENT/REPLY/HEARTBEAT, GROUP_MGMT exempt); supervisor accepted — I had been too conservative, it decides which of two blessed clauses governs, not new ground | D-20260725-08 | — |
 | 18 | D4/X1 have no fault-capture instrument | **rebuild now** (Roy 2026-07-26) — EXECUTED: both variants built and attested, two-leg eligibility PASS on both, positive+negative controls run. **No flash taken**; flash held by supervisor until the D5 debugger session closes (one grant at a time). Note the rebuild does **not** carry the g15 join fix — different branch, and g18 was forensics, not join | — | [g18](gates/g18-sibling-artifact-rebuild.md) |
+| 22 | Shared crates vendored per-repo | **sync procedure — use versioning** (Roy 2026-07-26): keep the copies, no path-dep, no declared forks. Versions must MOVE so the gap carries signal. Obligation keys on (repo, crate, pinned-canon-sha); content hash stays as the verifier that a bump was not forgotten. Bench safe throughout — an unfixed copy cannot carry a join. g15 identity half UNBLOCKED; reaches metal at next re-vendor, not by hot-fix | D-20260726-S29 | [g22](gates/g22-shared-crate-vendoring.md) |
 | 15 | Join relay — may a sovereign JOIN traverse the mesh? | **RELAY PERMITTED; NO HOP BUDGET** (Roy 2026-07-26): intended case is **ZERO hops — direct connection**, physical presence; relay allowed when needed under the same single-hop rule (worked example: a UDP hive) = **at most one** intermediary. Lanes' NO was against mesh FLOODING and survives intact. Origin-less drop needs a join exception; hop semantics 0 direct / ≤1 relayed; 5 is boilerplate. **Dedup key NOT settled — g21** | — | [g15](gates/g15-join-relay.md) |

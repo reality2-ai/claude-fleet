@@ -1576,3 +1576,31 @@ hypothesis including ones not yet formed. And the header note's mandatory supers
 its own merit: compare the per-file SET, never the total.
 
 Decision-Log: 116 closed — dropped IGNORECASE on recompile; width insertion exonerated
+
+## D-20260726-S29 — RULING g22: sync procedure, use versioning
+
+**Roy 2026-07-26: "gate 22: sync procedure - use versioning".** Keep the vendored copies. NOT
+path-dep-canonical, NOT accept-the-forks. Add an explicit sync procedure with VERSIONING as the
+drift signal.
+
+**What this settles, in the terms the lanes established:**
+- The nine trust copies / six variants and five dataplane copies / four STAY. The deliberate
+  security pin on the bench is preserved — this ruling is compatible with it, and a pin expressed
+  as a VERSION is more legible than a pin expressed as a raw sha.
+- Versions MUST MOVE. Every copy currently declares 0.1.0 while being six different
+  implementations, so the version gap conveys nothing today. Making it convey something is the
+  work.
+- The obligation still keys on **(repo, crate, pinned-canon-sha)** — repo-level was refuted, and a
+  content match on a crate that never moved is not evidence of sync.
+
+**ONE THING I AM STATING RATHER THAN ASSUMING, non-blocking:** a version gap is only as good as the
+discipline of bumping, so it FAILS OPEN if someone forgets. My reading of the ruling is
+**version = the declared contract (primary signal, human-legible), content hash = the verifier
+that a bump was not forgotten**. If Roy meant versioning INSTEAD of hashing, the detector fails
+open and I will say so again. Proceeding on the both reading.
+
+**UNBLOCKED BY THIS RULING:** the g15 identity half. Core was holding correctly. It lands in canon
+and reaches consumers at the NEXT RE-VENDOR — still no bench hot-fix, and no flash is authorised by
+this ruling.
+
+Decision-Log: g22 RULED — sync procedure with versioning; identity half unblocked; no flash implied
