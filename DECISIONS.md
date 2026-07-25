@@ -1517,3 +1517,33 @@ Both lanes independently confirmed the blind-spot class: a bare SSID, hostname o
 carries no identity LABEL, so a labelled-identifier scanner cannot see any of this.
 
 Decision-Log: captured home-network exposure confirmed live in a public repo; enumerate/scrub await Roy
+
+## D-20260726-S27 — my 116 diagnosed to the span, cause NOT guessed
+
+Specs did the widening properly and verified the SUPERSET PROPERTY per-file — 0 lost, 0 gained,
+122/122 — which is the right test: a total can coincide by luck, a superset check cannot. With its
+planted control already on record, delta-zero is a property of THE CORPUS, not of a broken edit.
+The mechanism call stands and now has an instrument behind it.
+
+**I diagnosed my own 116 to the exact spans rather than leave it.** All six lost spans carry the
+SAME LABEL (RBID), across six files. **Specs' hypothesis — that my edit dropped the 4-hex
+0x-prefixed alternative — is REFUTED, and so is my own follow-up hypothesis:** I built a second,
+surgical widening that touches only the bare-value group, and IT LOSES THE SAME SIX SPANS. So the
+cause is not the double-replacement of `{16}` (which does occur — the string appears twice) and it
+is not that specific alternative.
+
+**I am not naming a cause.** Two hypotheses have now been killed by measurement, and specs
+declined to guess a third for the same reason. What is established: inserting a width alternative
+into the bare-value group is NOT equivalent to whatever specs' widening does, and the RBID label
+path is sensitive to it. That is a real datum for whoever implements the fix — **a widening can
+look conservative and silently lose spans, so the superset check is mandatory, not optional.**
+
+Incidental from specs, worth having: THE 12-HEX WIDTH MATCHES NOTHING on today's tree. Added
+2026-07-19 for 48-bit ids, inert. Not a defect — but any future claim that it COVERS something
+needs its own evidence, same as any other green.
+
+Two framings kept as a pair: **RE-DERIVE THE NUMBERS THAT FAVOUR YOU** (the ones that oppose you
+already get checked), and **INDEPENDENT-SAME-METHOD IS NOT INDEPENDENT-METHOD** — agreement
+between two lanes running the same query is one measurement reported twice.
+
+Decision-Log: none
