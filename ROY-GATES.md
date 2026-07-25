@@ -93,4 +93,4 @@ minutes. The capability cell stays honest either way.
 | 9 | D5 USB replug | replugged 07-24 06:2x; "sleeping tuxedo" = wrong-host artifact (dead node `tuxedo` vs live `tuxedo-os`); suspend/powersave asks withdrawn | #d026 | — |
 | 10 | v8 OTA radio quiesce | blessed as shaped 07-24 (relay-island dark + collectors-astray accepted); v8 build GO | #d026 | — |
 | 11 | D5 replug / bench USB | closed 07-24 22:5x — tuxedo uplink cable bad (data lines); boards moved to Alfred, all 3 stable; v8.3 cycle firing | #d026 | — |
-| 12 | openocd USB perms (Alfred) | JTAG read executed clean 07-25; the "lock held" reading from that dump was later REFUTED and is retracted | #d026 | [g12](gates/g12-openocd-usb-perms.md) |
+| 12 | openocd USB perms (Alfred) | JTAG read executed clean 07-25; the "lock held" reading from that dump was later REFUTED and is retracted | #d026 | — |
