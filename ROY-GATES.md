@@ -13,82 +13,65 @@ syntax is at the bottom of every brief.
 
 ---
 
-## g15 — may a join request be relayed? (real, canon + security)
-Specs found this by running an audit on its own fix, and it's the one place today where
-the *obviously correct next step* is the dangerous one.
+## g15 — may a join request be relayed? (real, canon + security) — THREE LANES AGREE: NO
+I asked core, android and specs the same question separately, told none of them to
+coordinate, and told core and android not to read specs' reasoning first. **All three said
+no — from three different grounds.** Two of them also found the same second problem
+independently. Detail below, but the headline is that this converged rather than deferred.
 
-Two specs now disagree about the same frame. R2-WIRE says a join request must be accepted
-even though it carries no origin (that's the ruling in g14). R2-ROUTE says, unconditionally,
-that any frame with no origin must be dropped and never relayed. So one document says
-accept, the other says drop.
+**Two specs currently contradict each other about the same frame.** The wire spec says a
+join must be accepted even though it carries no origin; the routing spec says any frame
+with no origin must be dropped and never forwarded. The same unconditional drop also sits
+in core's live dataplane. All three are frozen.
 
-The frame itself asks to travel: the shipping join sets a hop limit of **5**, not 1.
+### The strongest argument, and it needs no proximity claim
+**Origin-less plus relayable equals unmeterable.** The only rate-limiting primitive canon
+has is a per-origin broadcast quota — it keys on origin. A join frame has no origin. So a
+non-member could emit an unauthenticated frame that traverses five hops and *cannot be
+quota-limited by any relay*, because the one metering tool available needs exactly the
+field the exemption removes. This is canon-derived and survived every counter-argument the
+lanes could mount.
 
-**Why this needs you rather than a lane.** Today, joins don't get relayed — but only
-because R2-ROUTE drops them *for the wrong reason* (missing origin, not "joins shouldn't
-travel"). The natural next fix is to make R2-ROUTE honour the new exemption. Do that, and
-joins become relayable across five hops, and a proximity assumption nobody ever wrote down
-disappears silently. R2-PROVISION justifies trust-on-presentation *by* physical proximity
-and selects short-range transports to enforce it; relaying a join through untrusted
-intermediaries weakens exactly that. The guarantee is currently an accident.
+Android reached the same place from the other side: **a relay cannot authorise a join even
+in principle.** No verifiable origin, no outer authentication, and the signing key is
+carried *inside* the frame — so anyone can mint a validly-signed join. A relay has nothing
+it can check that separates a real joiner from an attacker, and by definition the sender
+isn't a member yet. Forwarding means every node relays attacker-mintable, unattributable
+frames with a hop budget.
 
-**Specs' recommendation:** say the no-relay rule out loud — a join is one hop, hop limit
-should be 1, and a relay must not forward that frame type. That makes the two specs
-consistent and puts the guarantee on an intended rule instead of a coincidence. If you'd
-rather joins *were* relayable, then R2-ROUTE needs the carve-out and the proximity
-argument needs restating honestly.
+### The best case FOR relaying, and why it collapsed
+The frame sets a hop limit of **5**, not 1 — which looks like the designers provisioning
+joins to travel. That was the one datum troubling both specs and core, and neither would
+dismiss it. **Android dissolved it from its own code:** the value is documented there as
+*nominal*, pinned only to match a shipped test vector, because the transport it was written
+for is single-hop anyway. Meanwhile the field that genuinely controls propagation is set to
+its minimum — the frame's own routing parameters say *don't spray*.
 
-**It is three places, not one — including live code.** Since I wrote this, the lanes
-found the same unconditional drop in the routing spec, in the wire spec, and in core's
-actual dataplane, where the ingest path drops any frame without an origin and a comment
-three lines below asserts the very rule that just stopped being true. All three are
-frozen. At every one of them, the obvious conformance fix is the harmful one: honour the
-new exemption at any single site and joins silently gain access to the mesh path.
+### What you should know before ruling
+**Specs weakened its own case, unprompted.** It had told me proximity justifies
+trust-on-presentation. On re-reading, that clause covers only auto-pairing — the mode with
+no cryptographic ceremony — and elsewhere canon *explicitly* admits joins with no physical
+adjacency at all. Its position didn't change; its grounds and confidence did. Its words:
+do not present this as specs being confident on proximity.
 
-A practical consequence worth knowing: a related dedup fix specs already landed is
-**dead code until you rule** — the new key only applies to frames that currently never
-get that far. Landing it first would look like progress and change nothing.
+**So this is a new call, not you ratifying your own prior rulings.** Specs volunteered that
+distinction, which is exactly what I'd asked it to separate. What's canon-derived: the
+textual conflict, the hop limit value, the cryptographic trust chain, and that canon admits
+non-proximate joins. What's judgement: whether relaying is a meaningful threat increase,
+and whether a guarantee we currently get by accident is worth preserving deliberately.
 
-I've told the fleet: **nobody "fixes" any of the three until you rule.** It's the natural
-inference and it's the harmful one.
+**Two lanes independently flagged a coupling — please rule both together.** The dedup key
+for these frames is currently a single global identifier, which is safe *only* because
+joins aren't flooded. Rule them relayable without fixing that, and it becomes trivially
+collidable the moment the first join travels. Whichever way you go, the key and the relay
+question have to move in the same ruling.
 
-## g14 — RULED under delegation, not waiting on you (canon) — overrule if you disagree
-I first put this to you as a decision: two things you blessed three weeks apart contradict
-each other. §9.5 (you ratified 2026-06-23) says a frame with no carried origin must always
-be dropped. §12.5 (you GO'd 2026-07-13) specifies the sovereign join as header byte `0x20`,
-which decodes to a GROUP_MGMT frame with no origin — the thing §9.5 forbids.
+**The honest alternative nobody is pushing:** two lanes noted a modest spec change — a
+defined return path for a relayed join, plus a properly namespaced dedup key — could make
+"yes" safe. So this may be less *is it allowed* than *what would have to change first*.
 
-**Specs ruled it and landed it** (R2-WIRE §9.5.1, now at v0.67): the drop rule binds
-EVENT, REPLY, HEARTBEAT and CAPABILITY, and GROUP_MGMT is the one exempt type. I accepted
-its authority to do so and I think it was right, so this is now a note rather than a gate.
-
-**The argument that decided it — corrected after you refuted the first version.** You asked
-whether a new hive doesn't already have an identity, and that question killed the original
-reasoning, which claimed a joiner had nothing to stamp *by construction*. It does: the
-invitation carries the group public key (which doubles as the group's identifier — not
-any secret material), and the derivation is a pure function, so the joiner can compute
-the value perfectly well. What it cannot do is make that value mean anything —
-nobody else can verify it without the joiner's private master secret, so the stamp would
-carry no attributional weight at all. It would also put a stable per-device-per-group
-pseudonym in the clear, allowing correlation across sessions and retroactive
-de-anonymisation once membership is learned elsewhere. Note that this is *linkability*, not
-disclosure: the value is a one-way derivation and does not reveal which group is being
-joined — an earlier version of this note overstated that too. And the anti-duplicate
-reasoning behind §9.5 doesn't reach joins at all: they're signed with a sequence and
-timestamp, and travel point-to-point rather than flooding.
-
-Your one-sentence question forced both of those corrections into the spec (v0.66) within
-minutes. This paragraph was the last place the refuted version was still standing.
-
-**If you read the delegation more narrowly than we did, say so and it reverts in one commit**
-(ledger D-20260725-08 in claude-fleet, specs' own entry D-20260725-06).
-
-One thing worth your attention regardless: this surfaced because specs told android to drop
-route-less frames of *every* type, android complied over an automated reviewer that had
-correctly said "hold, there's an unaddressed clause here", and only then did specs find
-§12.5. Specs owned that publicly and issued the correction I've adopted fleet-wide — a lane
-owning a ruling doesn't make its newest message beat better evidence; a peer citing a clause
-your answer doesn't address is a falsifier, and the right move is to hold and ask.
+Recommendation from all three: **no relay — a join is one hop.** Say it explicitly rather
+than leaving it to a drop that happens for an unrelated reason.
 
 ## g8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path (small, physical/network)
 The phone UDP metal test is DONE except the last hop: phone sends the probe correctly,
