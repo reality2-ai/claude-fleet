@@ -21,10 +21,11 @@ argument, the options and the ruling syntax.
 **No keys, no MACs, no personas — now checked on all five, not just this one.** What is exposed is
 structure: **~20 private-repo-name mentions and ~360 commit-id-shaped tokens**, including in the
 repo that serves the org's public website. One thing needs your eye: a **trust-group identifier**
-appears in two of the ledgers — not a key, but a *chosen* identifier. **I first scoped this gate to
-the repo I was standing in, then miscounted five repos as six while widening it.** Four are
-lane-owned, so **your ruling must be dispatched, not executed by me**. Rewriting history needs a
-force-push, which I am forbidden.
+appears in two of the ledgers — not a key, but a *chosen* identifier. **And the bigger half is not
+prose at all:** **seven of ten public repos declare a git dependency on a private repo URL with a
+pinned commit id**, ~48 files, stated in plain words as private. **That cannot be scrubbed** — the
+URL is load-bearing — so it needs its own answer: accept, vendor, or make the dep repo public.
+Lane-owned throughout, so **your ruling must be dispatched, not executed by me**.
 → `gate 23: stop publishing bookkeeping` / `make them private` / `scrub forward only` / `rewrite history`
 
 **[g22 — shared crates are vendored per-repo](gates/g22-shared-crate-vendoring.md)** · **a ruling is already lost to it**

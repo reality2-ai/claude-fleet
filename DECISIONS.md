@@ -1225,3 +1225,31 @@ Specs' framing adopted: the website repo is the one to look at first — whateve
 worth on a fleet-tooling repo it is worth more on the org front door.
 
 Decision-Log: g23 corrected to five repos; security classes checked on all five; TG identifier raised
+
+## D-20260726-S17 — g23's real half is build metadata, and it cannot be scrubbed
+
+Specs found it; I verified and then found it WIDER than either of us had. A public repo's
+Cargo.toml declares dependencies by FULL PRIVATE-REPO URL with pinned 40-char commit ids (13 such
+lines in one file), and its cargo config states in words that the remote is private. Asked how
+many public repos do this: **SEVEN OF TEN, ~48 files.** Controls both behaved.
+
+**This defeats one of the options.** Scrub-forward-only is not merely weakest, it is INCOMPLETE:
+it covers prose and cannot touch build metadata. That half needs accept / vendor / make-public.
+My lean: ACCEPT AND STOP PRETENDING OTHERWISE.
+
+**It also reframes the gate.** Prose mentions are an accident of bookkeeping. A dependency
+declaration is a deliberate, structural, machine-readable statement that a private repo exists at
+a specific address and that this public code builds from a specific commit of it.
+
+**ON THE 3-vs-5 DISCREPANCY: neither is a correction of the other.** Five public repos carry a
+file NAMED like lane bookkeeping; three of those also CONTAIN private repo names. Different
+subjects, both true — the subject-mismatch tell applied before adjudicating, which is the first
+time today I used it prospectively rather than in hindsight.
+
+Specs retracted two of its own attempts before they reached me: one over-alarmed at ~1400 (the
+private repo names are ALSO ordinary crate names, so most hits were dependency paths), and a
+narrower one FAILED ITS POSITIVE CONTROL — zero on the repo this gate was opened on, because it
+demanded org-qualified forms while ledgers name repos as BARE PROSE TOKENS. Matched the topic,
+not the encoding.
+
+Decision-Log: build-metadata subclass raised; scrub-forward ruled incomplete; 3-vs-5 is subject mismatch

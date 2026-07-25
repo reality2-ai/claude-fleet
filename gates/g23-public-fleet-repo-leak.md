@@ -60,6 +60,41 @@ here are from corrected runs with read-failure negative controls.
 commit-id-shaped tokens, and the key/MAC/persona classes named above — on the ledger and snapshot
 files only. It is **zero evidence** about any other file in those repositories.
 
+## THE SUBCLASS THAT CHANGES THE MENU — build metadata, and it cannot be scrubbed
+
+Specs found it and I verified it, then found it is **wider than either of us had it**.
+
+A public repository's `Cargo.toml` declares its dependencies with the **full URL of a private
+repository** and a **pinned 40-character commit id** — thirteen such lines in one file alone —
+and its cargo config states in plain words that the remote is private and explains the
+credential arrangement used to fetch it.
+
+I then asked how many public repos do this. **Seven of the ten**, across roughly **48 files**.
+Positive and negative controls both behaved.
+
+**This is a different problem from everything above, and it defeats one of the options.** The
+prose bookkeeping can be scrubbed; **this cannot** — the URL is load-bearing, the build fetches
+through it. So *scrub forward only* is not merely cheapest-and-weakest, it is **incomplete**: it
+covers prose and does not touch build metadata at all. That needs its own answer — accept it,
+vendor the dependency, or make the dependency repo public.
+
+It also reframes the whole gate. Prose mentions are an accident of bookkeeping. **A dependency
+declaration is a deliberate, structural, machine-readable statement that a private repository
+exists at a specific address and that this public code is built from a specific commit of it.**
+
+### On the count, since specs and I reported different numbers
+
+Specs said three repos, I said five. **Neither is a correction of the other** — they are answers
+to different questions. Five public repos carry a file *named* like lane bookkeeping; three of
+those five also *contain* private repo names. Both true, different subjects. Worth stating
+because the reflex was to adjudicate.
+
+Specs also retracted two of its own attempts before they reached me: one scan over-alarmed at
+~1400 hits (the private repo names are also ordinary crate names, so most hits were dependency
+paths), and a narrower one **failed its positive control** — it returned zero on the very repo
+this gate was opened on, because it demanded org-qualified forms while the ledger names repos as
+**bare prose tokens**. Matching the topic rather than the encoding, again.
+
 ## What this is, and what it is not
 
 **Not** a credential leak. **I have now checked all five rather than just this one**, because my
@@ -107,8 +142,9 @@ until you rule.
 - **Make the repos private.** Closes the class immediately, needs no rewrite. But it now means
   *five* repositories, one of which serves the public website and plainly cannot go private —
   so this option no longer covers the whole class on its own.
-- **Scrub forward only, accept the history.** Cheapest. The existing exposure stays
-  readable; only new material is clean. Defensible if the exposure is judged low-value.
+- **Scrub forward only, accept the history.** Cheapest. The existing exposure stays readable;
+  only new material is clean. **Now known to be incomplete** — it cannot touch the build
+  metadata, which is the structural half.
 - **Rewrite the branch history and force-push.** Removes it from the default view. Does not
   remove it from forks, clones, or anything already cached. **Force-push is currently
   forbidden to me**, so this needs your explicit lift.
@@ -125,8 +161,14 @@ not close it either — these repos are *where the fleet writes things down*, so
 recurs the next time any lane cites a path. I would not rewrite history: it buys little against
 forks and caches, and force-push carries its own risk.
 
-**Whatever you rule, it has to be dispatched** — four of the five are lane-owned and I do not
-write to lane repos.
+**The build-metadata half needs a separate answer from you**, since no amount of scrubbing
+reaches it: accept it as the cost of a private core with public consumers, vendor the dependency,
+or make the dependency repo public. My lean is **accept and stop pretending otherwise** — seven
+public repos build from it, the arrangement is deliberate, and the alternative is either a large
+vendoring change or a visibility decision far bigger than this gate.
+
+**Whatever you rule, it has to be dispatched** — four of the five bookkeeping repos and all seven
+of the build-metadata repos are lane-owned, and I do not write to lane repos.
 
 ## Ruling syntax
 
