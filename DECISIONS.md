@@ -1253,3 +1253,34 @@ demanded org-qualified forms while ledgers name repos as BARE PROSE TOKENS. Matc
 not the encoding.
 
 Decision-Log: build-metadata subclass raised; scrub-forward ruled incomplete; 3-vs-5 is subject mismatch
+
+## D-20260726-S18 — I asked Roy the wrong question on the TG identifier; canon already governs it
+
+**I put the trust-group identifier to Roy as a CHOSEN-VERSUS-DERIVED judgement call. Canon does
+not draw that distinction, and I did not check canon before framing the question** — after
+banking "check canon before ruling" as standing method. Specs cited it; I read the clauses
+directly rather than relay:
+
+- Trust-group identifiers are NAMED in the custody set when from a real persona/board.
+- Governing test: real if "CHOSEN FROM, OR DERIVED FROM, real hardware/persona/deployment";
+  synthetic only if provably synthetic-by-construction. **CHOSEN IS ON THE REAL SIDE.**
+- "Prior public exposure does not make a value synthetic" — forecloses the already-out-there
+  argument in advance.
+- FAIL-CLOSED: unconfirmed provenance is treated as REAL until certified.
+
+**VERIFIED MYSELF: the identifier is NOT in the synthetic-fixture allowlist** (33 entries;
+positive control on a known entry passed). So it is treated as real, and real values MUST NOT
+appear as a literal in ANY TRACKED FILE OF ANY REPO.
+
+**CONSEQUENCE THAT BREAKS AN OPTION: making the repos private does not remediate this item.** The
+requirement says any repo, not any public repo. A private repo tracking it is the same violation.
+
+Route to clean is an ACTION not a judgement: if it is the bench/demo group it is certifiable
+synthetic-by-construction and belongs in the allowlist; if it identifies a real deployment it does
+not. Question of WHICH group, answerable by its owner.
+
+Specs also reports its own repo uncertified under the same clause (44 identity + 2 MAC + 355
+credential candidates unresolved, report-only) and explicitly does not claim clean. Correct
+posture under fail-closed.
+
+Decision-Log: TG-identifier question re-framed to canon's test; private-does-not-remediate recorded

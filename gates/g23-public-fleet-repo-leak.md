@@ -107,10 +107,34 @@ are ELF and image digests, quoted beside their byte sizes; the one key-flavoured
 *policy* discussion recording that a raw signing key never reaches a filesystem), and **no
 personas**.
 
-**One thing does surface, and it is a different class from anything in this gate so far:** a
-**trust-group identifier** appears in two of the public ledgers. It is not a key and not derived
-from one — but it is a *chosen* identifier of a real trust group, and the chosen-versus-derived
-distinction is yours, so I am putting it in front of you rather than filing it as clean.
+**One thing does surface, and canon already governs it — I asked you the wrong question about
+it.** A **trust-group identifier** appears in two of the public ledgers. I put it to you as a
+*chosen-versus-derived* judgement call. **It is neither a judgement call nor that distinction.**
+Specs cited the secrets canon; I read the clauses myself and they say:
+
+- Trust-group identifiers are **named in the custody set**, when they come from a real
+  persona or board.
+- The governing test is **real-provenance versus synthetic-by-construction**, and a value is real
+  if it was *"chosen from, **or** derived from, real hardware/persona/deployment"*. **Chosen is on
+  the real side.** My framing offered you a distinction canon does not draw.
+- **"Prior public exposure does not make a value synthetic"** — which forecloses in advance the
+  *it is already out there* argument this gate would otherwise attract.
+- **Fail-closed:** a value whose provenance is *unconfirmed* is **treated as real until
+  certified**. So the burden runs the other way from how I presented it.
+
+I checked the synthetic-fixture allowlist: **this identifier is not in it.** Under the
+fail-closed clause it is therefore treated as real, and real values **must not appear as a
+literal in any tracked file of any repo**.
+
+**Two consequences, and the first breaks an option outright:**
+
+1. **Making the repos private does not remediate this item.** The requirement says *any repo*,
+   not *any public repo* — a private repo tracking it is the same violation. Option one fixes the
+   other classes and leaves this one standing.
+2. **The route to clean is an action, not a judgement.** If that trust group is the bench/demo
+   group, it is certifiable synthetic-by-construction and belongs in the allowlist. If it
+   identifies a real deployment, it does not. **That is a question of *which* group, answerable
+   by its owner — and it is the entire decision.**
 
 **Is** internal structure: which private repositories exist, one private branch name, and
 enough commit ids to fingerprint development history. On its own each is small; together
@@ -139,9 +163,10 @@ until you rule.
 
 ## The decision
 
-- **Make the repos private.** Closes the class immediately, needs no rewrite. But it now means
-  *five* repositories, one of which serves the public website and plainly cannot go private —
-  so this option no longer covers the whole class on its own.
+- **Make the repos private.** Needs no rewrite. But it now covers **less than half the gate**:
+  one of the five serves the public website and cannot go private; the build metadata is
+  unaffected; and per the secrets canon a private repo tracking a real identifier is **the same
+  violation** as a public one.
 - **Scrub forward only, accept the history.** Cheapest. The existing exposure stays readable;
   only new material is clean. **Now known to be incomplete** — it cannot touch the build
   metadata, which is the structural half.

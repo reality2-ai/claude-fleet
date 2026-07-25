@@ -21,7 +21,11 @@ argument, the options and the ruling syntax.
 **No keys, no MACs, no personas — now checked on all five, not just this one.** What is exposed is
 structure: **~20 private-repo-name mentions and ~360 commit-id-shaped tokens**, including in the
 repo that serves the org's public website. One thing needs your eye: a **trust-group identifier**
-appears in two of the ledgers — not a key, but a *chosen* identifier. **And the bigger half is not
+appears in two of the ledgers, **and I asked you the wrong question about it** — canon already
+governs it, the test is real-provenance not chosen-versus-derived, *chosen is on the real side*,
+and it is **not** in the synthetic allowlist so it is treated as real until certified. **Going
+private does not remediate it** (canon says *any* repo). The real question is *which* trust group
+it is — its owner can answer that, and that answer is the whole decision. **And the bigger half is not
 prose at all:** **seven of ten public repos declare a git dependency on a private repo URL with a
 pinned commit id**, ~48 files, stated in plain words as private. **That cannot be scrubbed** — the
 URL is load-bearing — so it needs its own answer: accept, vendor, or make the dep repo public.
