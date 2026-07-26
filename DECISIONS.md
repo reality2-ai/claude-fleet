@@ -1637,3 +1637,46 @@ Open question for Roy, not blocking: whether the existing `-S<n>` entries should
 left as historical record with this note as the pointer. I lean leave-and-point.
 
 Decision-Log: none
+
+## D-20260726-31 — radar bring-up: I chased the wrong artifact through three unchecked inferences
+
+**Roy: "first we just want to create a simple firmware to test each of the components."** A
+per-component bring-up smoke test. The instrument is a throwaway Arduino sketch circuits already
+holds (I2C scan, FRAM + secure element, battery ADC, gated Modbus read) — NOT an R2 no_std feature.
+
+**MY ERROR WAS A CHAIN OF THREE INFERENCES, NONE VERIFIED AGAINST ROY:** he said "radar test
+firmware"; I found a `radarprobe` FEATURE and assumed it was the artifact; then assumed its crate
+path (dfr1195) meant the BOARD. He corrected the board (the XIAO), and the code agreed with him —
+the pin constants are XIAO-named. Then he corrected the artifact class entirely. **Each inference
+was plausible and each was mine.** It cost hive a real build attempt on something that was never
+the target.
+
+**SCOPE RULED (a): test firmware on an isolated non-roster board is OUTSIDE composer's remit.**
+Roy's distinction — "not an R2 firmware as managed by Composer, this is a small test firmware" — is
+correct. Sole-serial-opener exists to prevent port contention on the shared rig and to control R2
+artifact provenance (partition tables, personas, sha-pinned images, OTA slots). None are engaged.
+**A rule applied where its purpose is absent is ceremony, and it was blocking Roy at the bench.**
+Circuits authorised with four conditions: verify isolation AT FLASH TIME, touch no roster board,
+report after, do not escalate on failure.
+
+**FINDING THAT SURVIVES THE WITHDRAWN ORDER — log it:** `radarprobe` HAS NEVER COMPILED STANDALONE
+(5x E0425). `io_task` and `current_beacon_epoch` reference lora/ble-gated symbols without being
+gated themselves; every shipping feature set transitively pulls both, so the defect is invisible to
+all of them. **A dev-only feature that no shipping build exercises is a feature nobody has ever
+proven compiles.** Core verified independently, has a ~5-cfg fix ready, and HELD rather than touch
+the pinned branch. Held — it is not on the path. Census of other unexercised dev features asked for;
+it needs no branch changes.
+
+**GOVERNANCE CLOSED:** the off-thread fork reply was literally "(no answer produced)". No go, no
+directive issued in my name. Nothing to unwind. Closable only because circuits quoted it verbatim
+rather than paraphrasing.
+
+**HYGIENE INCIDENT, NOT MINE BUT MINE TO RULE:** a full MAC address was sent in fleet mail.
+Standing rule is opaque handles only. It cannot be unsent; circuits told to use the handle form and
+not repeat the value in any file or commit message — the identity gate scans commit messages, so it
+must not travel further.
+
+**g13 CLOSED:** resolved by Roy into a two-board split, both built and bench-verified. My index had
+it open after the ruling. Corrected by circuits, not by me.
+
+Decision-Log: none

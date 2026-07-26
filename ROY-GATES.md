@@ -12,7 +12,7 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**4 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**3 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
@@ -53,11 +53,6 @@ One narrow question survives: §8.2 says the narrow key is sound *because these 
 — and your g15 ruling moved that premise from zero hops to at-most-one-carried.
 → `gate 21: rationale holds, close it` / `re-examine the soundness premise`
 
-**[g13 — radar board-fit](gates/g13-radar-board-fit.md)** · tiny, physical
-~29 breadboard columns needed against ~28 available. Marginal enough that only eyeballing the
-real parts settles it. Circuits is idle until you look.
-→ `gate 13: fits` / `rework`
-
 ### Small, not urgent
 
 **[g8 — AP client isolation blocks the phone↔tuxedo UDP path](gates/g8-ap-client-isolation.md)**
@@ -93,4 +88,5 @@ minutes. The capability cell stays honest either way.
 | 14 | R=0 join frame — §9.5 vs §12.5 canon collision | CONVERTED to a note: specs RULED and landed it (R2-WIRE v0.65 §9.5.1 ROUTE-ORIGIN-1 binds EVENT/REPLY/HEARTBEAT, GROUP_MGMT exempt); supervisor accepted — I had been too conservative, it decides which of two blessed clauses governs, not new ground | D-20260725-08 | — |
 | 18 | D4/X1 have no fault-capture instrument | **rebuild now** (Roy 2026-07-26) — EXECUTED: both variants built and attested, two-leg eligibility PASS on both, positive+negative controls run. **No flash taken**; flash held by supervisor until the D5 debugger session closes (one grant at a time). Note the rebuild does **not** carry the g15 join fix — different branch, and g18 was forensics, not join | — | [g18](gates/g18-sibling-artifact-rebuild.md) |
 | 22 | Shared crates vendored per-repo | **sync procedure — use versioning** (Roy 2026-07-26): keep the copies, no path-dep, no declared forks. Versions must MOVE so the gap carries signal. Obligation keys on (repo, crate, pinned-canon-sha); content hash stays as the verifier that a bump was not forgotten. Bench safe throughout — an unfixed copy cannot carry a join. g15 identity half UNBLOCKED; reaches metal at next re-vendor, not by hot-fix | D-20260726-S29 | [g22](gates/g22-shared-crate-vendoring.md) |
+| 13 | Radar board-fit — ~29 columns needed vs ~28 available | **RESOLVED into a two-board split** (Roy 2026-07-26): it does not fit one board. Power board and logic board BOTH built and bench-verified — power steady at both rails, logic powers clean. Supervisor's index had it listed open after the ruling; corrected by circuits | — | [g13](gates/g13-radar-board-fit.md) |
 | 15 | Join relay — may a sovereign JOIN traverse the mesh? | **RELAY PERMITTED; NO HOP BUDGET** (Roy 2026-07-26): intended case is **ZERO hops — direct connection**, physical presence; relay allowed when needed under the same single-hop rule (worked example: a UDP hive) = **at most one** intermediary. Lanes' NO was against mesh FLOODING and survives intact. Origin-less drop needs a join exception; hop semantics 0 direct / ≤1 relayed; 5 is boilerplate. **Dedup key NOT settled — g21** | — | [g15](gates/g15-join-relay.md) |
