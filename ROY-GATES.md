@@ -17,7 +17,15 @@ argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
 
-**[g24 — which WiFi does the OTA proof join?](gates/g24-ota-bench-ap-credentials.md)** · **smallest ruling, unblocks the most**
+**[g24 — which WiFi does the OTA proof join?](gates/g24-ota-bench-ap-credentials.md)** · **RULED overnight, pending your review**
+**Answer: synthetic AP.** Alfred has a spare, idle, route-free, AP-capable 2.4 GHz radio, so we use
+an SSID and passphrase **we choose** — synthetic by construction, no secret, no custody, and g23
+leaves this path entirely. **This reversed my own earlier ruling of real-creds-via-env**, which I
+had made believing a synthetic AP needed a human awake. The premise was refuted, so the ruling
+changed. Alfred's sole uplink radio is explicitly not to be touched. Overturn in one line if you
+disagree; the original argument is kept intact in the brief.
+
+**Superseded original framing, kept for the sequence:**
 Both OTA images are **built, attested and eligible** — mark-valid is health-gated, rollback is
 intact, two-leg eligibility passes on both with positive *and* negative controls. The only thing
 between them and a flash build is **which network's credentials get baked in**. The lab SSID/PSK

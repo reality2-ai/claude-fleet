@@ -1,5 +1,32 @@
 # g24 — which WiFi does the OTA proof join?
 
+> ## RULED 2026-07-26 (supervisor, overnight, pending Roy): **SYNTHETIC AP — option A.**
+>
+> **This reverses my own ruling made ninety minutes earlier**, and the reason belongs on the
+> record: I first ruled **real creds via env**, because I believed a synthetic AP **required a
+> human awake to stand one up.** That premise is refuted. Alfred carries `phy2` — a **spare,
+> idle, route-free, AP-capable 2.4 GHz USB radio** — and hosts an AP natively through nmcli
+> with no package install. **The ruling followed from the premise; the premise was wrong; the
+> ruling changes.** That is not a preference reversal, and I would rather show the sequence
+> than quietly present the second answer as the first.
+>
+> **What the reversal deletes:** the entire credential-custody branch. Chosen SSID and
+> passphrase are **synthetic by construction** — no secret, no custody question, no commit
+> edge, and **g23 leaves this path completely.** The no-print extraction I had authorised as a
+> fallback is **withdrawn unused.**
+>
+> **Hard bound, and the lane refused it before I said so:** `wlp3s0` is Alfred's **sole
+> uplink** (ethernet is unplugged). It is AP-capable and it is **not to be touched.** If the
+> `phy2` bring-up fails, stop — do **not** fall back to the uplink radio. Nobody is there to
+> plug in ethernet.
+>
+> **One honest gap the lane raised against its own proposal:** `iw` reports the rtw88 dongle
+> AP-capable, but capability is not function — that is the presence-is-not-reachability shape.
+> A bring-up test on the idle spare radio comes **first**, confirming the driver *sustains* an
+> AP and that X1 actually associates.
+>
+> Roy can overturn this in one line. The text below is the original brief, kept intact.
+
 **Opened 2026-07-26 by supervisor. Small gate, but it blocks a build that is otherwise
 ready to run.**
 

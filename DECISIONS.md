@@ -2030,3 +2030,109 @@ exactly why HANG_CAP was mandated in the image rather than inherited from g18.
 Nothing flashed. No image-A grant. No enrolment, mint, provisioning write, or NVS read.
 
 Decision-Log: none
+
+## D-20260726-38 — g24 reversed on a refuted premise; duty_class retracted; four gaps ruled
+
+**g24 RE-RULED: SYNTHETIC AP.** Ninety minutes after ruling *real creds via env*, I reversed it.
+**The reason matters more than the answer:** I ruled real-creds because I believed a synthetic AP
+**required a human awake to stand one up.** Composer's survey refuted that — Alfred carries `phy2`,
+a **spare, idle, route-free, AP-capable 2.4 GHz USB radio**, and hosts an AP natively via nmcli with
+no package install. **The ruling followed from the premise; the premise was wrong; the ruling
+changed.** Not a preference reversal, and the superseded framing is kept in place in both the brief
+and the gates surface rather than overwritten — the sequence is the legible part.
+
+**What the reversal deletes:** the whole credential-custody branch. Chosen SSID/PSK are **synthetic
+by construction**, so there is no secret, no custody question, no commit edge, and **g23 leaves this
+path entirely.** My no-print extraction authorisation is **withdrawn unused** — it was a good answer
+to a problem we no longer have.
+
+**Bound, and the lane refused it before I said so:** `wlp3s0` is Alfred's **sole uplink** (ethernet
+unplugged). Not to be touched. If the `phy2` bring-up fails, **stop** — no fallback to the uplink
+radio, because nobody is there to plug ethernet back in. And composer raised the gap against its own
+proposal: `iw` reports AP-*capable*, which is **not** AP-*functional* — presence is not
+reachability — so a bring-up test on the idle spare radio comes first.
+
+### A claim of mine was false and had already been dispatched
+
+I told hive that a per-read 5 V enable at a 900 s cadence *"is very likely an SCF duty-class
+question."* **Wrong.** Specs corrected it with citations: `duty_class` is a **radio-sleep** property,
+not a peripheral-power one — R2-DIAGNOSTICS §58, wire field R2-WIRE §12.6 `dc` — and its only job is
+telling **peers whether to buffer for you when your radio fades.** R2-RUNTIME §236 verbatim:
+*DutyCycled = buffer-on-fade is the very mechanism by which peers store-carry-forward for a node
+while its radio sleeps; AlwaysOn = flood-on-fade would flood at a sleeping battery node and lose
+that traffic.*
+
+**Toggling a sensor rail does not make the radio fade.** The board stays continuously reachable, so
+the 5 V cycle is invisible to `duty_class` and must not drive it. **And the correct value is the
+opposite of what "duty cycling" suggests:** power source overrides role, USB-powered X1 is
+**AlwaysOn**, set **statically from provisioning**, never flipped at runtime — because an
+off-by-default transition would leave a field battery node flooding until someone flipped it.
+Retracted to hive in the same turn I read the correction. Had it stood, peers would have been told
+to **flood at a node they believed was sleeping.**
+
+**Settle delay: canon is silent**, and specs reads it as correctly a driver detail. So 1500 ms stays
+a config knob, not a spec obligation.
+
+### Specs landed both specs (6834315) and improved on its instructions twice
+
+**R2-ENSEMBLE 0.3→0.4 §2.4 enshrines Roy's #69**, with a three-row composition table separating axes
+that this thread kept conflating: **what parts exist** = compiled per #69; **which parts form
+ensemble E** = the score; **which behaviour is active** = config-activated at boot per R2-RUNTIME
+§210. Plus an explicit guard that #69 is **not** a licence to feature-gate ensembles. **That guard is
+worth more than the enshrinement it protects** — it is the sentence most likely to be misread later.
+
+**R2-CAP 0.6→0.7 §3.5 SIM-DECLARE-1** implements my both-levels ruling, labelled **in the spec text**
+as a supervisor ruling pending Roy and written so it can be narrowed without touching another
+section. Two additions I did not ask for, both kept:
+
+- **MUST NOT SILENTLY UPGRADE** — a re-originator must preserve both markers. Sharper than my
+  ruling: I had required the marker to survive relay; this prevents a re-originator **quietly
+  promoting simulated data to real**, which is worse than dropping the marker because a promotion is
+  invisible *and* authoritative.
+- **A conformance falsifier**, which I would otherwise have had to demand: a consumer subscribed
+  only to the real class must not receive a simulated event **over any number of hops**, and a
+  consumer receiving everything must partition by the payload marker **alone**. Bench-testable
+  tonight, D4 real-class against D5 sim-class. **A MUST with no falsifier is the phantom-gate
+  shape**, and specs applied that bar to its own new clauses unprompted.
+
+### Four storage-queue gaps ruled, because canon is silent and Roy is asleep
+
+Canon has R2-HW §521 — a hive **should** queue for a *sleeping peer* — but that is **custody for
+another node's traffic.** Roy's FRAM is an **own-origin outbound queue**: my readings awaiting my
+own transmission. No contract exists. Ruled:
+
+1. **Adopt the R2-FILE-TRANSFER §6 shape** — resume-from-piece-map, per-piece custody. Reusing a
+   ratified model beats minting a parallel one that will drift.
+2. **Overflow:** bounded, discard oldest, and **the discard must be recorded.**
+3. **Reboot with undelivered records:** they **must** survive and be re-offered. That is the entire
+   reason the buffer is FRAM and not RAM — Roy called it the memory for *sensor data before being
+   sent*, so losing them on reboot defeats the part choice.
+4. **Specs' own fourth question, which I had not asked and is the best of the four:** a **dropped
+   reading must be visible.** A consumer seeing a gap must distinguish *discarded-by-overflow* from
+   *sensor-did-not-fire*. **Silent loss is indistinguishable from silent absence** — the same defect
+   as the simulated marker: the system knows something the consumer needs and does not say it.
+   Mechanism: monotonic per-origin sequence plus a discarded count, so a gap is self-describing.
+
+### A canon MUST that makes the persona unknown load-bearing
+
+**R2-LORA §6.5.1 (MUST):** a provisioned node on power-on must load and **validate** its sealed
+persona, **fail-closed, no self-enrol** on failure. So an X1 whose persona does not validate **must
+not publish** — and Roy's "send over the TN to other TG members" would have nowhere to go. The
+post-write read from image A is therefore the gate for the entire publish path, with composer's
+delegated dev-TG mint standing ready behind it.
+
+### A process defect of mine, caught by the lane it constrained
+
+Composer noticed that my **monitor-attach scope extension existed only in a message**, while the
+grant **file** said something narrower. **The file is authority precisely so a message cannot widen
+it, and I broke that.** Moot in outcome — entry and exit were already proven — but the error stands:
+if I widen a grant, I amend the file. Composer was right to flag it, and would have been right to
+refuse.
+
+**Also accepted:** hive's triage that LED logic inside platform `main.rs` is non-conformant to
+R2-INDICATOR **and** does not block the OTA round-trip. The A/B proof stands on the current image;
+the indicator-plugin refactor belongs to the ensemble phase. Told it not to refactor tonight.
+
+Nothing flashed. No image-A grant — the creds-baked artifact still does not exist.
+
+Decision-Log: none
