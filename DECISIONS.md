@@ -2364,3 +2364,101 @@ rather than capability, so the owner is Roy, not me. Core does not build on its 
 Nothing flashed at time of writing. Composer executing under the live grant.
 
 Decision-Log: none
+
+## D-20260727-41 — the negative control: two firsts, fail-closed proven, and the missing KAT
+
+### Ran, and delivered more than the round-trip would have
+
+**Proven first time on this hardware:** the BLE channel connects, L2CAP accept works, the OTA receiver
+comes up, and a signed 204-byte header is framed and answered. **Fail-closed proven:** the board
+rejected, wrote nothing, sent zero data frames — **and did not so much as hiccup.** No reboot, no
+stall, no watchdog; image A's status beats ran unbroken straight through the event. On hardware whose
+entire recorded OTA history is chunk-1 deaths and a hang that spawned an instrument campaign, **an
+untroubled reject is a real data point about receiver robustness.** Not accepted, so no security defect.
+
+### But the reject was not the signer gate — and that is the finding
+
+`reason=1 BadHeader`, not UnauthorizedSigner. **The two vendored copies of the update crate disagree on
+the package version** — pusher v3/137, firmware v2/123 — so the version check fires **before** the
+signer check is ever reached.
+
+**Consequence: no OTA this firmware accepts can be pushed at all.** Every attempt dies at BadHeader
+regardless of signing or provisioning. **The entire update path, both bearers, every board on that
+firmware.**
+
+**So my signer-gate refutation stands as a source claim and is UNTESTED on metal** — composer refuted me
+correctly from source, then discovered the metal cannot yet reach the code we were arguing about. Both
+states recorded separately rather than collapsed.
+
+### Canon settled it, and the board was right
+
+**v3/137 is canonical** (R2-UPDATE §2.2, layout §5, reject table §3.1.2.3; changed at spec v0.46). The
+pusher is conformant; **the firmware copy is stale by seventeen spec revisions.** And §2.2 specifies
+strict single-version cutover — accept only the current version, **reject any other, checked before the
+signature**, no fallback, no dual-accept. **So the rejection order was exactly as specified. The board
+is not buggy.**
+
+**I was also wrong that the lockstep-re-vendoring constraint was unwritten** — it is the stated corollary
+of strict-single-version. I had simply not read the paragraph.
+
+**And negotiation is not a canon gap — it is a conditional deferral with its trigger written down:**
+*if/when the fleet is deployed and a header bump must coexist with in-flight old packages, add
+negotiation then.* Whether two divergent copies on real hardware trips that premise is a **judgement
+about deployment status, not a canon read** → **g25, Roy's.**
+
+### The sharpest thing specs found, unasked
+
+**Canon already required a test for exactly tonight.** §2.2 names cross-version behaviour a **required
+KAT, not an assumption**, and **"a v2 parser's handling of a v3 header" is the first named item** in a
+must-prove-before-freeze list. **The milestone is still open. The test was never built.**
+
+**So its first execution was a blocked update path on metal at 1 a.m. instead of a red test in CI.**
+**The drift was not the defect — the missing drift-detection test was.** The skew is what an unbuilt KAT
+looks like when it finally runs. Re-vendoring fixes tonight; **the KAT fixes the class.**
+
+Specs is authoring all five items, with **signed-byte coverage prioritised because it is the only one
+that can fail silently**: a wrong version is loud — the board named it — but a signature over the wrong
+byte range verifies at both ends while protecting less than we believe, and nothing reports it. Core is
+told to **stop rather than infer** the signed extent if the vendored code is ambiguous.
+
+### g22 reassessed, and one point in its favour
+
+**I had this gate filed as feature-and-interop lag from a deliberate pin. It is a hard functional
+block** on the update path. But Roy's *sync-procedure-use-versioning* ruling earns credit: **the versions
+differing is exactly why the board could NAME the mismatch** rather than fail mysteriously, and it
+refused **before** the signature rather than after. A silent accept, or a post-signature failure, would
+have been far worse. **The versioning gave us a detector; what is missing is the procedure that stops
+the drift.**
+
+**Lead relayed to core as a precondition (specs, labelled a lead not a finding):** the firmware reports
+spec v0.9 but carries HEADER_LEN=123, and 123 did not arrive until v0.11. **Its spec-ref and its
+constant disagree**, so which is true must be established *before* re-vendoring — **a pin that
+misreports its own version is not a baseline.**
+
+### Two process items from the same run
+
+**Composer refused to gate-game.** Only B operations remained, but the grant named A, and the gate
+matches on the artifact substring. It would not pass the A token on a B command: **satisfying the
+substring with the wrong artifact name would make the audit trail state a thing that did not happen.**
+The enforcement is truthful naming plus the two-party digest attest — **never the substring. A gate you
+can satisfy by lying is a formality that also corrupts the record it exists to produce.** Field flipped
+properly, and the widening it opened closed explicitly: **B is air-delivered only**, no tool writes it to
+any partition, and A stays untouched as the only known-good image.
+
+**And flipping that field cost me the Stage 1 record.** Moving `sha256` to B's digest **silently removed
+the only trace of what Stage 1 actually wrote** — A's digest vanished from the file. Found by re-reading
+after my own edit, not by intent. Restored as prose. **Same class as every retraction defect this week:
+a change reaches the paragraph you edited and no other. Proximity is not protection — same file is not
+same sweep.** I have been enforcing that on other lanes all week and broke it inside a four-field header.
+
+**Gate gap, flagged by composer against its own convenience:** the metal BLE-OTA pusher **bypasses the
+firmware gate entirely** — only the USB flashers are listed. A tool that writes firmware to a board over
+a radio is a firmware-write operation whatever it is called. Mine to fix, in the **widening** direction.
+**I asked for the verbatim invocation before writing the pattern** — gating a string that never appears
+in the real command is a decorative gate, and I would rather leave the gap open and documented than
+paper it over. Boundary held: **OTA signing and the metal push get gated; Roy's delegated dev-trial
+mints do not.**
+
+Board undisturbed on A, slot intact, NVS preserved, mint ready and unused.
+
+Decision-Log: none

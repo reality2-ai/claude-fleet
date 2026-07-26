@@ -12,10 +12,29 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**4 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**5 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
+
+**[g25 — does the pre-release premise still hold?](gates/g25-update-version-negotiation-trigger.md)** · **one judgement, and canon named the trigger in advance**
+The OTA path was blocked tonight by two vendored copies of the update crate disagreeing on the header
+version. **Canon is unambiguous on the version itself** — v3 is canonical, the firmware copy is stale,
+and the board rejecting a v3 header was **correct, specified behaviour**. No ruling needed there; core
+is re-vendoring. **What needs you is one step up.** Canon deliberately defers version *negotiation*,
+with the trigger written down: *"if/when the fleet is deployed and a future header bump must coexist
+with in-flight old packages, add explicit version negotiation then; for now, cutover is canon."* That
+premise is **no old packages deployed in the field.** Two divergent copies now exist on real hardware.
+**Whether that trips the trigger is a judgement about deployment status, not a canon read** — so it is
+yours. `gate 25: still pre-release` (cutover stays, re-vendor discipline carries it) or
+`gate 25: add negotiation` (spec work now, before more boards diverge).
+
+**The sharper finding underneath it, no decision needed:** canon already **required** a conformance test
+for exactly this case — a v2 parser meeting a v3 header is the **first named item** in a
+must-prove-before-freeze list, and that milestone is still open. It was never built, so **its first
+execution was a blocked update path on metal instead of a red test.** The drift was not the defect; the
+**missing drift-detection test** was. Specs is building all five now.
+
 
 **[g24 — which WiFi does the OTA proof join?](gates/g24-ota-bench-ap-credentials.md)** · **RULED overnight, pending your review**
 **Answer: synthetic AP.** Alfred has a spare, idle, route-free, AP-capable 2.4 GHz radio, so we use
