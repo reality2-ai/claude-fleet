@@ -12,7 +12,7 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**6 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**4 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
@@ -27,6 +27,24 @@ argument, the options and the ruling syntax.
 2. **Name the complex-Hive Xiao.** It is **in no lane's records** — identity, trust group and USB
    reachability all unknown. It is the highest-value board not to break, and the only one that cannot be
    characterised from any lane's data.
+3. **Where does supervisor bookkeeping live?** You ruled *stop publishing bookkeeping*, and **this repo is
+   public and carries the ledger, this file, and every gate brief.** Halting is free but breaks the durable
+   record. Either **make this repo private** (simplest, but it is the fleet's own tooling repo) or **move
+   bookkeeping to a private repo** and keep the tooling public. *I am pushing this update because you asked
+   directly; the destination question is still open.*
+4. **Force-push authorisation, per repo.** Your g23 ruling included *rewrite history*, which means
+   force-push — forbidden by my standing rules without an explicit line from you. **Evidence is enumerated
+   and preserved privately first**, so the scrub no longer destroys what it documents. **And the honest
+   limit: a rewrite does not un-publish.** Anything already cloned or cached persists, so the captured
+   values must be treated as **disclosed and rotated**, not merely deleted.
+
+**Three architectural items open, none blocking a lane:** the **ring-signature vs no-global-roster
+conflict** (two canon documents disagree; specs reported rather than picked, because the obvious weakening
+**breaks verification** rather than merely reducing anonymity) · the **maintainer-machine key-custody
+concentration risk** (isolation stops leakage *between* contexts and does nothing to reduce the value of
+compromising the device — **the attack moved from *reach a device* to *reach the maintainer's machine***) ·
+and **whether field units should be remotely readable at all**, which is a product decision whose
+mechanism already exists in the diagnostics spec.
 
 **[g27 — RESOLVED WITHOUT A RULING, superseded by the persona-region work](gates/g27-x1-persona-raw-write.md)** · **nothing needed from you**
 **The question dissolved rather than being answered.** Both facts you gated it on came back: the build
@@ -41,24 +59,21 @@ the exact case our rules say **stop and escalate** on, never overwrite.
 **Cost: this delays the OTA round-trip.** The persona region, the six raw-offset reads, and the table
 must move in lockstep first. **Kept here as a record; no decision outstanding.**
 
-**[g26 — can a device that missed a cutover still be updated over the air?](gates/g26-update-header-version-reachback.md)** · **one line, the tail of your g25 ruling**
-**Your g25 answer separated three version axes and settled two.** Wire message-passing: backwards
-compatibility **mandatory**, slow-moving, old devices **expected**. Plugins and sentants: **their own
-versions**, independent of firmware. Both landed and dispatched.
+**[g26 — CLOSED 2026-07-27, all three parts](gates/g26-update-header-version-reachback.md)** · *"G26 is now resolved I feel"*
+**(a) Format reachback — LANDED.** A source may emit an older header format so an old device can be
+updated at all. **With one bound specs found that I had missed: an envelope is not inert.** The older
+header lacks a field canon makes mandatory for one payload class, so emitting that class under it leaves
+the gate **structurally absent** — and **a zeroed gate fails closed while a missing gate cannot fail at
+all.** Refused at the source, per payload class; **the classes that un-brick a stranded device stay
+unrestricted**, so the use case survives whole. A device's info response now carries its header version,
+with **absent meaning unknown and the source emitting its current version** — never wider.
 
-**The third axis is the OTA package header, and it inherits a consequence you may not have intended.**
-Canon specifies **strict single-version cutover** — a receiver accepts *only* the current header
-version, checked **before** the signature. So a device still on v2 **cannot be updated over the air by a
-v3 pusher, ever.** Combined with *"we expect to find devices that have older versions"*, any device that
-misses a cutover is **permanently un-updatable except by physical recovery** — and on a sealed field
-unit, that can mean not recoverable at all.
+**(b) Automatic revert — ALREADY CANON, nothing built.** Confirmed and landed as an index to the existing
+clauses rather than a restatement, *because a restatement is a copy and copies stop tracking.*
+**One limit named so the confirmation is not overread: automatic revert is a DUAL-SLOT capability.** A
+single-bank target has no previous slot and no automatic recovery.
 
-**Recommendation: the pusher emits the receiver's accepted version.** Cheap here in a way it is **not**
-on the wire: the pusher is an active participant that **knows its target** and can be updated freely, so
-old-version support costs one encoder on the **reachable** side. Nothing changes on the constrained
-device. → `gate 26: pusher speaks the receiver's version` / `physical recovery is acceptable`
-
-**RESOLVED 2026-07-27 by your TG-membership ruling — (a) and (b) landed, (c) closed by derivation.**
+**(c) Downgrade authority — closed by derivation from your TG-membership ruling.**
 Push is gated on trust-group membership, so **an outsider cannot push at all**; the rollback adversary
 reduces to an insider or a former insider, and **revocation, not a counter, is what addresses those**.
 The **software floor is sufficient** — it can only be lowered by an actor with flash-write access, which
@@ -92,7 +107,7 @@ and never checked what the concrete part can physically do. **Three shapes, rank
 that would back it in hardware exists and is **readable**, but **cannot be written** from our no_std
 stack. That is **permitted, not a violation** (canon allows NVM *or* eFuse). The real defect is that the
 **durability class was never declared** — and canon already had that rule and failed to apply it to
-itself. Now landed. → `gate 26c: above-the-floor` / `explicit-commitment burn` / `host-side burn`
+itself. Now landed. **No ruling syntax — this is closed.**
 
 **Not a decision, but it explains why this surfaced late:** canon already **required** a conformance test
 for exactly this case — a v2 parser meeting a v3 header is the **first named item** in a
@@ -200,3 +215,5 @@ minutes. The capability cell stays honest either way.
 | 13 | Radar board-fit — ~29 columns needed vs ~28 available | **RESOLVED into a two-board split** (Roy 2026-07-26): it does not fit one board. Power board and logic board BOTH built and bench-verified — power steady at both rails, logic powers clean. Supervisor's index had it listed open after the ruling; corrected by circuits | — | [g13](gates/g13-radar-board-fit.md) |
 | 15 | Join relay — may a sovereign JOIN traverse the mesh? | **RELAY PERMITTED; NO HOP BUDGET** (Roy 2026-07-26): intended case is **ZERO hops — direct connection**, physical presence; relay allowed when needed under the same single-hop rule (worked example: a UDP hive) = **at most one** intermediary. Lanes' NO was against mesh FLOODING and survives intact. Origin-less drop needs a join exception; hop semantics 0 direct / ≤1 relayed; 5 is boilerplate. **Dedup key NOT settled — g21** | — | [g15](gates/g15-join-relay.md) |
 | 25 | Update version negotiation trigger | **RULED 2026-07-27** — *always deploy latest unless a specific reason (eg hardware incompatibility); older-version devices are expected on the network; backwards compatibility in message passing is mandatory and slow-moving; plugins and sentants carry their own versions independent of firmware.* Separated three version axes the gate had collapsed into one; axes 1 and 3 settled, axis 2 (update header) spun out as **g26** | D-20260727-45 | [g25](gates/g25-update-version-negotiation-trigger.md) |
+| 26 | Update reachback + revert + downgrade authority | **CLOSED 2026-07-27** — (a) format reachback landed, bounded by *an envelope is not inert* (a missing gate cannot fail at all); (b) automatic revert already canon, landed as an index, dual-slot only; (c) downgrade authority closed by derivation from the TG-membership ruling: outsiders cannot push, so revocation not a counter is the model, and the software floor cannot be lowered without the code execution the attack seeks. Two residuals accepted: revocation only reaches devices that hear it, and it is reactive | D-20260727-47 | [g26](gates/g26-update-header-version-reachback.md) |
+| 27 | Provision X1 at a raw offset | **DISSOLVED, no ruling needed** — your *use a partition block* ruling made the raw write non-conformant, so the question became declare-then-provision-once rather than provision-or-hold. Persona region now ratified: 14 sectors, four in-place anchors, one moving part, byte-identical across both carriers | D-20260727-46 | [g27](gates/g27-x1-persona-raw-write.md) |

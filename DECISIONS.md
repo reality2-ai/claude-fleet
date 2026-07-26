@@ -3007,3 +3007,94 @@ a fleet-wide practice on its number.
 used *several* and *a few* about lane state all day without counting once.
 
 Decision-Log: D-20260727-47
+
+---
+
+## D-20260727-48 — g26 closed. And canon already held three answers I was about to have invented.
+
+### Roy closed g26 across all three parts
+
+> *"G26 is now resolved I feel"* · *"update the gates in the github repo"*
+
+**(a) format reachback** landed with a bound specs found that I had missed — **an envelope is not inert.**
+An older header lacks a field canon makes mandatory for one payload class, so emitting that class under it
+leaves the gate **structurally absent**, and **a zeroed gate fails closed while a missing gate cannot fail
+at all.** Refused at the source, per class; the classes that un-brick a stranded device stay unrestricted.
+
+**(b) automatic revert** was already canon; landed as an **index**, not a restatement, *because a
+restatement is a copy and copies stop tracking* — with the limit named that it is a **dual-slot**
+capability, so a single-bank target has no automatic recovery.
+
+**(c) downgrade authority** closed by derivation from the TG-membership ruling, with two residuals
+**accepted and named rather than argued away**: a revocation only protects devices that hear about it, and
+revocation is **reactive** — *"if a hive is suspected"* requires that someone notices.
+
+### Three times today the corpus already held the answer
+
+Each time the discriminator was **going and looking**, and each time I had been about to have a lane author
+it:
+
+1. **Multi-TG maintainer.** I dispatched a requirement to *isolate* multiple memberships on one hive.
+   Canon **forbids them being on one hive at all** — a device holding keys for multiple domains *is* the
+   leak. **My rule would have legitimised the prohibited configuration by regulating it.** The correct
+   shape is **N hives, one per TG, at most one active.** Specs minted nothing and checked.
+2. **The dev-mode beacon.** I set it as a precondition to be built. It **already existed on all three
+   surfaces**, ratified 2026-07-04 with Roy-pinned offsets — **but mandated the exact fail-open I had just
+   ruled against** (*absence = prod*). Resolved without touching a byte: **absence-is-prod is sound as an
+   emitter invariant and unsound as a receiver inference.**
+3. **USB as an internal bus.** Roy's clarification is a **citation** of his own 2026-07-13 ruling. And the
+   same section **contradicted itself in place** — one principle calling USB *"just another transport"*
+   universally, another calling it *"a local bus, not a trust boundary"*, with the transport registry
+   backing the wrong one. **Canon asserted both readings in one file**; a lane could have cited either
+   honestly.
+
+### The error I made three times in one evening, on one axis
+
+I told two lanes **"USB to a member is internal."** Roy had told me explicitly that internal means *not*
+that both are in the same TG, but that **from the outside both appear as one hive** — and **I
+re-introduced membership as the criterion one message later, twice more.**
+
+**Specs' three-case table refutes it: a separate node holding its own persona is a real transport with
+full TN semantics even though both ends are members.** Internal requires being a **component**, not a
+member. **Membership is the intuitive axis and it keeps reasserting itself** — so the landed clause states
+**what the criterion is not**, because a clause that only states the correct criterion gets re-read as the
+intuitive one.
+
+**And the complex-hive spec then refuted my relay entirely:** the phone+board pair is, in canon's own
+words, **"two ordinary hives — today's two-hives-plus-USB-relay wire shape."** It becomes one complex hive
+only after a **keyed bridge** and a **merge-reflash**, neither of which exists. **I had taken a
+principal's architectural sentence and derived implementation consequences from it without reading the
+spec that already governed it** — Roy was describing the intended end state; I relayed it as the current
+one. **My instruction would have suppressed the trust badge in the one place it is genuinely needed.**
+
+### Six blind-guard shapes today, across six lanes, every one of them green
+
+A catch-all absorbing the keys it was meant to reject · a symbol matcher with **no false-present guard**
+(real, found on the lane's own artifact) · a build-feature block **never parsed**, so the gate read a blank
+· a test **asserting its own copy** of the rule, so disabling production left the suite green · a hygiene
+scanner whose **paths excluded the ledger** — matcher live, **wrong corpus** · and a UI flag whose
+**boolean type destroyed the distinction upstream** before any consumer saw it.
+
+**★ The generalisation, from the android lane and it is the sharpest form: a test that restates a
+production condition is vacuous by construction, and the only reliable detector is the control — it is not
+visible by reading, because both copies read correctly.** Review cannot catch that class.
+
+### And I over-gated Roy's own convenience, then had to re-derive
+
+> *"we don't want to sacrifice current convenience for later improvement."*
+
+I had stacked **three preconditions** on publishing the dev TG — a feature Roy introduced **to remove
+friction**. Re-derived, none held: the binding is already enforced because **mode is compile-time, not
+runtime state**; the certifier defect was mine and retracted; and the presentation risk **was already live
+on the bench**, not created by publication. **Lifted.**
+
+**Specs then added the guard that stops my own reasoning being turned around: *"the risk already exists" is
+a valid reason to stop GATING work on it and is not a reason to stop FIXING it.*** The same sentence that
+unblocked publication would have served to shelve the fix.
+
+**And it replaced three preconditions with one standing dependency rather than none:** compile-time mode is
+unforgeable **only while reflash is gated** — a production device never locked can be reflashed into a dev
+image, and then the published credential opens it. **The binding defeated by a reflash rather than a byte:
+slower, not harder.**
+
+Decision-Log: D-20260727-48
