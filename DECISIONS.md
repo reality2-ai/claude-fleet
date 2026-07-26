@@ -1777,3 +1777,40 @@ and reconciling the g18 artifact is Roy's call with hive on the artifact side.
 **One fact settles it: how many XIAOs does he physically have.**
 
 Decision-Log: none
+
+## D-20260726-35 — MAC-binding fails closed ONLY if the MAC is read off the device
+
+**Composer corrected my own rule and the correction is load-bearing.** I said: bind a grant to an
+efuse MAC and it FAILS CLOSED against a phantom row. **True only if the MAC is read FROM THE
+DEVICE.** The bench programmer builds the tty FROM the map MAC, so a WRONG map MAC does not resolve
+to nothing — **IT RESOLVES TO A DIFFERENT REAL BOARD. Fail-OPEN.** My formulation would have
+shipped that as a safety property.
+
+**Adopted verbatim: THE MAP MAC IS AN ASSERTION; ONLY THE ON-BUS EFUSE READ IS THE BINDING.**
+Replacing a label with a map-lookup MAC is the same defect in better clothes.
+
+**#d004 RIG-MAP MISMATCH NOW CONFIRMED WITH EVIDENCE, AND IT IS A LIVE FAIL-OPEN PATH:** the D5
+campaign board's efuse MAC is in NO rig-map row, and the D5 row points at a MAC not on the bus. A
+label-resolved `-p D5` would target the wrong or absent device. **It never bit only because every
+D5 operation resolved from the live by-id handle directly and bypassed the map.** A safety property
+that held by bypass is not a safety property — it is an accident that has not been spent yet.
+
+**CENSUS RESULT: exactly one phantom row (RADAR), no other `-` traps.** Composer found the D5
+defect *while looking for phantoms* — the payoff for censusing a class instead of checking the
+instance.
+
+**FORMAT FIX (composer's, it owns the format):** explicit STATUS field
+(provisioned|reserved|retired) plus a MAC-VERIFIED flag; a reserved row must carry NO usable MAC or
+a sentinel. It named the worst combination exactly — **the phantom row pairs a REAL-LOOKING MAC
+with wire='-'**, which is why every lane read it as inventory. Binding rule: a grant may bind only
+to a MAC-VERIFIED row AND the operation must re-read the efuse of the device actually on the
+constructed tty before executing.
+
+Also established: **X1 was never the live bridge** — the active LoRa bridge is X4; X1's bridge role
+is logical only. Shrinks option (a) further, though (b) is the recommendation regardless since the
+radar rig is breadboarded and three spare piggyback XIAOs exist.
+
+Nothing implemented. Format change, status fields, D5 row correction and the binding rule are all
+Roy-gated roster edits.
+
+Decision-Log: none
