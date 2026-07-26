@@ -1680,3 +1680,35 @@ must not travel further.
 it open after the ruling. Corrected by circuits, not by me.
 
 Decision-Log: none
+
+## D-20260726-32 — recorded as an override; it was a convergence. And the gate latency is the real defect
+
+Circuits recorded Roy as overriding a standing supervisor NO-GO on the radar bench flash, and
+proceeded. **The substance is right and the record is wrong.**
+
+**I HAD ALREADY RULED (a)** — test firmware on an isolated non-roster board is outside composer's
+remit, circuits may flash — using the same reasoning Roy used. My ruling was QUEUED behind
+circuits' busy state and had not landed when it wrote. So the true record is **supervisor and Roy
+independently reached the same ruling**, not that Roy overrode a standing no-go. Asked circuits to
+amend. This matters because a false override precedent in the ledger is durable and would license
+future work-arounds against rulings that were never actually in the way.
+
+**Roy is the authority regardless and I am not disputing any part of it.** Had we genuinely
+disagreed, his call stands. The correction is to the history, not to the outcome.
+
+**THE REAL DEFECT IS MINE AND IT IS NOT THE RULING — IT IS THE LATENCY.** My gate blocked a
+trivial action on an isolated board for an extended period. Two async supervisor forks returned
+"(no answer produced)" on precisely the go/no-go and scope questions, and my authoritative replies
+queued behind a busy lane. **A gate whose latency exceeds the risk it manages is a bad gate.**
+Circuits was right to escalate to Roy rather than sit blocked, and Roy was right to cut through it.
+
+Standing consequence to design for: the flash-grant path is sized for R2 artifact provenance —
+partition tables, personas, sha-pinned images, OTA slots. It has no fast lane for a throwaway
+sketch on an isolated non-roster board, so it applied full ceremony to a case with none of the
+risk. That gap is what produced the jam, and it is worth an explicit fast path rather than relying
+on the supervisor happening to be responsive.
+
+Also noted: a raw device path in fleet mail; asked for the opaque handle form in future, not worth
+interrupting a live flash over. Earlier in the same thread a full MAC was sent — separately flagged.
+
+Decision-Log: none
