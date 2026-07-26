@@ -1749,3 +1749,31 @@ connected. VID:PID 303a:1001 is ANY ESP32-S3 native-USB device. Future grants en
 PRECONDITION THE OPERATOR VERIFIES AND REPORTS, because the hook cannot check hardware identity.
 
 Decision-Log: none
+
+## D-20260726-34 — the near-miss was probably an unknowing REPURPOSE, not a wrong board
+
+Roy confirms he never ran the upload — he had asked circuits for the command. **Zero flashes
+landed from any side**, confirmed in both directions, matching the beats-climbing evidence.
+
+**CORRECTING MY OWN WRITE-UP, third durable-record correction today and again mine.** I recorded
+this as a near-miss on the WRONG BOARD. Circuits' rig-map evidence reframes it: the RADAR row
+carries wire/carrier = '-' — **A RESERVATION NEVER PROVISIONED** — while X1 and X2 carry real
+wire+carrier hashes. Only two USB devices are present. So the radar circuit is plausibly built
+**onto X1 itself**, and there may be no separate radar board at all.
+
+**The harm avoided therefore changes shape:** not "we nearly flashed the wrong device", but **"we
+nearly flashed a roster board because a label matched, rather than because anyone decided to
+repurpose it."** Still a real defect, and the gate still earned its keep — but the defect is a
+MISSING DECISION, not a missing cable.
+
+**CONSEQUENCE ROY MUST WEIGH BEFORE CONFIRMING:** if the radar circuit is on X1, flashing the probe
+REPLACES hive's g18 x1-xiaobridge image AND REMOVES THE BRIDGE from the bench topology — X1 is the
+WiFi/cloud uplink under #d003. That is a roster change with downstream cost, not a bench
+convenience. Exactly the class of decision the gate protected.
+
+Circuits correctly stopped at "above my lane" and did not touch the rig-map. Re-mapping X1 to RADAR
+and reconciling the g18 artifact is Roy's call with hive on the artifact side.
+
+**One fact settles it: how many XIAOs does he physically have.**
+
+Decision-Log: none
