@@ -1712,3 +1712,40 @@ Also noted: a raw device path in fleet mail; asked for the opaque handle form in
 interrupting a live flash over. Earlier in the same thread a full MAC was sent — separately flagged.
 
 Decision-Log: none
+
+## D-20260726-33 — NEAR-MISS: a grant would have authorised wiping a roster board
+
+Circuits ran the serial read Roy asked for and found the device on the expected port is **X1, the
+bridge XIAO — a ROSTER BOARD running live R2 firmware**, not the radar node. The radar XIAO was
+never on the bus. **Grant REVOKED** (expires=1, dead to the gate) before anything ran.
+
+**NOTHING WAS OVERWRITTEN, as evidence not hope:** beats climbing 3199->3250 across two reads. A
+single banner read shows the board answers; the DELTA shows the firmware is running and untouched.
+
+**MY DEFECT, AND IT IS THE DECORATIVE-FIELD CLASS IN MY OWN INSTRUMENT:** `target=RADAR-node` is a
+LABEL MATCHED AGAINST COMMAND TEXT, NOT A BINDING TO HARDWARE. The gate verifies the string appears
+in the command; it cannot verify the device on the port IS that board. My grant would have
+authorised an upload to a roster board with every field reading correct. I wrote the sentence about
+fields that look like checks and are not, about someone else, earlier the same day.
+
+**THE AMBIGUITY STARTED AT THE NAMING, NOT THE PORT.** Roy identified the target to me as "the XIAO
+with the LoRa piggyback". X1 IS a XIAO with a LoRa piggyback (Wio-SX1262). **The identifier in the
+original instruction matched BOTH boards**, and four layers faithfully carried the unresolved
+referent: his phrase, my grant target, the gate's string match, the port.
+
+**THE LESSON IS ABOUT AUTHORITY, NOT USB: Roy has the authority to rule and his eyes could not
+identify the board.** Two physically indistinguishable XIAOs separated only by an efuse MAC. His
+"no other board connected, safe to go" was good-faith and wrong. **AUTHORITY AND IDENTIFICATION ARE
+DIFFERENT COMPETENCIES AND A GATE MUST NOT CONFLATE THEM** — the person entitled to say *do it* is
+not thereby the person able to say *which one*.
+
+**WHAT ACTUALLY HELD: the local firmware hook circuits refused to bypass.** Twice. With a
+fleet-level authorisation in hand and the principal saying go, it stopped. Had it argued past it,
+X1's R2 firmware — including hive's g18 x1-xiaobridge image — would be gone.
+
+**STANDING FLEET-WIDE, circuits' rule verbatim:** identify the target by EFUSE MAC AND
+RUNNING-FIRMWARE BANNER, never by VID:PID, port, or a human at the bench saying it is the only one
+connected. VID:PID 303a:1001 is ANY ESP32-S3 native-USB device. Future grants encode this as a
+PRECONDITION THE OPERATOR VERIFIES AND REPORTS, because the hook cannot check hardware identity.
+
+Decision-Log: none
