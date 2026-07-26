@@ -2785,3 +2785,108 @@ its own residual: on a no-engine image the false-absent canary is N/A, so the bu
 identical matcher against a **golden ELF** every run. **Made composer's obligation, not a note.**
 
 Decision-Log: D-20260727-45
+
+---
+
+## D-20260727-46 — The persona migration, and three refinements of one claim where nobody was wrong
+
+### What Roy ruled, and what each ruling changed
+
+**"Use a partition block, opt to ATECC if it exists."** The word **partition** was the fix, not a
+restatement: the defect was never the write, it was that `0x12000` is a **raw absolute offset** the code
+trusts while ignoring the table. **A named lookup follows the table; an address ignores it.**
+
+**"Part of the core hive that all hives have — a WASM hive won't need it."** Persona region joins the
+**device-hive base**. But **WASM is a different realisation, not an exemption**: it still needs a persona
+resolved through a declared descriptor (a storage namespace, not a region). **If canon said "WASM
+exempt", an implementer would hard-code a storage key and rebuild the defect on a substrate with no
+addresses at all.** Now enforced as a **gate**, not a convention — a device-target table without a
+persona region is non-conformant, with a negative control.
+
+**"Propagate to existing boards."** Turns design into **migration**, and adds a hard constraint: **the
+persona blob must not move.** The other Xiao is a **live TG member with the Android app**; relocating a
+provisioned persona is **a membership break, not a flash operation.** Region declared **in place**;
+neighbours relocate around it.
+
+**"The RAK is an exception."** Reaffirms #d003. **But the resolved-not-baked rewrite stands for a reason
+that never depended on the RAK** — it is correct on ESP32 too, and kills a correct-by-coincidence path
+**in production right now**. Standing rule: **write the invariant broadly, bind the realisation
+narrowly.**
+
+### Two decisive facts, both measured rather than assumed
+
+**OTA cannot deliver this migration.** The table lives at `0x8000`; the update path writes only the
+inactive slot then flips `otadata`. Composer **grepped both push tools** for a table-write path — there
+is none. **Every migrated board needs physical USB.** The firmware-rewrites-its-own-table alternative
+was **named and declined**: power loss mid-rewrite bricks with USB-only recovery, which is the access we
+were trying to avoid needing.
+
+**Size derived, not adopted.** 336 B measured, 4 KiB sector, one sector per slot, two slots for atomic
+replace, plus the reserved third: `0x12000`–`0x15000`. **Slot A stays at `0x12000`** — which is what
+makes this a **declaration** rather than a data migration.
+
+### Three refinements of one claim, and by the end nobody was wrong
+
+1. **I asserted a canon divergence that did not exist** — read v0.47 while v0.48 was pushed, and
+   broadcast it to three lanes. **A false MISSING costs as much as a false OK**, and worse: a lane that
+   trusts it **may edit correct text to match a description of itself.** Caught because specs probed for
+   the **absence of the old strings**, not merely the presence of the new — **absence-of-old is the
+   discriminating half**, since both texts coexist during a partial edit.
+2. **Hive refuted the fleet-wide gap claim with line numbers** — `flash-board.sh` selects the catalogue
+   by carrier; the hive doc is **stale documentation, not the flashed artifact.**
+3. **Then composer showed the refutation's evidence postdated the claim.** Its finding described the
+   **pre-fix** script; it fixed the script **this session**; hive read the **post-fix** state. **Both
+   sound, both right about different times.** Composer's claim was **true this morning and became false
+   because composer fixed it.**
+
+**★ NEW METHOD NOTE: A CLAIM CAN BE REFUTED BY A CHANGE THAT HAPPENED BETWEEN THE CLAIM AND THE CHECK.**
+The tell is that the refuting evidence includes **an artifact newer than the claim** — and nobody
+compared dates, including me, twice. **When a refutation lands, check whether its evidence postdates the
+claim before attributing an error to anyone.** Same family as absence-of-old: both are about the **state
+of the artifact at the moment of checking**, not the checking itself.
+
+**Consequence: a field DFR's table is genuinely UNKNOWN** and stays so until one is read. **No DFR is on
+the bus.**
+
+### Specs' falsifier was the offence its own clause forbids
+
+`9.12.1`'s test — *place the region at a different address, confirm the persona is still found* — **run
+against a provisioned live-TG board IS the membership break** the new clause prohibits. Fixed as
+test-device-only; both survive.
+
+**★ A FALSIFIER IS AN ACTION, AND AN ACTION CAN VIOLATE A CLAUSE LANDED LATER IN THE SAME SECTION.**
+Specs' own diagnosis: it had been adding falsifiers all day **without once asking what running one
+costs**. Ask of every falsifier: **on what device, in what state, and what does it destroy.**
+
+### Findings from the lanes worth more than the rulings
+
+**Core: the persona write path is not atomic.** In-place `flash.write` plus read-back verify — **power
+loss mid-write is a torn persona**, live on every board today, independent of the migration. **An
+unclaimed region is a hazard; a torn persona is a loss.** The fix already exists unused in the tree
+(backend-abstracted `commit_persona`, marker-first atomic wipe) — **routing the firmware through its own
+abstraction, not new machinery.**
+
+**Hive refused to upgrade a near-miss to a fired failure.** The `0x18000` label collision was caught by
+**review** (cross-reading the OTA code), never ran on a board. **I had said "fired"; it corrected me and
+named the direction: overstating a near miss buys a stronger argument today and costs the credibility of
+the next real one.** The honest form is still the strongest argument for the migration: **the only thing
+between two colliding undeclared offsets and a downgrade-bypass was a human happening to cross-read the
+OTA code. Review is not a structural guarantee.**
+
+**Composer distinguished a produced artifact from device state** — an artifact it produced is **not proof
+of what is on a board.** So on-device identity state is **unknown for every board.**
+
+### The scoped read, pre-ruled with a zero-margin constraint
+
+Table read at `0x8000`, **length exactly `0x1000`** — because **`0x8000 + 0x1000 = 0x9000`, exactly where
+NVS begins.** An overrun by one sector reads **key material**, the one thing the standing refusal exists
+to prevent. Authorises **one region, not the tool**. Grant written **when a board is attached** — an
+unspent grant is its own hazard.
+
+### And my own gate refused this work twice
+
+A fleet message was blocked by the firmware gate on **`ota_push` appearing as literal prose** — a token
+**I added to that gate myself**. The gate scans command text, and a message body *is* command text.
+**Working as designed; reworded rather than weakened.**
+
+Decision-Log: D-20260727-46

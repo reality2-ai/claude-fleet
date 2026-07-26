@@ -17,20 +17,29 @@ argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
 
-**[g27 — provision X1: authorise a raw persona write at `0x12000`?](gates/g27-x1-persona-raw-write.md)** · **the one thing between here and a completed OTA round-trip**
-**Both questions you gated this on are now answered from code and from the device.** (1) This build reads
-the persona from **raw absolute `0x12000`** via `esp_storage::FlashStorage` — **table-agnostic, not
-NVS**. (2) That offset is in a region **no partition claims**: the device's own bootloader lists
-`nvs 0x9000` · `otadata 0xf000` · `phy_init 0x11000+0x1000` · `ota_0 0x20000`, leaving `0x12000–0x1FFFF`
-unclaimed. App is at `0x20000`, so **the D4 collision geometry does not apply here.**
+**Two things block work and only you can clear them — neither is a gate, both are physical:**
 
-**The margin is exactly one sector and that is the whole risk.** `phy_init` ends at `0x12000`; the
-persona starts at `0x12000`. **Zero gap.** A 4 KB *sector* erase is safe; a 64 KB *block* erase at that
-address would take out `phy_init` **and** `nvs`. So the write must be sector-granularity, verified after.
+1. **A DFR1195 on the bus.** Only X1 and an Arduino are attached. **Which partition table a field DFR
+   actually carries is unknowable from the repo** — `flash-board.sh` changed mid-session, so a DFR
+   flashed before that fix has its persona in an unclaimed gap and one flashed after does not. **Only
+   reading the device answers it.** The read mechanism is pre-ruled and scoped; it runs the moment a
+   board is plugged in.
+2. **Name the complex-Hive Xiao.** It is **in no lane's records** — identity, trust group and USB
+   reachability all unknown. It is the highest-value board not to break, and the only one that cannot be
+   characterised from any lane's data.
 
-**Honest status: brick-safe today, defended by nothing.** Two partition tables are in play across the
-catalogue and the platform runner, so the gap's existence depends on which flow last flashed the board.
-→ `gate 27: provision` (recommended, with sector-only write + post-verify) / `gate 27: hold`
+**[g27 — RESOLVED WITHOUT A RULING, superseded by the persona-region work](gates/g27-x1-persona-raw-write.md)** · **nothing needed from you**
+**The question dissolved rather than being answered.** Both facts you gated it on came back: the build
+reads **raw absolute `0x12000`**, table-agnostic; and that offset sits in a region **no partition
+claims**. But your own *"use a partition block"* ruling made the raw write **non-conformant**, so the
+choice is no longer *provision or hold* — it is **declare the region, then provision once.**
+
+**The reason to do it in that order is our own rule:** provisioning at the raw offset now means
+provisioning **twice**, and the second write lands on a board that already holds a valid identity —
+the exact case our rules say **stop and escalate** on, never overwrite.
+
+**Cost: this delays the OTA round-trip.** The persona region, the six raw-offset reads, and the table
+must move in lockstep first. **Kept here as a record; no decision outstanding.**
 
 **[g26 — can a device that missed a cutover still be updated over the air?](gates/g26-update-header-version-reachback.md)** · **one line, the tail of your g25 ruling**
 **Your g25 answer separated three version axes and settled two.** Wire message-passing: backwards
@@ -48,6 +57,28 @@ unit, that can mean not recoverable at all.
 on the wire: the pusher is an active participant that **knows its target** and can be updated freely, so
 old-version support costs one encoder on the **reachable** side. Nothing changes on the constrained
 device. → `gate 26: pusher speaks the receiver's version` / `physical recovery is acceptable`
+
+**Parts (a) and (b) of your reverting ruling are unblocked and being written. Part (c) needs one more
+line from you, and my first proposal for it was wrong.**
+
+I said an authorised downgrade is one *permitted to move the floor*. **An irreversible eFuse counter
+cannot move down** — that is what irreversible means. I reasoned about the counter as an abstract floor
+and never checked what the concrete part can physically do. **Three shapes, ranked by what they cost:**
+
+- **(i) downgrade permitted only ABOVE the burned floor** — canon-consistent, **no change**. The floor
+  bounds how far back you can ever go; authorisation governs steps inside that band.
+- **(ii) the floor advances only on EXPLICIT COMMITMENT** — canon-consistent in *actor*, needs a
+  **trigger** change only. Routine updates do not burn; every burn is a one-way door narrower than the
+  last.
+- **(iii) host-side burn** — I proposed this as the cheap one. **It is the expensive one.** Canon assumes
+  a *device-side* advance in five places, and moving the burn to the host **leaves your own 2026-06-26
+  after-confirm ratification with no referent.** You would be superseding yourself, not extending.
+
+**Context you should have either way:** our anti-rollback floor is **software-backed today** — the eFuse
+that would back it in hardware exists and is **readable**, but **cannot be written** from our no_std
+stack. That is **permitted, not a violation** (canon allows NVM *or* eFuse). The real defect is that the
+**durability class was never declared** — and canon already had that rule and failed to apply it to
+itself. Now landed. → `gate 26c: above-the-floor` / `explicit-commitment burn` / `host-side burn`
 
 **Not a decision, but it explains why this surfaced late:** canon already **required** a conformance test
 for exactly this case — a v2 parser meeting a v3 header is the **first named item** in a
