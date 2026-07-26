@@ -2462,3 +2462,93 @@ mints do not.**
 Board undisturbed on A, slot intact, NVS preserved, mint ready and unused.
 
 Decision-Log: none
+
+## D-20260727-42 — reason=4: the failure moved one gate forward, as pre-committed
+
+### The result
+
+**`reason=4 UnauthorizedSigner`.** Host pusher and board console agree. **This was the pre-committed
+PASS**, and it delivers three things:
+
+1. **The re-vendor works end to end.** Same board, same pusher: last night `reason=1` at the
+   **version** gate, tonight `reason=4` at the **signer** gate. **The v3 header parses.** A fix that
+   an hour earlier existed only as a source change and an instruction-level disassembly is now
+   confirmed *behaviourally*, on metal.
+2. **Composer's source-level refutation of my claim became a metal fact.** It refuted
+   *transport-needs-no-persona* from the firmware source; tonight the board demonstrated the exact
+   mechanism — unprovisioned means a zeros signer key, a non-zero issuer with no cert chain, therefore
+   UnauthorizedSigner. **A source reading became an observation.**
+3. **The fourth leg of the tree behaved** — clean protocol reject, **no reset anywhere**, zero panics,
+   zero watchdog, image A uninterrupted with its beats climbing throughout. **Twice now this board has
+   absorbed a refused push without hiccupping** — once malformed, once well-formed-but-unauthorised. On
+   hardware whose entire OTA history is chunk-1 deaths and a hang that spawned an instrument campaign,
+   that is a real robustness result.
+
+**Zero image chunks sent. Not accepted, so no security defect. Last chunk index NONE, as expected.**
+
+### The cross-check that replaced weaker evidence with stronger
+
+Composer **flagged its own gap**: it attached the console reader late and **missed the one-time boot
+banner**, so its unprovisioned reading rested on periodic health lines plus the previous night's
+banner. **`reason=4` requires a zeros signer key, which requires unprovisioned** — so the reading is
+now corroborated **from the protocol direction**, independent of the banner. **Two independent lines
+on one fact, and the second stronger than the banner would have been.** It named its weaker evidence
+rather than defending it, and better evidence arrived.
+
+### My own patch verified on the real path
+
+The `ota-push` gate widening shipped two hours ago **behaved on the actual operation**: a real push is
+**denied** without grant tokens, and **passed** when authorised **truthfully** via env tokens rather
+than by satisfying a substring. **That closes, end to end, the gap composer reported three hours
+earlier against its own convenience** — and it is a live verification the test suite could not give.
+
+### The build-identity correction, fourth of one family
+
+Hive rebuilt from the branch tip and the image digests **differed** from the running build. Delta:
+**panic-location bytes only** — Rust bakes `file:line` into read-only data, and comment line-shifts
+moved it. So ***"comments do not affect codegen" is true and gives the wrong answer***, because panic
+locations are not codegen.
+
+**Three warrants, ascending:** I inferred from a commit *description*. Core read the *diff* — comment
+only, fields byte-identical — and still concluded *identical binaries*. **Hive built both and compared
+the digests.** Only the third is sufficient.
+
+**Fourth instance in one night of one family:** report ≠ artifact · source ≠ binary · commit message ≠
+content · **source-diff ≠ binary-identity.** The sharpest, because here the indirection was *correct
+reasoning* rather than a label.
+
+**Two consequences, both recorded in the grant file:**
+
+- **The run stayed valid, and only because someone checked at the right granularity:** the update
+  crate is **byte-identical across both builds** (comments were elsewhere in the tree), so the header
+  constant is unaffected. **Per-crate, not per-image** — an image-level comparison alone would have
+  discarded a perfectly good running board.
+- **If anything panics on that board, decode against the build that is running, not the tip.** The
+  delta is irrelevant to the expected path and **load-bearing for the unexpected one** — a location
+  decoded against the tip would name the wrong line, quietly, in exactly the situation where it would
+  be trusted most.
+
+**And core adopted "prove it from the binary" as a standing bar, then violated it one turn later.**
+Same shape as three prior instances of a lane re-deriving a known-unsafe operation as safe from memory.
+**A rule you have just written is not yet a habit.**
+
+### The friction I failed to pre-empt, twice
+
+The gate carries **one** artifact field; this is a **two-artifact** operation, so a mid-run flip is
+structural. But **I hit that wall the previous night, diagnosed it, closed the widening it opens — and
+then wrote tonight's grant the same way**, so composer had to stop and request the identical flip a
+second time. **A friction already solved and then re-encountered is a record-keeping failure, not a
+discovery.** Any future multi-artifact grant states the transition up front. I did pre-empt the other
+half: Stage 1 provenance went into the file **before** the flip, because last time the flip silently
+deleted it.
+
+### Ceiling, stated without softening
+
+**The round-trip is not done and cannot be tonight.** It needs a provisioned board; provisioning needs
+the two partition questions answered; those are Roy's because **the board's own console recommends the
+operation that bricked D4.** Tonight moved the failure **from the version gate to the signer gate** —
+the pre-committed advance, no more and no less.
+
+Image A untouched on ota_0, NVS preserved, console reader attached, X1 healthy, mint ready and unused.
+
+Decision-Log: none

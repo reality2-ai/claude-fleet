@@ -1,14 +1,18 @@
 # RESUME — claude-fleet (supervisor)
 
-**Updated 2026-07-27, early hours.** Takeover snapshot, rewritten whole. Figures re-derived at
-write time. The version this replaces was current for about three hours and is now wrong on
-the transport choice, the grant state and the build pin — which is the normal decay rate for
-this file on an active night, and the reason it gets rewritten rather than patched.
+**Updated 2026-07-27, ~02:00.** Takeover snapshot. Rewritten whole earlier tonight, then
+**updated in place after the metal result** — and re-read end to end afterwards specifically
+hunting paragraphs the update had left stale. That sweep found one and it is fixed: this file
+said *"waiting on a rebuild"* after the rebuild had happened and been confirmed on metal.
+**Same file is not same sweep** — the rule that cost me a grant-file record tonight, applied
+here on purpose.
 
 ## Where the OTA work actually stands
 
-**The round-trip is NOT done. The blocker is identified precisely, fixed in source, and
-waiting on a rebuild.**
+**The round-trip is NOT done — and the blocker has MOVED.** The stale-header-version block is
+**fixed, rebuilt, and confirmed behaviourally on metal.** What remains is the **identity
+write**, which is Roy-gated on two questions. So the night ended one gate further forward than
+it started, with the failure now at the signer gate rather than the version gate.
 
 **Proven on metal tonight**, each independently:
 
@@ -22,14 +26,17 @@ waiting on a rebuild.**
   chip). Result: an **affirmative absent** — unprovisioned, no NVS persona.
 - **BLE channel connect, L2CAP accept, and a signed header framed and answered.** First time
   on this hardware.
-- **Fail-closed rejection** — the board refused the push, wrote nothing, sent zero image
-  chunks, **and did not reboot at all**: image A's beats ran unbroken through the whole event.
+- **Fail-closed rejection, twice** — once malformed, once **well-formed but unauthorised**. Both
+  times the board refused, wrote nothing, sent zero image chunks, **and did not reboot at all**.
+- **The re-vendor confirmed behaviourally on metal:** the refusal moved from the **version** gate
+  (`reason=1`) to the **signer** gate (`reason=4`). The v3 header parses. And composer's
+  source-level refutation of my *transport-needs-no-persona* claim became an **observation**.
 
 **Still untested:** the image-chunk stream. Every historical failure on this hardware was a
 chunk-1/2 stall, and **that code was never reached tonight.** Connect and header delivery are
 proven; the chunk stream is not.
 
-## What blocked it, and why it is not what we thought
+## What blocked it last night — now FIXED and confirmed, kept for the sequence
 
 The reject was **not** the signer gate and **not** a stall. It was **`BadHeader`**: the two
 vendored copies of the update crate disagreed on the package version — pusher v3/137, firmware
@@ -47,20 +54,31 @@ after proving it a clean stale ancestor rather than a fork), on its branch. Sign
 coverage is **parametric over the header length**, so the new fields are covered **by
 construction**.
 
-## Immediate next action
+## Immediate next action — and it is Roy's, not a lane's
 
-**Hive builds two pairs from the re-vendored commit** on core's branch — the heavier
-configuration as primary, the core-isolated one pre-staged so a failure costs no build cycle.
-**Both of tonight's attested pairs are dead**: they predate the re-vendor and would reject a
-v3 header.
+**Everything a lane can do without a provisioned board is done.** The single thing standing
+between here and a round-trip is **the identity write**, and it is gated on two questions that
+must be answered from code and from the device:
 
-**The attestation item that matters most: prove the canonical header version FROM THE
-ARTIFACT, not the source tree.** A re-vendor that did not reach the binary is exactly the
-class that cost us tonight.
+1. **Which path does this build actually read the persona from** — NVS, or the raw offset the
+   board's console names?
+2. **Is that offset inside a region no partition claims?**
 
-Then: bind a fresh grant, push, and read the result against **four** distinguishable outcomes
-— B running / software-reset fault (recovers) / watchdog stall (empty capture) / **clean
-protocol reject with no reset**. That fourth leg was missing from my tree and hive caught it.
+**They are gated because the board's own console recommends the operation that BRICKED D4** —
+fourth resurfacing of that hazard, and the first time the *artifact itself* is the source. A
+minted dev-TG persona is ready and unused; the mint touched no board.
+
+**Once provisioned:** push B and the chunk stream finally gets exercised — that is where the
+historical chunk-1/2 stall lives, and it has never been reached on this board. The
+LoRa-on-core1 pair is pre-built for that branch, and a pass on it is **"core-0 load relief as a
+class", not coex-relief.**
+
+Read any result against **four** outcomes: B running · software-reset fault (recovers) ·
+watchdog stall (**empty capture is a fault the instrument cannot record**) · **clean protocol
+reject with no reset.** That fourth leg was missing from my tree until hive caught it.
+
+**If anything panics on the board as it stands, decode the location against the running build,
+not the branch tip** — comment line-shifts moved the panic-location bytes.
 
 ## Standing bars
 
