@@ -2136,3 +2136,100 @@ the indicator-plugin refactor belongs to the ensemble phase. Told it not to refa
 Nothing flashed. No image-A grant — the creds-baked artifact still does not exist.
 
 Decision-Log: none
+
+## D-20260726-39 — the AP sustains, the creds problem is deleted, and two new instrument classes
+
+### g24 closed in fact: synthetic AP PASSES by test, not by claim
+
+Composer's own caveat was that `iw` reported the dongle **AP-capable**, which is not AP-*functional*
+— the presence-is-not-reachability shape, raised **against its own proposal**. So it tested: AP
+sustained on the spare radio, **0 drops across 7 polls over ~80 s**, and Alfred's sole uplink
+**untouched**, with the default route verified identical before, during and after. **The caveat is
+retired by test rather than by assumption.** AP brought back down afterwards — leaving an
+untested-over-hours driver broadcasting all night was judged the flakier bet, and the profile is
+saved for one-command re-arm. X1 association is necessarily **post-image-A**, since the current image
+does not carry the chosen credentials.
+
+**Credentials are chosen, documented, and synthetic by construction** — held in composer's mode-700
+dev-trial directory, outside any repo. **Deliberately not recorded here, and the reason is a
+distinction I nearly got wrong:**
+
+> **Synthetic-by-construction is not the same as safe-to-publish when the value grants access.**
+> The synthetic test answers *does this reveal a real identity.* It does **not** answer *does this
+> grant access.* **A chosen PSK is still a working PSK** while that AP is up. Fine in fleet mail and
+> in a mode-700 file; must not enter a tracked or public file.
+
+### Hive refused a second time, and found a g23 surface while refusing
+
+Told it the no-print extraction was authorised; it checked and reported **there is no clean anchor to
+extract from** — the credentials are **fragmented across tracked files** in different formats, so any
+extractor stitches multiple fragile anchors. Its judgement: *that is the improvise you forbade,
+wearing a no-print hat.* Correct. It also cleared a false positive in a snapshot (placeholder text,
+not a real value) rather than reporting a scare.
+
+**New g23 surface, found while refusing to extract:** a tracked `.patch` file carries a
+real-value-shaped SSID literal — a surface beyond the one already logged. **No scrub; that is Roy's
+call and the hold stands.** The useful kind of accident.
+
+### Two new instrument-failure classes, both self-reported by the lane that owned them
+
+**1. A GATE CAN BE FED THE WRONG THING AND STILL PASS.** A spec file had a changelog table row
+written **above its document heading**, where it sat for days. The header-date gate **matched the
+stray row** and passed. **The gate was satisfied by the exact defect it exists to catch.** Not a
+failing green — the command worked perfectly. The lane's own framing: *"I have been testing whether
+commands can FAIL, not whether they can be FED THE WRONG THING and still agree."* Corollary I added:
+once a gate has demonstrably passed over a defect, **its greens elsewhere carry no warrant either** —
+so the sweep for other instances needs its own instrument. That sweep ran over 84 documents and was
+readable **only because a planted probe was included as a control.**
+
+**2. FINDING A TRUE CITATION IS NOT FINDING THE OWNING SPEC.** Specs applied my filename rule
+retroactively to its own answers and found **three normative specs it had never opened while
+answering questions they govern.** A grep returns the **first true thing**, not the **authoritative**
+one — and **a scoped instance reads exactly like a general rule when you have not seen the general
+one.** The clause it cited was *true*, which is precisely what stopped the search.
+
+**And the correction refined a claim we had both made.** We had each said a device whose persona
+fails to validate has *nowhere to send data.* The owning invariant says **there is no TG-less
+state** — such a device sits in its own singleton trust-group-of-one, or the factory/open group. **The
+operational blocker survives, but the reason moves from "no group at all" to "not a member of *that*
+group" — and those imply different fixes: a join versus a rebuild.** Its own assessment of the shape
+was right: the filename rule caught **no** wrong silence claim, every silence survived; what it caught
+was **confident, cited answers built without opening the owning document**, which travels further
+than an admitted unknown.
+
+### Canon landed and relayed
+
+**OUTQ-1..4** authored for the own-origin outbound queue, in a **separate section** from peer-custody
+— and specs' placement reasoning beat my ruling: **own-origin custody ends when your own transmission
+succeeds; peer-custody ends when the peer reappears; folding them mis-sizes both buffers.** The
+OUTQ-4 falsifier includes a **vacuity guard** most would omit: a consumer watching a genuine quiet
+interval must compute **zero** loss, else the test passes on a system that always cries loss.
+
+**R2-DEVICE-LIFECYCLE §3 invariant 2, relayed as a deliberate declaration:** claim_state persistence
+requires three hardware roots (irreversible virgin sentinel, dedicated monotonic epoch counter,
+per-device HUK); a platform lacking any **must fail closed at build/provision time**, and bench builds
+**may be explicitly non-persistent only.** Hive is to **declare** that, not discover it — an emergent
+non-persistence is indistinguishable from a bug.
+
+### Hardware findings that change firmware
+
+**FRAM paging hazard (circuits):** a 512 KB part addresses **beyond 16 bits**, with the high bits
+paging into the **I2C device-address byte** rather than the two address bytes. The wrap test still
+distinguishes 32 KB from larger, **but full addressing of the large part requires those page bits —
+without them writes ALIAS.** So detection alone is insufficient. **Aliasing writes that appear to
+succeed is the worst available failure shape for a store-and-forward buffer.**
+
+**LED probably invisible.** Circuits' mechanical read: BOOT, RESET **and the user LED** all sit on the
+XIAO top face, and the piggyback covers that face — which is why the buttons are buried. If so, **an
+indicator nobody can see is not an indicator**, and a discrete LED stops being a firmware default and
+becomes a **Roy morning hardware item.** Put to Roy as an eyes-on fact, not datasheet reasoning.
+
+**Rulings on circuits' three questions:** FRAM size **detected at init, never assumed** (a parts-list
+number is an intention in the grammar of a fact, and queue depth depends on it); ATECC lock state
+**queried at init** rather than by a bench flash to learn one bit — circuits withdrew its own
+live-check offer once it saw that; LED **onboard GPIO21 active-low by default, pending the visibility
+answer.**
+
+Nothing flashed. No image-A grant yet — awaiting the creds-baked re-attest and its new sha.
+
+Decision-Log: none
