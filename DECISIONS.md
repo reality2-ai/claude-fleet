@@ -2552,3 +2552,66 @@ the pre-committed advance, no more and no less.
 Image A untouched on ota_0, NVS preserved, console reader attached, X1 healthy, mint ready and unused.
 
 Decision-Log: none
+
+---
+
+## D-20260727-43 — Ensemble build-gate: three rulings, all derived from the vacuity test
+
+Composer refused to guess on three design questions and was right to — **guessing the builder identity
+builds the wrong gate.** All three answers fall out of the same instrument specs banked at `aeabea2`:
+**a gate that cannot see the class it exists to prevent is itself the non-conformance.**
+
+**Q1 — realised-equals-declared (§7.10.2) CROSSES REPOS, and the realised set MUST come from the
+binary.** Declared is composer-side (the score resolves it); realised is hive-side (cargo build is what
+links). So the assert lives in the build path composer is wiring, consuming a hive-emitted manifest.
+
+**The load-bearing constraint is where that manifest comes from: symbol PRESENCE AND ABSENCE in the
+ELF, never the Cargo features or recipe that produced the build.** A manifest read back off the recipe
+makes the assert **circular** — recipe declares X, manifest reports X because it read the recipe, assert
+passes trivially, **zero information.** Precedent is one night old: `movi a12, 137` present and `123`
+absent is what proved the re-vendor reached the binary, and a **source-level claim** is exactly what let
+the stale copy through the first time.
+
+**Q2 — `E_REG_CONFLICT` scope is the IMAGE, not the ensemble.** R2-DEF §2.1.2 singleton-resource sharing
+is a **hive-scope** property, so `route_prefix` collisions are inherently cross-ensemble. A
+within-ensemble-only check is **blind to its own class.** Composer gets image scope **free** once compose
+is in the build path, since the build knows the full ensemble set for that target.
+
+**Q3 — the §7.8 local-dev unsigned exemption is honoured, but MUST BE EARNED BY A DECLARATION, NEVER BY
+AN ABSENCE.** Specs ruled exactly this on `runtime_executable` hours earlier and it generalises
+unchanged. **Absence-as-exemption makes the gate fail OPEN on stripped, truncated or corrupt scores** —
+the one input class it should be hardest on. Catalogue scores need the declaration added: same shape,
+same part-by-part pass as the nine.
+
+**Routing:** strict-schema and `runtime_executable` are **path A** — core codes them into the r2-def
+structs, then **one** re-vendor for all three items, not three. B remains a **labelled** diagnostic.
+
+**Highest-value item on composer's plate is wiring compose into the build path** — it is the
+**precondition for both Q1 and Q2**, and the vacuity gap composer found itself: *a gate nothing invokes
+is the non-conformance the guard names.*
+
+### Core's correction to my framing, accepted
+
+I said "no tool acts on `required_transports`." Composer's recipe-resolve Gate-C **already enforces it**
+(`711d65a`, 422 green, all ten declare it). The real defect was narrower and worse-shaped: **r2-def
+silently DROPPED the field on parse**, because serde ignores unknown fields. Fixed at `b5d87ecf` as
+**parse-carry**, not a new gate — r2-def is correctly not the enforcement home for a build-time field.
+
+**Silent drop is not absence of enforcement — it is enforcement elsewhere plus data loss here.** I
+collapsed the two and would have sent core to build a duplicate gate. **And a dropped field and an
+unknown field are the same defect seen from two sides**, which is why `deny_unknown_fields` is the fix
+for the class core just found.
+
+### R2-INDICATOR §3.2 landed at `aeabea2`
+
+Four parts, four gates, pending-Roy in the text, falsifier on each. Specs added one clause unasked and it
+is the right call: **the service indicator MUST still implement the same signature.** A service role with
+a *different* signature is how a **second convention** starts — and it would have started invisibly,
+inside sealed boxes.
+
+**Consequence for hive: nothing is owed.** One state-to-envelope map, one optical transducer, no second
+carrier, no enclosure change, GPIO21 stays the service indicator. **What the ruling removed is a second
+carrier I was about to add.** Hive correctly holds it as v0.6 **pending Roy** and will re-confirm
+ratification before cutting code.
+
+Decision-Log: D-20260727-43
