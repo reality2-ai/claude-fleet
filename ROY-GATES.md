@@ -58,8 +58,22 @@ on the wire: the pusher is an active participant that **knows its target** and c
 old-version support costs one encoder on the **reachable** side. Nothing changes on the constrained
 device. → `gate 26: pusher speaks the receiver's version` / `physical recovery is acceptable`
 
-**Parts (a) and (b) of your reverting ruling are unblocked and being written. Part (c) needs one more
-line from you, and my first proposal for it was wrong.**
+**RESOLVED 2026-07-27 by your TG-membership ruling — (a) and (b) landed, (c) closed by derivation.**
+Push is gated on trust-group membership, so **an outsider cannot push at all**; the rollback adversary
+reduces to an insider or a former insider, and **revocation, not a counter, is what addresses those**.
+The **software floor is sufficient** — it can only be lowered by an actor with flash-write access, which
+requires code execution on the target, **the very thing the rollback attack exists to obtain**. A
+hardware floor would cover the two residuals below, but **only in the form we cannot build**, since the
+burn is unreachable from our runtime. **Closing it is my call, not read into yours — say so if you
+disagree.**
+
+**Two residuals accepted, named rather than argued away:** a revocation **only protects devices that
+hear about it** (an off-grid board still trusts a revoked party — and the boards hardest to reach with a
+revocation are the easiest to attack with a stale credential); and revocation is **reactive**, requiring
+that someone *suspects* — between compromise and suspicion the attacker holds full, legitimate authority
+and nothing in the system is unhappy.
+
+**Superseded framing below, kept for the sequence:**
 
 I said an authorised downgrade is one *permitted to move the floor*. **An irreversible eFuse counter
 cannot move down** — that is what irreversible means. I reasoned about the counter as an abstract floor

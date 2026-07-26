@@ -2890,3 +2890,120 @@ A fleet message was blocked by the firmware gate on **`ota_push` appearing as li
 **Working as designed; reworded rather than weakened.**
 
 Decision-Log: D-20260727-46
+
+---
+
+## D-20260727-47 — OTA authority is TG membership. Occam's razor, and it closes g26c by derivation.
+
+### Roy's ruling, in four steps across one conversation
+
+> *"The hacker would have to be in the same trust group or have permission supplied by entanglement."*
+> *"In which case, the problem is one of permissions management rather than hacking per se."*
+> *"For now, let's simplify and say a maintainer has to be in the same trust group. We haven't fully
+> defined entanglement and how that would work if a device is off grid."*
+> *"OTA updates can only be carried out by other hives in the same TG. In practice, a maintainer on
+> their laptop or iPad would select the appropriate TG, then do the maintenance."*
+> *"Let's roll with that for now — occam's razor and all."*
+
+### The elegant consequence: there is no maintenance-client class
+
+**The maintainer's laptop or iPad IS a hive that is a member of the TG.** It gets update authority by
+**being a member**, exactly like any other hive. **No new authority type, no privileged client, no
+operator mode.** This falls straight out of standing canon — every device is a TG member, any UX is a
+hive plus a plugin, the visualiser is already a TG-member hive — so it **adds no mechanism, it only
+names which existing one applies.**
+
+**Told core explicitly: if the sizing starts to grow a new identity type, that is the signal you have
+left the model.**
+
+### It converts an open question into a requirement
+
+**Pusher authentication is now normative.** *Only other hives in the same TG* means the device must
+establish **who is speaking**, not merely verify **who signed the image**. We have evidence only for the
+second — the receiver matches the image signer against the persona's TG key, **which a replayed image
+satisfies by construction.**
+
+**A signature proves the image was ours. It cannot prove the speaker is ours.** If the code doesn't
+check membership, that is now a **non-conformance against a Roy ruling**, and closing it is work rather
+than an option.
+
+**And one mechanism closes two holes:** a membership check carrying a challenge or nonce **defeats
+replay at the session**, which a payload signature can never do.
+
+### g26c closes by derivation — my call, stated as mine
+
+With push gated on membership: **an outsider cannot push at all.** The rollback adversary is reduced to
+an insider or a former insider, and **revocation — not a counter — is what addresses those.**
+
+**So the software floor is sufficient**, for a better reason than the one I first gave. Not *"the threat
+is small"* but: **the software floor can only be lowered by an actor with NVS write, which requires code
+execution on the target — the very thing the rollback attack exists to obtain.** The attacker cannot
+lower the floor without already having what they are attacking to get.
+
+**Recorded honestly: a hardware floor WOULD cover the residuals below — but only in the form we cannot
+build**, since covering recent vulnerabilities requires the floor to advance as updates land, and the
+burn is unreachable from our no_std runtime. **A manufacture-time floor sits below anything interesting.**
+
+### Two residuals accepted, named rather than argued away
+
+1. **Propagation.** A revocation only protects devices that hear about it. **An off-grid or sleeping
+   device still trusts a revoked party** — and that inverts targeting: **the boards hardest to reach
+   with a revocation are the easiest to attack with a stale credential.**
+2. **Detection latency.** Roy's own phrasing is precise: *"if a hive is **suspected**."* **You have to
+   notice.** Between compromise and suspicion the attacker holds full, legitimate authority and nothing
+   in the system is unhappy — because they *are* authorised. **A mechanism fails loudly; a discipline
+   decays silently.**
+
+**And one refinement the simplification undid, recorded as an accepted risk rather than as silence:** I
+had ruled downgrade authority must be the *update authority*, not membership — because if any member may
+authorise a downgrade, **one compromised member authorises its own rollback of every peer.** With
+membership as the authority **that distinction collapses by construction.** Roy's call; mitigation is
+revocation. **An accepted risk written as silence becomes a discovered defect later.**
+
+### The threat model relocated, and this is the part that matters most
+
+*"A maintainer would select the appropriate TG"* implies **one hive holding membership of many trust
+groups.** That laptop is then **the highest-value target in the system** — the single node that can push
+firmware to every customer fleet. **The attack moves from *reach a device* to *reach the maintainer's
+laptop*, and everything about counters and floors is downstream of that.**
+
+It is also **a cross-TG bridge by construction**, which is exactly what islands-of-sensitivity exists to
+stop being *accidental*. Requirement dispatched: **TG selection is an explicit act with no ambient
+authority across groups, and memberships on one hive must be isolated** — no key, session, cache or
+route leaking between them. **A multi-TG hive is permitted; one that treats its memberships as a single
+context is not.**
+
+### Field maintainability, and the one thing that can never be fixed remotely
+
+> *"the ability for authenticated maintainers to work with a device in the field... without having to
+> pull it off the bridge, open it up and plug in a wire."*
+
+**A partition table cannot go over OTA.** So **the table is frozen at deployment** — every other defect
+is recoverable over the air; a wrong table is a field trip, per board, up a bridge.
+
+**This vindicates the reserve-a-spare-sector ruling far more strongly than my own argument for it.** I
+justified it as buying out a second lockstep migration. **The real argument is that a second migration
+may be physically impossible to perform.** Composer ordered to widen the layout question once, properly,
+and to **name what the reservation is for — an unnamed spare becomes an unclaimed gap**, the exact defect
+this whole thread removed.
+
+**And it produced a concrete ruling:** hard-fault-on-absent is correct, but **on an unreachable board a
+hard fault is an unrecoverable device.** The fix is not to soften the fault — it is to **refuse the image
+before applying it, while the old one is still running.** Same safety property, opposite cost.
+Generalised: an image declares what layout it needs; the receiver checks its own table before commit.
+
+**Also raised: automatic revert is a DUAL-SLOT capability.** A single-bank target has no previous slot
+and **no automatic recovery** — which matters enormously once boards cannot be physically reached. Core
+asked which targets are which, **from the tables, not from memory.**
+
+### Specs corrected its own scope figure by an order of magnitude
+
+Not *"several pushes"* — **28 consecutive failing runs, 8h37m of red main**, first failure its own
+routing landing. **And it named why the estimate happened: it estimated a window it could have counted.**
+Same shape as the incident it was describing. **A scope claim is a measurement** — and I was about to set
+a fleet-wide practice on its number.
+
+**`enumerate, do not estimate` now stands alongside `hosted, not local`** — and applies to me: I have
+used *several* and *a few* about lane state all day without counting once.
+
+Decision-Log: D-20260727-47
