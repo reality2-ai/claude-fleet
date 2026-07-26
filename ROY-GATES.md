@@ -12,28 +12,48 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**5 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**6 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
 
-**[g25 — does the pre-release premise still hold?](gates/g25-update-version-negotiation-trigger.md)** · **one judgement, and canon named the trigger in advance**
-The OTA path was blocked tonight by two vendored copies of the update crate disagreeing on the header
-version. **Canon is unambiguous on the version itself** — v3 is canonical, the firmware copy is stale,
-and the board rejecting a v3 header was **correct, specified behaviour**. No ruling needed there; core
-is re-vendoring. **What needs you is one step up.** Canon deliberately defers version *negotiation*,
-with the trigger written down: *"if/when the fleet is deployed and a future header bump must coexist
-with in-flight old packages, add explicit version negotiation then; for now, cutover is canon."* That
-premise is **no old packages deployed in the field.** Two divergent copies now exist on real hardware.
-**Whether that trips the trigger is a judgement about deployment status, not a canon read** — so it is
-yours. `gate 25: still pre-release` (cutover stays, re-vendor discipline carries it) or
-`gate 25: add negotiation` (spec work now, before more boards diverge).
+**[g27 — provision X1: authorise a raw persona write at `0x12000`?](gates/g27-x1-persona-raw-write.md)** · **the one thing between here and a completed OTA round-trip**
+**Both questions you gated this on are now answered from code and from the device.** (1) This build reads
+the persona from **raw absolute `0x12000`** via `esp_storage::FlashStorage` — **table-agnostic, not
+NVS**. (2) That offset is in a region **no partition claims**: the device's own bootloader lists
+`nvs 0x9000` · `otadata 0xf000` · `phy_init 0x11000+0x1000` · `ota_0 0x20000`, leaving `0x12000–0x1FFFF`
+unclaimed. App is at `0x20000`, so **the D4 collision geometry does not apply here.**
 
-**The sharper finding underneath it, no decision needed:** canon already **required** a conformance test
+**The margin is exactly one sector and that is the whole risk.** `phy_init` ends at `0x12000`; the
+persona starts at `0x12000`. **Zero gap.** A 4 KB *sector* erase is safe; a 64 KB *block* erase at that
+address would take out `phy_init` **and** `nvs`. So the write must be sector-granularity, verified after.
+
+**Honest status: brick-safe today, defended by nothing.** Two partition tables are in play across the
+catalogue and the platform runner, so the gap's existence depends on which flow last flashed the board.
+→ `gate 27: provision` (recommended, with sector-only write + post-verify) / `gate 27: hold`
+
+**[g26 — can a device that missed a cutover still be updated over the air?](gates/g26-update-header-version-reachback.md)** · **one line, the tail of your g25 ruling**
+**Your g25 answer separated three version axes and settled two.** Wire message-passing: backwards
+compatibility **mandatory**, slow-moving, old devices **expected**. Plugins and sentants: **their own
+versions**, independent of firmware. Both landed and dispatched.
+
+**The third axis is the OTA package header, and it inherits a consequence you may not have intended.**
+Canon specifies **strict single-version cutover** — a receiver accepts *only* the current header
+version, checked **before** the signature. So a device still on v2 **cannot be updated over the air by a
+v3 pusher, ever.** Combined with *"we expect to find devices that have older versions"*, any device that
+misses a cutover is **permanently un-updatable except by physical recovery** — and on a sealed field
+unit, that can mean not recoverable at all.
+
+**Recommendation: the pusher emits the receiver's accepted version.** Cheap here in a way it is **not**
+on the wire: the pusher is an active participant that **knows its target** and can be updated freely, so
+old-version support costs one encoder on the **reachable** side. Nothing changes on the constrained
+device. → `gate 26: pusher speaks the receiver's version` / `physical recovery is acceptable`
+
+**Not a decision, but it explains why this surfaced late:** canon already **required** a conformance test
 for exactly this case — a v2 parser meeting a v3 header is the **first named item** in a
-must-prove-before-freeze list, and that milestone is still open. It was never built, so **its first
-execution was a blocked update path on metal instead of a red test.** The drift was not the defect; the
-**missing drift-detection test** was. Specs is building all five now.
+must-prove-before-freeze list, still open. It was never built, so **its first execution was a blocked
+update path on metal instead of a red test.** The drift was not the defect; the **missing
+drift-detection test** was.
 
 
 **[g24 — which WiFi does the OTA proof join?](gates/g24-ota-bench-ap-credentials.md)** · **RULED overnight, pending your review**
@@ -134,3 +154,4 @@ minutes. The capability cell stays honest either way.
 | 22 | Shared crates vendored per-repo | **sync procedure — use versioning** (Roy 2026-07-26): keep the copies, no path-dep, no declared forks. Versions must MOVE so the gap carries signal. Obligation keys on (repo, crate, pinned-canon-sha); content hash stays as the verifier that a bump was not forgotten. Bench safe throughout — an unfixed copy cannot carry a join. g15 identity half UNBLOCKED; reaches metal at next re-vendor, not by hot-fix | D-20260726-S29 | [g22](gates/g22-shared-crate-vendoring.md) |
 | 13 | Radar board-fit — ~29 columns needed vs ~28 available | **RESOLVED into a two-board split** (Roy 2026-07-26): it does not fit one board. Power board and logic board BOTH built and bench-verified — power steady at both rails, logic powers clean. Supervisor's index had it listed open after the ruling; corrected by circuits | — | [g13](gates/g13-radar-board-fit.md) |
 | 15 | Join relay — may a sovereign JOIN traverse the mesh? | **RELAY PERMITTED; NO HOP BUDGET** (Roy 2026-07-26): intended case is **ZERO hops — direct connection**, physical presence; relay allowed when needed under the same single-hop rule (worked example: a UDP hive) = **at most one** intermediary. Lanes' NO was against mesh FLOODING and survives intact. Origin-less drop needs a join exception; hop semantics 0 direct / ≤1 relayed; 5 is boilerplate. **Dedup key NOT settled — g21** | — | [g15](gates/g15-join-relay.md) |
+| 25 | Update version negotiation trigger | **RULED 2026-07-27** — *always deploy latest unless a specific reason (eg hardware incompatibility); older-version devices are expected on the network; backwards compatibility in message passing is mandatory and slow-moving; plugins and sentants carry their own versions independent of firmware.* Separated three version axes the gate had collapsed into one; axes 1 and 3 settled, axis 2 (update header) spun out as **g26** | D-20260727-45 | [g25](gates/g25-update-version-negotiation-trigger.md) |

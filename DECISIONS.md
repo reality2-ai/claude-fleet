@@ -2687,3 +2687,101 @@ declaration exists, a **misspelling** of it would — without strict schema — 
 the side door.** The strict-schema item is what stops the new field from re-opening the hole it closes.
 
 Decision-Log: D-20260727-44
+
+---
+
+## D-20260727-45 — Persona store: canon landed, my downgrade mechanism refuted, RAK reaffirmed as an exception
+
+### The ATECC608B question, closed on three independent facts
+
+**Roy asked whether the persona could live in the ATECC608B.** Two of the three candidate answers are dead
+and the third is better than either of us proposed.
+
+**It cannot hold the signing key.** Canon is **Ed25519-only** — specs measured 256 occurrences against
+**one incidental** P-256 mention; R2-TRUST §4.1 `sig_algo = 0x01` is Ed25519 with a 64-byte signature.
+Core confirmed **independently from code**: `ed25519-dalek` 2.1.1 at `r2-trust/cert.rs:26`, and it made the
+distinction a careless read would miss — `x25519`/`curve25519` are present but are **key agreement only**.
+**The ATECC608B is P-256 only.** Two halves, two lanes, same answer, neither answering both.
+
+**A split persona breaks the validation model — harder than "not permitted".** I asked whether canon
+*permits* a split. Specs answered structurally: **a seal or CRC computed over a unit cannot validate a unit
+half of which lives where the CRC never reached.** Atomic install and fail-closed self-consistency make it
+load-bearing. **I would have let a lane code the easy half.**
+
+**And canon had already housed the part, in a role we hadn't considered.** R2-KEYSTORE §4.2 names ATECC608
+as the **sealed-at-rest hardware root anchor**; R2-UPDATE §1132 **requires** an external SE on parts with no
+on-die OTP monotonic counter. **We spent the exchange asking where to put a part canon had already placed.**
+Mine — I dispatched before checking canon.
+
+**Specs found the synthesis by putting both blockers together: ATECC-PROTECTS-the-persona evades both**,
+where holds-the-key and split-persona each hit one. Blob stays whole in flash; the element holds the
+wrapping key via HMAC-SHA256 — the sealing role §4.2 already assigns it. **Roy's hybrid is buildable as canon
+stands.** Landed: R2-KEYSTORE 0.47 §9.12 at `489d87d`.
+
+**And the S3 answer confirms Roy's read:** ESP32 is **not** on the §1132 counter-less list (nRF52840,
+RAK4630, RP2040 — specs extracted every token on the line), and R2-RUNTIME affirms the irreversible eFuse
+secure-version counter. **So the SE is optional hardening on X1 and the DFR1195s, not a requirement.**
+Specs also refused to open a rival gate: the per-board REQUIRED/RECOMMENDED matrix is **already** a
+Roy-gated R2-HW reconciliation, explicitly not-minted-unilaterally.
+
+### My g26c mechanism was refuted, and the refutation is right
+
+I wrote that an authorised downgrade is one **permitted to move the floor**. **An irreversible eFuse counter
+cannot move down** — canon says *irreversible* in the same sentence that affirms the counter exists.
+
+**I reasoned about a monotonic counter as an abstract floor and never checked what the concrete mechanism can
+physically do.** Same shape as every referent error this session: the model was coherent and the substrate
+refused it.
+
+**Specs' decomposition, escalated to Roy rather than decided:** (i) downgrade permitted only **above** the
+burned floor, so the floor bounds how far back you can ever go; or (ii) the floor advances **only on explicit
+commitment**, so every burn is a one-way door narrower than the last. **Different products, not variants** —
+(ii) hands every operator a permanent irreversible decision and (i) does not. **(c) is held; (a) and (b)
+proceed.**
+
+### Three tables, not two — and the one that ships was the one nobody checked
+
+Composer and core found it independently. `platforms/dfr1195/partitions.csv` declares `r2cfg` at
+`0x11000/0xF000`, **subsuming the phy_init slot**. `r2-hive/docs/dfr1195-partitions.csv` — **the table
+`flash-board.sh` actually flashes** — has **no `r2cfg` at all**. The catalogue XIAO table likewise.
+
+**So DFR devices flashed through the normal path carry the persona in an unclaimed gap, exactly like XIAO.**
+The region I asserted already existed on DFR **does not exist on the devices we flash.** Mine: I read a table
+that ships and assumed it was the table that lands.
+
+**Rulings:** `phy_init` **stays declared** — subsuming it fixes the persona's unclaimed region **by making
+phy_init's region unclaimed**, same defect with the radio as the victim. A **dedicated `persona` region**,
+not `r2cfg` — write-once-sealed and mutable-config are different lifecycles, and **a config write would
+invalidate the seal and fail closed at next boot**, a self-inflicted brick with an innocent cause. Sized for
+**atomic replace**. **Core owns `read_persona`** (composer had it as hive's).
+
+**The sequencing fact, composer's:** `const PERSONA_OFFSET = 0x12000` is table-agnostic, so **declaring the
+partition changes nothing until the constant goes.** A device could carry a perfectly declared region and
+still read the raw address — **correct by coincidence, for exactly as long as nothing moves.**
+
+### RAK: an exception, not a substrate to design around
+
+> Roy: *"the RAK is an exception, not the rule. We most likely will not choose that board again."*
+
+**Reaffirms #d003 rather than reopening it.** But the §9.12.1 rewrite stands **for a reason that never
+depended on the RAK**: resolved-not-baked is the correct rule on ESP32 too, because it is what makes the
+falsifier discriminate and what kills the correct-by-coincidence path **we have in production right now**.
+
+**Standing rule extracted: WRITE THE INVARIANT BROADLY, BIND THE REALISATION NARROWLY.** A universal
+invariant costs nothing and survives a substrate change; a universal **mechanism** costs a second
+implementation and an exception clause forever. **My first message conflated them and would have had specs
+author nRF machinery for a board we will never choose again.**
+
+### Hive closed a live fail-open in its own instrument
+
+Predicted: its controls all defended **dead-instrument** and **false-absent**; **none defended
+false-PRESENT**, the fail-open direction. **It was real, on hive's own artifact** — `TickSource` matched
+`16TickSourcePlugin` and reported REALISED for a part that was never linked.
+
+**Fixed by length-anchored matching**, using the length byte-prefix as a **mangling invariant** — closing the
+collision **without** giving up the cross-mangling robustness that made substring matching attractive.
+Regression clean; level-2 still caught. **It now labels which direction each control defends**, and flagged
+its own residual: on a no-engine image the false-absent canary is N/A, so the build-path assert must run the
+identical matcher against a **golden ELF** every run. **Made composer's obligation, not a note.**
+
+Decision-Log: D-20260727-45
