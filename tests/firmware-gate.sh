@@ -230,5 +230,30 @@ check deny 'grep -q x <<< "text"; espflash flash --monitor t.bin'
 check pass "$(printf 'cat > n.md <<EOF\nespflash flash t.bin\n')"
 
 echo
+echo "── (4) THE METAL BLE-OTA PUSHER (gap found 2026-07-27) ──"
+# The pusher WRITES FIRMWARE TO A BOARD OVER A RADIO and was ungated: only the USB flashers
+# were listed, and the `ota` branch anticipated `ota push` as TWO tokens while the real CLI
+# subcommand is the single hyphenated token `ota-push`. Right shape, wrong spelling — a
+# decorative gate for this path. Reported by the lane that held grant authority at the time,
+# i.e. against its own convenience.
+check deny 'r2-composer-orchestrator ota-push --image B.bin --tg-key tg.txt --target aa:bb'
+check deny 'cargo run --bin r2-composer-orchestrator -- ota-push --image B.bin --target aa:bb'
+check deny 'env FOO=1 r2-composer-orchestrator ota-push --image B.bin'          # wrapper look-through
+# ★ THE FAIL-OPEN TRAP, and the reason the exemption matches a WHOLE TOKEN and never a substring:
+# a path or filename containing "dry-run" must NOT buy a pass. Substring matching here would fail
+# OPEN, which is the one direction this file must never fail.
+check deny 'r2-composer-orchestrator ota-push --image /tmp/dry-run/B.bin --target aa:bb'
+# --dry-run drives an in-process mock: no radio, no device, nothing written. Classify the ACT.
+check pass 'r2-composer-orchestrator ota-push --dry-run --image B.bin --target aa:bb'
+# LOCAL-ARTIFACT VERBS STAY UNGATED. gen-persona is the synthetic dev-trial mint class Roy
+# DELEGATED 2026-07-17 with no per-mint gate — re-gating it via a tool-name match would quietly
+# overturn that ruling. None of these touch a device.
+check pass 'r2-composer-orchestrator gen-persona --tg-seed synthetic-seed --out p.bin'
+check pass 'r2-composer-orchestrator ensemble-compose --score s.yaml'
+# And reporting the gated op in prose must still pass — a gate that taxes precise reporting of
+# the hazard it guards degrades the evidence base it exists to protect (defect 1, above).
+check pass 'fleet send supervisor "the ota-push step is what I gated tonight"'
+check pass 'git commit -m "docs: gate ota-push in the hook"'
+
 if (( fail )); then echo "✗ firmware-gate: $((n-fail))/$n pass, $fail FAIL"; exit 1; fi
 echo "✓ firmware-gate: $n/$n pass"

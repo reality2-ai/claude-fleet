@@ -530,12 +530,44 @@ _hs_segments() {
 # (task #89), one level up, in the gate itself. Substring patterns with
 # overlapping delimiters are a trap; compare TOKENS.
 # NB `sign` as a token, never a substring — `*sign*` would match `design`.
+# GAP FOUND 2026-07-27, reported by composer AGAINST ITS OWN CONVENIENCE while it held explicit
+# grant authority. The metal BLE-OTA pusher WRITES FIRMWARE TO A BOARD OVER A RADIO and was NOT
+# gated at all: only the USB flashers are in the basename list, and the `ota` branch below
+# anticipated `ota push` as TWO tokens while the real CLI subcommand is the SINGLE hyphenated
+# token `ota-push`. So the gate had the right shape and the wrong spelling — a decorative gate
+# for this path. A tool that writes firmware to a device is a firmware-write operation whatever
+# it is called and whichever bearer it uses; the flash gate was never meant to be USB-specific.
+#
+# WHY THE SUBCOMMAND AND NOT THE BINARY: it also runs via `cargo run --bin …  -- ota-push`, so a
+# basename match misses the common invocation. Match the verb token, on any tool.
+#
+# DRY-RUN IS EXEMPT AND THAT IS AN OPERATION CLASSIFICATION, NOT A COURTESY: `--dry-run` drives
+# an in-process mock — no radio, no device, nothing written. Same principle as the openssl branch
+# and `command -v`: classify the ACT, not the vocabulary.
+#
+# FAIL-SAFE CONSTRUCTION: the exemption requires the flag as a WHOLE TOKEN, never a substring, so
+# a path or filename containing "dry-run" cannot buy a pass — that would fail OPEN, the one
+# direction this file must never fail. And on the exempt path we do NOT return early: we fall
+# through so the remaining tokens are still scanned for other gated verbs.
+#
+# NOT GATED, deliberately (composer's source-level classification, and Roy's delegation):
+# gen-persona, gen-role, derive-id, carrier-plan, recipe-index, ensemble-compose. None touch a
+# device, and gen-persona is the synthetic dev-trial mint class Roy DELEGATED on 2026-07-17 with
+# no per-mint gate — re-gating it through a tool-name match would quietly overturn that ruling.
+# There is no separate signing subcommand in that repo: signing is inline in ota-push, so gating
+# the real push covers the sign too.
 _hs_verb_seq() {
-  local -a t; local i j
+  local -a t; local i j dry
   read -ra t <<<"$1"
   for (( i=0; i<${#t[@]}; i++ )); do
     case "${t[i]}" in
       sign-firmware|mint-cert|write-persona|write_persona) return 0 ;;
+      ota-push|ota_push)
+                 dry=0
+                 for (( j=0; j<${#t[@]}; j++ )); do
+                   case "${t[j]}" in --dry-run|--dry_run) dry=1; break ;; esac
+                 done
+                 (( dry )) || return 0 ;;
       ota)       for (( j=i+1; j<${#t[@]}; j++ )); do
                    case "${t[j]}" in sign|push) return 0 ;; esac; done ;;
       mint)      for (( j=i+1; j<${#t[@]}; j++ )); do
