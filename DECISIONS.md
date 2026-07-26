@@ -1814,3 +1814,219 @@ Nothing implemented. Format change, status fields, D5 row correction and the bin
 Roy-gated roster edits.
 
 Decision-Log: none
+
+## D-20260726-36 — OTA-first: option B ruled, and the real gate was not the one I asked about
+
+Roy's directive, relayed: **OTA updating first, everything else after.** Target X1-E83D
+(XIAO ESP32-S3 + Wio-SX1262 piggyback), the board being repurposed as the radar node.
+
+**RULED — hive's fork, option B.** Build `staota,lora,xiao` at
+`8530327309b82fdc0707063b72a8c00c0166a9c6`. Reasoning: `ota_task` (main.rs:1056) sits on the
+WiFi netif and is deliberately **off the RouteEngine**, so the OTA round-trip has no LoRa
+dependency — LoRa present-but-incidental costs the proof nothing. Option A would have moved the
+tip, and the tip is held to protect the g18 pins; paying that for zero OTA benefit is the wrong
+trade. And `lora,xiao` is not a workaround on this board — X1 physically carries the SX1262, so
+correct pins is the honest config. The true bare `staota` floor is still owed and follows free
+once core's held cfg fix lands; **DEFAULT must be in the regression set when it does.**
+
+**Bare `staota` does not compile** — 3× E0425 on `COARSE_TIME_ANCHOR_S` / `LORA_BEACON_T_ROTATE_S`
+via `current_beacon_epoch`. That is a **third instance of the radarprobe defect class**
+(feature-gated consts referenced from an ungated caller). Three is a pattern, not three accidents.
+
+**MY QUESTION WAS WRONG, and composer corrected the question rather than the answer.** I asked
+whether a role change (bridge → radar) needs a persona mint. Role-vs-identity was right in
+principle — canon has role as provisioning metadata. **But the OTA gate is not role, it is OTA-TG
+`730c29e7` MEMBERSHIP:** the device verifies the R2-UPDATE header signer against its trusted group
+hk. Role being metadata is irrelevant if the board cannot verify a signer. Recorded as mine.
+
+**And the premise under my own question was unverified.** I told composer "X1 is already
+provisioned". Composer's records say persona/hive_id/tg = TBD, verified=false, **no persona bound
+to X1's efuse MAC** in the MAC-keyed keystore, OTA-TG membership unrecorded. I then made the
+symmetric error in the other direction and had to stop myself: **that is the absence of a record,
+not evidence the device holds no persona.** Same class as the roster MAC — the record is an
+assertion, the device is the binding. Ordered a **passive-read-only** ground-truth of X1 itself.
+
+**Consequence that changes the flash grant's shape:** the XIAO does **not** bake its persona (only
+RAK does), so identity lives in NVS (0x9000) and **OTA cannot carry it**. The committed USB step
+must therefore do **both** — write image A with the dual-OTA table **and** provision the persona
+into NVS, once. A grant for an image write alone would have been the wrong instrument.
+
+**Partition table (composer, explicit):** nvs 0x9000 / otadata 0xf000 / phy_init 0x11000 /
+ota_0 0x20000 (3 MB) / ota_1 0x320000 (3 MB) / storage 0x620000. Already dual-OTA in the radar
+template, so B has a landing slot. Wrong table here = no OTA path = disassembly.
+
+**Recovery, and the single check the whole answer rests on.** Composer reports
+`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`, so a bad B auto-reverts to A — **but only if the app
+health-gates mark-valid.** If the relay-floor app marks the image valid unconditionally at boot,
+rollback protection is dead and recovery becomes physical disassembly, because the reset button is
+buried under the piggyback. Added to hive's attestation as a **STOP check, not a note**.
+
+**Mitigation (iv), composer's, accepted as standing:** do not overwrite `ota_0` until B is
+confirmed running. Rollback needs a known-good target.
+
+**Observation standard for B (both signals required, never inferred):** the boot banner
+`Loaded app from partition at offset 0x320000` (the slot flip) **and** B's distinct BUILD_ID
+decoded from X1's own emitted output. A-over-USB proves nothing about OTA.
+
+**A false green in my own reporting, worth more than the correction.** I reported the composer
+dispatch as sent. Checking composer's inbox jsonl found nothing — but the control killed the check:
+`RELAY-FLOOR` appears in **zero** `.fleet` files while hive is provably working on that order, so
+the inbox log records only *queued* messages and live-delivered ones leave no trace. **There is no
+sent-side audit log for supervisor at all.** Absence there is evidence of nothing. Re-sent; it had
+in fact arrived. The lesson is not the duplicate, it is that I had no instrument.
+
+**RS-485 retraction (circuits, accepted).** SEN0676 is TTL-UART, single-ended separate TX/RX;
+XC4486 is a level shifter, not a transceiver. My own gate g13:24 already said TTL-UART, and a
+controlled grep (positive + negative control in the same invocation) found **zero** RS-485 claims
+in any live supervisor artifact — so there was nothing to retract here. But on 2026-07-14 I ordered
+core to build a MAX485 half-duplex master with DE/RE turnaround and core supplied detailed
+flush-then-flip guidance. **A refutation absorbed forward-only leaves the shipped inventory
+untouched**, so core is auditing the tree for direction-GPIO remnants, zero-with-a-positive-control.
+
+**Bench leg CLOSED (circuits).** The last inconclusive resolved *against* the convenient reading:
+Roy found a **dry joint** on D1 — the divider sense node never reached the ADC pin, hence the
+~192/220/196 mV float. Circuits had pre-registered the prediction (pack/2 on battery, else a real
+open) **before** the measurement, and the number came back the open. It refuted the
+observer-coupled explanation rather than being absorbed by it. Final: 4 PASS, radar alive and
+replying, battery-sense a fixable dry joint, `0x7C` phantom unexplained.
+
+Nothing flashed. No grant exists. No enrolment, mint or provisioning write authorised.
+
+Decision-Log: none
+
+## D-20260726-37 — overnight: canon reshaped the build, and the first rung got proven
+
+Roy's directive before sleeping: **core R2 hive with OTA first, then the memories, then the sensor
+(emulated — USB attach cuts the 5 V rail), then the battery. All of these as ENSEMBLES.** Plus
+BLE/LoRa beacons present, a dev-board LED pattern, real cadence ~15 min but faster for testing, and
+two standing instructions: **"Don't hang on a decision"** and **"Always check with Specs / canon."**
+
+### The first rung is PROVEN — and the instrument was the good part
+
+The whole OTA plan rested on a step nobody had observed: **can X1 enter ROM download mode with the
+BOOT/RESET buttons buried under the LoRa piggyback?** Proven on D5, never on X1.
+
+**ENTRY PASS.** `esptool … read-mac` entered download mode with no button press. Console reports
+`USB mode: USB-Serial/JTAG` — so X1 is **native USJ, same mechanism class as D5**, which converts
+the D5→X1 leap into a same-class inference rather than an assertion.
+
+**EXIT PASS, by an inverted test.** A plain console read gave 0 lines and was **uninformative**, so
+composer ran `--before no-reset --after no-reset` and **read the failure as the evidence**:
+`Invalid head of packet (0x41)`. `0x41` is `'A'` — app console data, not a ROM sync frame. **Had the
+board been stuck in download mode, that connect would have SUCCEEDED.** It didn't, so the app is
+running. Proving liveness by showing that a connect which *must* succeed in the other state *failed*
+is the capability-impossibility test turned on one's own instrument.
+
+**Bonus retraction:** it also proves the app *does* emit, so the earlier 0-line reads were
+**the cat-open silencing the S3**, not silence. No plain `cat` for identity reads on this board.
+Composer had already refused to call that null "no persona" — a null with no positive control.
+
+### Canon reshaped the build — three findings, and one nearly became my mistake
+
+**Q2 — I asked for silence and got a normative spec.** I told specs *if canon is silent say silent
+and I will rule*. It came back **not silent**: R2-INDICATOR v0.5, normative, which I did not know
+existed. Had it answered from convenience I would have authored a colliding LED convention tonight,
+in Roy's absence. Roy's "set the LED flash appropriately" resolves to **exactly one thing** — the
+§6 dev event-arrival blip, a MAY in dev and a **MUST NOT in prod**, gated on build mode. Everything
+else is fixed: healthy = double-pulse *dub-dub* at **20 BPM, dim** — **not** the reference
+firmware's 25 BPM at full brightness, which is the fast/bright edge Roy's first metal build already
+rejected. **The obvious source to copy was the wrong one.** Overlay priority Identify > Updating >
+Low-battery > underlying; healthy and updating both signal in dev *and* prod.
+
+**Q5-C1 — the memories are NOT ensemble-owned.** R2-ENSEMBLE §2.1.2: a plugin wrapping a resource
+the hardware exposes **once** must be hive-shared with a registration mechanism. NVS, FRAM,
+ATECC608, the ADC and the indicator are all singletons. Roy's "as ensembles" still holds — **the
+ensemble is what USES them and registers**, the R2-WEB pattern (one HTTP server, three ensembles
+registering routes). Hive was close to building three ensembles each owning an NVS driver.
+
+**Q1 — the artifact is a SCORE.** §1: an ensemble *"does not get installed on a device, it does not
+have a binary."* One hive binary, five scores. And **C3**: R2-RUNTIME §210 — ensembles activate
+*from configuration within one signed firmware image*, role and knobs from an **NVS role-profile at
+boot, not compile-time**. That gives my earlier cadence-is-a-parameter ruling a real citation
+instead of my judgement.
+
+**My own citation was loose and specs was right to challenge it.** I had referred to an
+"ensemble-composition ruling that composition is compiled". Specs found no such thing in canon —
+**true of the corpus, false of the world**: Roy ruled it on 2026-07-13 (#69), compiled encoding on
+MCU, interpreted-wasm ruled out, **OTA hard-baked**. So encoding is compiled per #69, boundary is
+the score per R2-ENSEMBLE, and they compose. The real finding is that **a ruling governing the build
+shape of every MCU image is not in canon**, so a canon-only reader concludes the opposite. Specs is
+enshrining it. Do not cite R2-TRANSPORT §2.2B for it — its changelog bounds it to bearers only.
+
+**Q4 — no storage capability classes exist, by design.** R2-CAP §3.2: *"there is no central
+registry. Class conventions are established by social agreement and documentation."* Ruling: hive
+**mints `ai.reality2.cap.storage.*` and documents them in the same commit** — documentation is the
+only registry canon has, so an undocumented class is an unregistered one. Also:
+`ai.reality2.cap.env.scalar` **is not canon either** — a fleet-decision string. Grepped my own
+artifacts with positive and negative controls: it appears in this ledger and is **never framed as
+canonical**, so nothing to retract, but the caution stands forward.
+
+**And a MUST NOT that retroactively justified a refusal I made on weaker grounds.** I refused the
+NVS 0x9000 dump on custody grounds. R2-KEYSTORE §184 is the actual authority: *secret key material
+must not leave the protected boundary in plaintext.* Specs' framing is better than mine: the NVS
+capability must be **region-scoped by construction — incapable of expressing the key range**, not
+merely well-behaved. **Structural, not disciplinary.**
+
+### Rulings I took rather than hang
+
+1. **g24 — real lab creds via env**, because a synthetic AP appeared to need a human. **Possibly
+   superseded within the hour:** I have composer checking whether **Alfred can host an AP**, which
+   would let us use an SSID and passphrase **we choose** — synthetic by construction, no secret, no
+   custody, and g23 leaves this path entirely. That was my preferred answer; I set it aside on a
+   wrong assumption.
+2. **Creds injection — unblocked by METHOD, not by relaxing caution.** Hive stopped rather than
+   improvise: the creds live as *prose* in tracked files, so any extractor is a guess that might
+   **print** the literal. The fix removes the leak, not the caution: **forbid printing entirely** —
+   redirect into an untracked file, verify by count and shape only. **That changes the failure mode
+   from LEAK to FAILED-JOIN**: a wrong anchor writes a wrong value, WiFi doesn't associate, and you
+   learn from a timeout. A guess that cannot print is not the improvisation I forbade.
+3. **Q3 simulated marker — canon is genuinely silent, so I ruled BOTH LEVELS.** Class-level primary
+   so a consumer cannot subscribe to simulated data by accident, plus a payload marker as depth,
+   class strings differing by one constant so the bench still exercises everything but the literal
+   class string — **and the residual cost recorded in the clause: the bench is not exercising the
+   field class.** Also ruled: **the marker MUST survive relay** — whatever re-originates carries it
+   or the guarantee dies one hop out (same shape as g15). Marked a supervisor ruling filling a gap,
+   pending Roy, so he can overturn it in one line.
+   **Specs supplied the decisive argument and it should be preserved:** the radio case is contained
+   because a faked beacon is *dropped locally* before it becomes a neighbour, but **a sensor
+   reading's whole purpose is to leave the board**, and a consumer over the mesh cannot see which
+   binary emitted it. Build-time composition protects the emitter and gives the consumer nothing.
+   **TH-ESG §736 lists "patterns suggesting artificial/simulated readings" as a fraud signal** — one
+   spec hunting what no spec required declaring is the entire argument in one citation.
+4. **Relaxed my own Roy-on-hand precondition** for the entry proof, recorded as a decision, and
+   explicitly **not generalisable**: it covers non-destructive reads only. A relaxation justified by
+   "nothing can be lost" cannot be reused where something can.
+
+### Why the image-A grant is not yet written — structural, not caution
+
+**The artifact does not exist.** Creds-baked images have a different sha256 than the empty-creds
+build, and **a grant naming an uncomputed sha is a decorative field** — the exact defect I keep
+refusing. So creds are the critical path, ahead of the flash. Hive's empty-creds attestation stands
+on its own because structure, instrument, BUILD_ID and eligibility are creds-independent; it
+re-attests both images, both legs, with controls, once creds are in.
+
+### Electronics, from circuits — authoritative for the firmware
+
+5 V gate **D0/GPIO1, ACTIVE-HIGH** (TPS61023 EN; low = true 0.1 µA disconnect). **Settle 1500 ms
+proven-good** — radar replied on battery at that value; **minimum uncharacterised**, so not below a
+few hundred ms untested, and it goes in config not a literal. Radar UART **TX GPIO43 / RX GPIO44,
+115200 8-N-1**, Modbus RTU slave 0x01, level = holding register 0x0003 in mm. **XC4486 is a passive
+bidirectional shifter — no DE/RE, no enable, firmware does nothing for it.** FRAM 0x50 = MB85RC,
+16-bit addressing, byte-writable, no page boundaries, no write delay, endurance effectively
+unlimited at this cadence, **size UNKNOWN — probe it**. ATECC608 0x60 **lock state UNKNOWN — query
+before assuming, do not provision blind**. Battery D1/GPIO2, ÷2 divider — **dry joint NOT confirmed
+reflowed, and it reads only on battery**, so code it and expect no green. LED **GPIO21 active-low**,
+free. **0x7C confirmed phantom** — only 0x50 and 0x60 are real; bind nothing.
+
+### The risk I am carrying into the OTA run, named in advance
+
+Hive verified **both beacons statically reached and not gated** — and refused to claim on-air from
+static, which is the right line. But it named the hazard itself: **main.rs:1208 records
+`advertise()` hanging on the coex build**, and this **tri-radio WiFi+BLE+LoRa combination is
+metal-unverified**, against a standing ~4 min hang already recorded as an OTA blocker. I have asked
+hive for a **pre-registered prediction before the run** — complete or hang, and where. This is
+exactly why HANG_CAP was mandated in the image rather than inherited from g18.
+
+Nothing flashed. No image-A grant. No enrolment, mint, provisioning write, or NVS read.
+
+Decision-Log: none

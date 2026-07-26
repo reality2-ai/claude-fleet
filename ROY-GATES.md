@@ -12,10 +12,27 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**3 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**4 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
+
+**[g24 — which WiFi does the OTA proof join?](gates/g24-ota-bench-ap-credentials.md)** · **smallest ruling, unblocks the most**
+Both OTA images are **built, attested and eligible** — mark-valid is health-gated, rollback is
+intact, two-leg eligibility passes on both with positive *and* negative controls. The only thing
+between them and a flash build is **which network's credentials get baked in**. The lab SSID/PSK
+are the captured infrastructure from g23. **Recommendation: a synthetic bench AP** — identical code
+path, identical proof, zero captured infra in any build, and it takes g23 off the critical path.
+Real creds via env are permitted under canon (never as a literal in a tracked file, per
+R2-SECRETS §3.1) but buy no proof benefit. Note: a lane called these creds "held under your
+ruling" — **they are not; you have ruled nothing here** and use is not publication. Corrected.
+`gate 24: synthetic` or `gate 24: real creds`.
+
+**Also yours, not a gate, nothing waiting on them:** two hardware-history facts settle how an old
+firmware module gets *recorded* (not what any new code does) — **was a MAX485 ever physically
+soldered to a radar rig**, and if never, **was one planned or on hand?** First kills "stale", second
+separates a misread from code authored against an intention that never became hardware.
+
 
 **[g23 — a captured home network is published in a public repo](gates/g23-public-fleet-repo-leak.md)** · **read this one first**
 **The gate changed shape today and this is now its centre.** The bench-flash lane answered the
