@@ -1,119 +1,110 @@
 # RESUME — claude-fleet (supervisor)
 
-**Updated 2026-07-26, late.** Takeover snapshot, rewritten whole. Every figure below was
-re-derived from the repo and the fleet at write time — the version it replaces said
-*"nothing is executing"*, named five open gates that are no longer the open set, and
-described a live grant that has since been spent. A snapshot is only useful if it is
-current.
+**Updated 2026-07-27, early hours.** Takeover snapshot, rewritten whole. Figures re-derived at
+write time. The version this replaces was current for about three hours and is now wrong on
+the transport choice, the grant state and the build pin — which is the normal decay rate for
+this file on an active night, and the reason it gets rewritten rather than patched.
 
-## Objective right now
+## Where the OTA work actually stands
 
-**Roy's overnight sequence, given before he slept, with X1 plugged into USB:**
+**The round-trip is NOT done. The blocker is identified precisely, fixed in source, and
+waiting on a rebuild.**
 
-1. **Core R2 hive with OTA** — first, everything else after.
-2. Then **the memories** — one for encrypted material (ATECC608), one as the buffer for
-   **sensor data before it is sent** (FRAM, so a queue with delivery semantics).
-3. Then **the sensor** — read every 5–10 s on the bench, ~15 min in the field, **emulated
-   while USB is attached** because USB attach cuts the 5 V rail.
-4. Then **the battery**.
+**Proven on metal tonight**, each independently:
 
-**All of these as ENSEMBLES.** Plus BLE and LoRa beacons present, and a dev-board LED
-pattern. Two standing instructions: **"don't hang on a decision — order a commit and push
-and move past it"**, and **"always check with Specs / canon."**
+- **Button-free download-mode entry AND exit** on X1 — the BOOT/RESET buttons are buried under
+  the LoRa piggyback, so this was the load-bearing unknown. Exit was proven by an *inverted*
+  test: a no-reset connect **failed** on app console data, and a board stuck in download mode
+  **would have connected**.
+- **Image A written app-only** — no erase, table explicit, NVS at 0x9000 preserved, running
+  from `ota_0`.
+- **The persona state read cleanly** through a PTY monitor (a plain `cat` open silences this
+  chip). Result: an **affirmative absent** — unprovisioned, no NVS persona.
+- **BLE channel connect, L2CAP accept, and a signed header framed and answered.** First time
+  on this hardware.
+- **Fail-closed rejection** — the board refused the push, wrote nothing, sent zero image
+  chunks, **and did not reboot at all**: image A's beats ran unbroken through the whole event.
 
-**OTA is not just first, it is the delivery mechanism for the rest** — one USB write all
-night, then every later capability arrives over the air.
+**Still untested:** the image-chunk stream. Every historical failure on this hardware was a
+chunk-1/2 stall, and **that code was never reached tonight.** Connect and header delivery are
+proven; the chunk stream is not.
 
-## Repo state — ground truth
+## What blocked it, and why it is not what we thought
 
-- Branch `gate-heredoc-2026-07-20`. **Pushed, ahead=0.** Tree clean at write time.
-- Ledger tail: **D-20260726-37**.
-- Remote `master` still deliberately lags this branch; the merge is a separate Roy step.
+The reject was **not** the signer gate and **not** a stall. It was **`BadHeader`**: the two
+vendored copies of the update crate disagreed on the package version — pusher v3/137, firmware
+v2/123. **So no OTA this firmware accepts could be pushed at all**, regardless of signing or
+provisioning.
 
-## What is proven, and what is still a conjecture
+**Canon settled it and the board was right.** v3/137 is canonical; the firmware copy was
+**seventeen spec revisions stale**; and strict single-version cutover specifies that a receiver
+accepts *only* the current version, **checked before the signature** — so the rejection order
+was exactly as written. **This is g22 landing on metal**: not interop lag from a deliberate
+pin, a **hard functional block**.
 
-**PROVEN tonight — the first rung.** X1 enters ROM download mode **and returns to the
-running app, button-free**, which matters because the BOOT/RESET buttons are physically
-under the LoRa piggyback. Both boards are native USB-Serial-JTAG, so the D5→X1 inference is
-same-class rather than a leap. Exit was established by an **inverted test**: a no-reset
-connect *failed* on `0x41` (app console data, not a ROM sync frame), and a board stuck in
-download mode **would have connected**.
+**Fixed:** core replaced the stale copy wholesale with the canonical one (byte-identical,
+after proving it a clean stale ancestor rather than a fork), on its branch. Signed-byte
+coverage is **parametric over the header length**, so the new fields are covered **by
+construction**.
 
-**PROVEN — both images.** Two relay-floor images (A/B, differing only by baked BUILD_ID)
-built, attested, two-leg eligibility PASS on both with **positive and negative controls**.
-`mark-valid` is **health-gated**, deferred 8 s, PendingVerify-only, with an Invalid+revert
-fail branch — so bootloader rollback protection is intact and recovery does not need the
-buried buttons.
+## Immediate next action
 
-**STATIC ONLY — the beacons.** Both BLE and LoRa emitters are reached and not gated in the
-shipping feature set. Hive refused to claim on-air from static analysis, which is the right
-line. **On-air is a metal check that has not happened.**
+**Hive builds two pairs from the re-vendored commit** on core's branch — the heavier
+configuration as primary, the core-isolated one pre-staged so a failure costs no build cycle.
+**Both of tonight's attested pairs are dead**: they predate the re-vendor and would reject a
+v3 header.
 
-**NAMED RISK, not yet met.** `main.rs:1208` records `advertise()` hanging on the coex build,
-and the **tri-radio WiFi+BLE+LoRa combination is metal-unverified**, against a standing
-~4 min hang already recorded as an OTA blocker. Hive has been asked for a **pre-registered
-prediction before the run**. HANG_CAP is in the image for exactly this.
+**The attestation item that matters most: prove the canonical header version FROM THE
+ARTIFACT, not the source tree.** A re-vendor that did not reach the binary is exactly the
+class that cost us tonight.
 
-**OPEN.** X1's persona and its dev-TG membership are **unread**. A 0-line console read was
-correctly refused as evidence — a null with no positive control.
+Then: bind a fresh grant, push, and read the result against **four** distinguishable outcomes
+— B running / software-reset fault (recovers) / watchdog stall (empty capture) / **clean
+protocol reject with no reset**. That fourth leg was missing from my tree and hive caught it.
 
-## The one thing blocking the flash, and it is structural
+## Standing bars
 
-**The image-A grant is deliberately not written, because the artifact does not exist.**
-Creds-baked images have a different sha256, and a grant naming an uncomputed sha is a
-decorative field. **So credentials are the critical path, ahead of the flash.**
+- **No identity write until two questions are answered** from code and from the device: which
+  path this build reads the persona from, and whether the offset the board *suggests* lies in
+  a region no partition claims. **The board's own console recommends the operation that
+  bricked D4** — fourth resurfacing of that hazard, first time the artifact itself is the
+  source.
+- **Provision only on an affirmative absent, or affirmative invalid with no valid identity.**
+  Silence means STOP (the check fails closed *silently*). A valid persona in a different trust
+  group means **stop and escalate** — never overwrite.
+- **Image B is air-delivered only.** No tool writes it to any partition; A stays as the only
+  known-good image.
+- **No NVS dump** — secret key material must not leave the protected boundary in plaintext.
+- **Any WiFi OTA must use the authenticated path.** The default wire is un-authenticated and
+  #d003 names WiFi as *the* ESP32-S3 OTA path, so it would have shipped.
+- The WiFi connect fix is **possible, not proven** — no station has associated on metal.
 
-Two paths race:
+## Open Roy gates
 
-- **Preferred** — if **Alfred can host an AP**, we use an SSID and passphrase **we choose**:
-  synthetic by construction, no secret, no custody question, and g23 leaves this path
-  entirely. Composer is checking capability *and cost* — if WiFi is Alfred's only uplink,
-  the answer is no, because nobody is there to plug it back in.
-- **Fallback, authorised** — extract the lab creds into an **untracked** env file with
-  **printing forbidden entirely**, verified by count and shape only. That changes the
-  failure mode from **leak** to **failed-join**.
+**g25** (does the pre-release premise still hold, now that two divergent copies exist on real
+hardware — a deployment judgement, not a canon read) · **g23** · **g24 ruled by me pending
+review** · **g21** · **g8**. Plus: the **LED visibility check** under the piggyback (if hidden,
+a discrete LED stops being optional), the **two MAX485 hardware-history facts**, and whether
+to spend a build cycle on **attribution** rather than capability.
 
-## Standing bars in force
+## Method earned tonight — each paid for
 
-- **Non-destructive reads only** under tonight's relaxed Roy-on-hand precondition. It does
-  **not** generalise: a relaxation justified by *nothing can be lost* cannot be reused where
-  something can.
-- **No NVS 0x9000 read.** R2-KEYSTORE §184 — secret key material must not leave the
-  protected boundary in plaintext. The NVS capability must be **region-scoped by
-  construction**, incapable of expressing the key range. Structural, not disciplinary.
-- **Persona treated as irreplaceable** under fail-closed — we cannot classify what we have
-  not read. App-only write, **no `--erase`**, dual-OTA table passed explicitly.
-- **Do not overwrite `ota_0`** until B is confirmed running; rollback needs a known-good
-  target.
-- Dev-TG persona mints are **delegated to composer** (Roy 2026-07-17) — no per-mint gate,
-  chosen documented seed, gitignored, never committed. **Flash stays gated.**
-- `espflash reset` forbidden on S3; **no plain `cat`** for identity reads on this board.
-
-## Canon findings that changed the build tonight
-
-- **The artifact is a SCORE, not a binary** (R2-ENSEMBLE §1). One hive binary, five scores.
-- **Memories, battery and indicator are hive-shared singletons** with a registration
-  mechanism (§2.1.2) — the ensemble *uses and registers*, it does not own the driver.
-- **Activation and cadence come from an NVS role-profile at boot**, not compile-time
-  features (R2-RUNTIME §210).
-- **R2-INDICATOR v0.5 is normative** — I asked whether canon was silent and it was not.
-  Roy's dev LED ask is exactly the §6 dev event-arrival blip; healthy is **20 BPM dim**, not
-  the reference firmware's 25 BPM full-bright.
-- **No canonical storage classes, by design** (R2-CAP §3.2, no central registry) — mint and
-  **document in the same commit**. `ai.reality2.cap.env.scalar` is a fleet string, not canon.
-- **Roy's #69 is not in canon** — compiled encoding on MCU, OTA hard-baked. A canon-only
-  reader concludes the opposite. Specs is enshrining it.
-
-## Next action for whoever takes over
-
-**Do not wait for Roy.** Read the inbox, then in order:
-
-1. **Composer's AP answer** decides the creds path. Rule it, then hive re-attests.
-2. **Bind the image-A grant to the re-attested sha** — app-only, no `--erase`, table
-   explicit, plus the pre-write persona position.
-3. **Take hive's coex prediction before the OTA run**, not after.
-4. Ensembles per the canon shape above — not five Cargo features.
-
-**Open Roy gates:** g23 (published captured infrastructure), **g24 ruled by me pending his
-review**, g21, g8. Plus two hardware-history facts he alone can settle (was a MAX485 ever
-soldered; if never, was one planned) — nothing waits on them.
+1. **A complete pre-registration has four parts**: the prediction, what each outcome means,
+   **the instrument that will read it**, and **that instrument's blind classes.** You can
+   predict correctly and still misread the result, and nobody notices because the prediction
+   "held."
+2. **A pre-committed decision tree needs a leg for "rejected outside the hypothesis space"**,
+   or it converts a novel outcome into a familiar one — worse than no tree, because the tree
+   lends it authority.
+3. **Assert the rejection REASON, never merely the rejection.** We believed we were testing a
+   signer gate and were hitting a version check that fires first.
+4. **A permissive default is safe when DECLARED, never when INFERRED from absent data** — and
+   **canon permitting a value is not canon endorsing it for your artifact**; you need the
+   artifact-side fact too.
+5. **Presence AND absence at symbol level** for any placement or gating claim — show the
+   symbol that must be **gone**, not just the one that must be there.
+6. **Subtractive isolation without a forward control** finds a *sufficient* change, not the
+   cause. And **a proposed fix must be tested against the guard's purpose, not the symptom**:
+   I nearly deleted a security-gate guard on an untested diagnosis.
+7. **Same file is not same sweep.** Flipping a grant field silently removed the only record of
+   what the prior stage wrote.
