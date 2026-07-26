@@ -2615,3 +2615,75 @@ carrier I was about to add.** Hive correctly holds it as v0.6 **pending Roy** an
 ratification before cutting code.
 
 Decision-Log: D-20260727-43
+
+---
+
+## D-20260727-44 — Canon grants the unsigned exemption ON ABSENCE. My ruling is an amendment, not a reading.
+
+Specs checked all three of my interim reads and they landed **three different ways** — one amendment,
+one confirmed-by-existing-text, one hit on specs' own clause. The spread is the point: an interim ruling
+is a conjecture, and checking it changed its *status* twice without reversing its *content* once.
+
+**READ 1 — R2-DEF §7.8 is a FAIL-OPEN, named rather than worked around.** Verbatim: *"local development
+ensembles MAY be loaded unsigned by a hive."* A bare capability grant — **nothing in §7.8 defines how a
+hive KNOWS an ensemble is local-development.** So the only observable discriminator is **the absence of a
+signature**, and a stripped, truncated or corrupt score is **indistinguishable from a local-dev one, and
+it loads.**
+
+**So the exemption-must-be-declared ruling is an AMENDMENT to canon, not a reading of it.** Specs is
+authoring it.
+
+**Severity bounded honestly, and this is what keeps it credible:** §7.8 **already** closes the mesh path
+— unsigned received over the mesh MUST be a protocol error, and unsigned MUST NOT be redistributed over a
+trust-group sync channel. **This is a LOCAL-LOAD fail-open, not a remote one.** An unbounded alarm here
+would cost us the next one.
+
+**READ 2 — canon names the registration scope THREE times, and citing beats declaring.** §7.4:785 (*"two
+ensembles on the same hive MUST NOT register overlapping route_prefix values"*), §7.10 table :1040,
+R2-WEB §3.4:218. **The scope is the HIVE**; my image-scope ruling is merely the MCU instance, since the
+image *is* that hive's full ensemble set. Composer cites §7.4:785. **One fewer invented rule in canon**,
+and I only avoided declaring it because specs checked rather than accepting my declaration.
+
+**READ 3 — §7.10.2 has a vacuity hole, specs confirmed it is its own, and its follow-up UPGRADED my
+ruling.** Its wording — *"the builder already knows which parts it linked"* — **invites** deriving
+realised from the recipe or Cargo features, making the assert compare a value with itself.
+
+**The sharper half is specs', not mine.** I said recipe-derived realised is *circular*. It showed the
+circularity is **PARTIAL — and the surviving half is the dangerous half:**
+
+- A recipe-derived realised set **does** catch input-level removal — drop a part from the inputs and it
+  fails — **so the falsifier passes and the gate LOOKS instrumented.**
+- It **cannot** catch **a part named in the inputs that never reaches the image**: dead-code eliminated,
+  a `cfg` that did not fire, a feature that did not propagate. **Recipe says PRESENT, ELF says ABSENT.**
+
+**That is precisely the failure of the previous night, one indirection out** — source correct in the
+tree, binary carrying the wrong constant, caught only by disassembling for `movi a12, 137` present /
+`123` absent. **A partially-working instrument is worse than a missing one, because its green is
+load-bearing.**
+
+### The method note, and specs reported it against itself
+
+**Specs banked the vacuity test hours before shipping a clause containing a vacuity hole.** Its own
+diagnosis is the transferable part: **the test did not fire because it was AUTHORING rather than
+AUDITING.** Same shape as core adopting *prove it from the binary* and violating it one turn later.
+**Having a rule is not applying it — run your own tests on your own output at authoring time.**
+
+### Roy: timestamp unity DEFERRED
+
+> *"later, we can decide how to ensure time-stamp unity across devices"*
+
+**Deferred: sync policy and cross-device discipline.** **Not deferred: the per-reading field shape**,
+because the FRAM outq requires the stamp be taken **at read time** and travel **with the sample** —
+receiver-stamping would date the arrival, not the measurement, and a reading queued through an outage
+would be indistinguishable from a fresh one. **The design constraint is that a later unity mechanism must
+bind to the field without a wire break.** Interim lean: emit what the device can actually **know**
+(monotonic ticks + boot id); resolve to wall time where a real clock exists.
+
+### Sequencing consequence dispatched to core
+
+**`deny_unknown_fields` must land with or before the local-dev declaration field, never after.** Once the
+declaration exists, a **misspelling** of it would — without strict schema — be silently dropped on parse
+(the exact class core found with `required_transports`) and land back in **absence-as-exemption through
+the side door.** The strict-schema item is what stops the new field from re-opening the hole it closes.
+
+Decision-Log: D-20260727-44
