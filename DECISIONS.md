@@ -2233,3 +2233,134 @@ answer.**
 Nothing flashed. No image-A grant yet — awaiting the creds-baked re-attest and its new sha.
 
 Decision-Log: none
+
+## D-20260727-40 — the transport decision, and four confounds caught before any metal ran
+
+### The framing correction that reset the whole night
+
+**No OTA has ever completed on this hardware, in any transport.** Hive established it from the full
+campaign record; core confirmed it independently. The previous BLE-CoC attempts **did not go
+untried — they failed reproducibly at chunk 1/2** (`os110`, a BLE-controller stall), and the hang
+that followed **is what spawned the entire v8.6→v8.7.3 instrument campaign.** The campaign closed on
+the *hang fix*, not on an OTA completion. **"Failed at a known point" is more informative than
+"untried"**, and I had it filed as the latter.
+
+So Roy's *"get the OTA updating working"* is an **unachieved milestone, not a re-run.** I had been
+carrying the transport as working and the round-trip as a formality.
+
+### Transport chosen on evidence: BLE-CoC
+
+- **`staota` WiFi is broken, root-caused and fixed.** `wifi_task` only connects after a signal that
+  **has zero emitters** — confirmed three ways: the vendored `esp-radio` doc says an explicit connect
+  is required, a controlled grep found no signal sites, and **the firmware's own comment says
+  "staota absent, DATA_PLANE_JOIN never fires."** The code knew. Core fixed it with a direct
+  boot-time connect and **deliberately did not signal the join** — firing a signal that means *the
+  data plane has joined* when nothing has joined asserts a false state inside a state machine, which
+  is tonight's defect class. **`staota` added to the regression set** (six configs green): it had
+  never been built, and an unbuilt path reads as fine.
+- **USB-CDC is listed but unwired.** The apply orchestrator has exactly two callers, neither CDC.
+  **A lane conflict turned out to be the vendoring problem, not a disagreement** — composer read the
+  core-side crate, hive read the firmware-vendored copy. **The copy in the binary governs.** Banked:
+  *for what the device does, read the vendored copy.*
+- **Both host pushers exist** — composer corrected its own instinct *against its own preference* to
+  establish that the WiFi pusher exists with a byte-exact wire-conformance test.
+- **Decisive argument, and the cost nobody had named: USB-CDC would need a NEW core receiver task.
+  Writing new code to prove existing code does not reduce the unknown count** — it swaps a
+  known-broken transport for an unwritten one. `otal2cap` needs nothing new: receiver,
+  verify-before-activate and slot-flip are landed.
+
+**Security ruling, raised by composer against its own preferred path:** the default WiFi OTA wire is
+**un-authenticated** — the device trusts whoever reaches the port. **Any WiFi OTA must use the
+authenticated negotiate path; the default wire is not to be used against any board.** #d003 names
+WiFi ota-tcp as *the* ESP32-S3 OTA path, so **this would have shipped**: remote code execution gated
+by knowing an SSID.
+
+### Grant written, bound to an ELF digest, three staged operations
+
+Stage 1 app-only write, no erase of any form, table explicit, NVS preserved. Stage 2 the persona read
+from image A's own boot output. Stage 3 the push, with **B seen running, never inferred.**
+
+**Composer's gate condition went in the file in its own words, because they were more precise than
+mine.** I had said *provision if absent or invalid*. Both legs leaked:
+
+- **Silence is not absent.** The persona check fails closed **silently**, so a bad persona can produce
+  silence — and my wording would have written over a real identity. **Fail-safe pointing the wrong
+  way.**
+- **A different trust group is not invalid.** A valid persona in a non-target group is a **real
+  identity, possibly production** — stop and escalate, never overwrite.
+
+**Identity-write authority is granted in the FILE**, conditionally. Composer refused a message-only
+authorisation twice and was right twice — **the file is authority precisely so a message cannot widen
+it, and I had broken that rule earlier the same night.**
+
+### I reversed my own rebuild order — on a stale constraint
+
+I ordered a loraroute rebuild to clear a confound. Core's asymmetry argument beat it: **a pass on the
+heavier core-0 load is the stronger result, and an early failure is the only ambiguous outcome —
+which is the case where we would rebuild anyway.**
+
+**And the constraint that had made me rule the other way was dead.** I was still carrying *"image A
+is the last USB flash we commit to"* — a scarcity that existed **only** because the buttons are buried
+under the piggyback. **The entry proof retired it hours earlier.** I had updated the fact and left the
+plan the fact had shaped. Hive's build of the loraroute pair beat my stand-down, which turned out
+useful: it is now the **pre-built failure branch**, so an early death costs no build cycle.
+
+### FOUR confounds and blindnesses, every one surfaced before metal
+
+1. **Hive's own prediction rendered uninterpretable** by my premise — it filed the prediction, then
+   found the confound in it.
+2. **My "two radios" premise was false.** BLE *mandates* ESP-NOW and the coex arbiter, so
+   "no WiFi" meant WiFi-STA **idle**, not WiFi-PHY **off**. `os110` and hive's tri-radio hazard are
+   **one hazard, not two** — a failure could not have separated them. Core confirmed from the feature
+   closure and **visibly retired** its inherited prediction rather than editing it into looking
+   prescient.
+3. **The replacement had its own confound**, found by core before any green: the rebuild also swaps a
+   blocking task for a continuous-RX one, so **executor-unblocking is a live alternative to coex
+   relief** — distinct mechanisms. **The clean control is not buildable** with any existing feature.
+   **Attribution pre-committed: a pass is "core-0 load relief as a class", not coex-relief, and any
+   later citation as a coex result is a misquote of the entry.**
+4. **The unnamed reading instrument** — core audited its own pre-registration and found it named the
+   prediction but **not what reads a failure.** The capture buffer I mandated is **blind to a stall**
+   (no CPU exception, so the handler never runs). **A capture-only read would have false-greened the
+   expected failure as "no capture, so fine"** — instrument silence identical to success, on the one
+   outcome the run exists to detect. Discriminator moved to the reset reason; chunk index stays
+   orthogonal for *where*.
+
+**None of the four came from a result.** Each came from writing a claim down precisely enough to
+notice it could not be tested — or could not be read. **A complete pre-registration has four parts:
+the prediction, what each outcome means, the instrument that will read it, and that instrument's
+blind classes.**
+
+### Verification method of the night, hive's
+
+It did not report "LoRa is on core 1" from the feature list. It reported the core-1 task symbol
+**present in the built ELF and the core-0 variant absent — zero occurrences.** **Presence alone shows
+the new path compiled in; absence of the old variant shows the previous path compiled out.** A
+measurement of the artifact we are about to flash, not an inference about it. Adopted as the standard
+for any placement or gating claim: **show the symbol that must be GONE, not just the one that must be
+there.**
+
+### My near-miss: I almost weakened a security gate
+
+Composer reported the firmware gate denying any message containing the gated verbs, and proposed the
+hook stop scanning the message argument. **I tested first.** Plain prose containing every gated verb:
+**allowed.** Real laundering — a substituted flasher inside a message: **denied, exactly as
+designed.** The proposed fix **would have removed the guard that closes that channel**, with a
+comment in the code saying so. **I would have shipped it.**
+
+The real cause was **a backtick in the message, which genuinely executes in a double-quoted shell
+string** — so the gate was right and the "false positive" was not one. Composer named its own method
+failure better than my refutation did: **subtractive isolation without a forward control.** Removing
+words until it passed proved the edit was *sufficient*, not which part *mattered*. Banked, with the
+corollary: **a proposed fix must be tested against the guard's purpose, not just the symptom** — and
+**assume a safety mechanism is right until a forward control says otherwise.**
+
+### Standing state
+
+`loraiso`, the clean attribution instrument: **designed, costed at 10–15 lines, unbuilt**, trigger =
+a loraroute pass **plus a Roy-level decision to attribute**. It spends a build cycle on knowledge
+rather than capability, so the owner is Roy, not me. Core does not build on its own initiative.
+
+Nothing flashed at time of writing. Composer executing under the live grant.
+
+Decision-Log: none
