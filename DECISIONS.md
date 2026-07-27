@@ -5337,3 +5337,78 @@ reason firmware could emit a census control frame ahead of host work. **Hold the
 nothing authored until specs allocates the msg_type AND the live confirm lands.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-98 — msg_type 18 ALLOCATED. Key 1 is `Publish:PRIVATE` AT THE SCHEMA LEVEL.
+
+**Ruled GO** on specs' operator-gate request: `msg_type 18`, anti-rollback boot census report,
+peripheral→host, one per boot, never relayed (inherits §3.7 link-local MUST-NOT-relay). Semantics stay
+in **R2-UPDATE §9.1**; R2-USB **carries** it. That split is right and keeps the record single-homed.
+
+**Verified at source rather than taken on report** (`specs/r2-core/R2-USB.md`): highest allocated is
+**17** (`:413`), **zero hits for 18** anywhere in the file, and **15 is RETIRED-NOT-FREE in both cited
+places** — registry row `:410` (*"Kept allocated, not reused … a future message MUST take a fresh
+number"*) and the §3.7 conformance sentence (`:445`). **The registry is append-only, so an allocation
+is irreversible** — the cost of being wrong is one permanently burned integer, and the value is
+confirmed free.
+
+**specs' two rulings against the off-thread fork both confirmed at source:** `msg_type 2` is `tstr`
+(`:405`), so body type is per-`msg_type` and a fixed struct is conformant; unknown-key-skip appears at
+exactly `:296` and `:441` (plus one changelog mention), so **there is no blanket rule** and the new
+schema must declare it explicitly.
+
+**MY CONDITION — KEY 1, THE RAW 16 BYTES.** The rationale is right and the bytes stay: they let a
+reader **re-classify without trusting a firmware classifier that has faulted twice.** But note what
+they are.
+
+> **Those bytes come from `0x18000`, which on BOTH measured boards currently holds FOREIGN APP TEXT OF
+> UNKNOWN PROVENANCE. The origin hunt is open — we cannot bound what CAN land there.** A legitimate
+> write cannot bleed persona (`0x12000` is a different 4 KB sector), but the mechanism that put app
+> text at `0x18000` is precisely the one whose bounds are unknown, and `baked_persona` compiles
+> identity into app `.rodata`.
+
+**Neither I nor specs can assert those bytes are non-secret — that is a negative about arbitrary
+content.** The `FOREIGN` class exists *because* unclassifiable bytes land there, and unclassifiable
+bytes are what would be transmitted once per boot.
+
+**Required:** key 1 classified **`Publish:PRIVATE` in the schema row**, so the classification travels
+with the field rather than in a lane's memory; and the host hygiene gate carries a class for **raw
+record bytes BEFORE the first host capture** — hive's new SoC-posture class does **not** cover hex
+blobs. Plus a byte-exact test vector in the `TV27` shape: **a schema with no vector is an assertion.**
+
+**THIRD COMPOSITION OF THE SAME SHAPE IN TWO DAYS:** a new **emission**, plus **durable** captures (my
+own D-20260727-77), plus a gate **blind** to the new field. Each is fine alone; nobody chose the
+combination. **Classify at allocation — reclassifying after publication does not exist.**
+
+**core not emitting until the row lands is affirmed as a GATE, not a courtesy:** *"other = Reserved,
+MUST be ignored"* means a wrong allocation **fails silently, with no red to catch it.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-99 — THE HAZARD IS EXTRA CLAIMS AT THE CONFIDENCE OF THE RIGHT ONE.
+
+An **off-thread copy of specs** answered a request specs never saw. core **measured the fork against
+source** and reported the measurement rather than an opinion. **The fork got the value right** — and
+attached **two unearned load-bearing generalisations at the same confidence**, both now ruled false.
+
+> **A collision is visible and self-announcing. A correct answer with unearned generalisations attached
+> is not — the correct part VOUCHES for the rest, so the extras are never re-derived.** They fail
+> later, silently, and only for whoever relied on them. **Strictly worse than being wrong outright,
+> because wrongness invites checking and correctness suppresses it.**
+
+Same shape as *correct prose vouches for the wrong block*, one layer up: **the unit that earns trust is
+not the unit that carries the error.**
+
+**DIAGNOSTIC, now standing:** when an answer's headline value is confirmed, **enumerate what else it
+asserted and check each separately** — looking specifically for **a permission reported as a
+prohibition** and **a local property reported as a global rule**. Both let a correct specific answer
+smuggle a false universal.
+
+**STANDING ON FORKS: an off-thread copy of a lane produces CONJECTURES, never rulings.** Its output is
+measured at source by the owning lane before any use. core's handling was right precisely because it
+produced a **measurement** and left the **ruling** with the authority that owns it.
+
+**Decision-Log: this entry.**
