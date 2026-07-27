@@ -6387,3 +6387,130 @@ say so where it is read — **otherwise the next reader assumes the gate covers 
 a class and the console line did not.** **That failure already happened once, to specs, on this subject.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-123 — THE DETECTORS COVER THE FILE, NOT THE VALUE. COVERAGE IS A UNION NOBODY OWNED.
+
+**hive named it; composer measured it and proved hive's own framing wrong in the useful direction.**
+
+Canon holds **40 vector files.** Each lane vendors a **different subset.** **A value living in N canon
+files with only M gated copies has a silent hole of size N−M.**
+
+- `851fdee3082ad30e4f981b08e8e303a3` — **three homes**; hive gates one, composer gates another.
+  **Between them it is covered and NEITHER KNEW THAT.**
+- `425ed4e4a36b30ea21b90e21c712c649` — **two homes** (`r2-keystore`, `r2-transport-relay`), **one gated,
+  HOLE 1.** **Neither lane had reported it.** It surfaced *only* from computing the union.
+
+> **FLEET COVERAGE IS A UNION NOBODY COMPUTES AND NOBODY OWNS — which is indistinguishable from covered
+> until it isn't.**
+
+**hive said no lane can see the union from inside its own repo. composer showed that is FALSE** — the
+canon directory plus its own mirror list was enough. **AUTHORISED to composer: the measurement first, the
+gate second.** Report homes-vs-gated per high-entropy value **including the zero-hole values so the
+denominator is visible**, and print the canon ref it was computed against.
+
+> **A gap that is only NAMEABLE stays unowned. A gap that is MEASURABLE gets an owner.**
+
+**THIRD METHOD CORRECTION, and it is to a rule I issued an hour earlier.** I told every lane to weight
+hits by entropy. **composer found the defect in its own filter and reported it rather than shipping a
+clean table:** `1122334455667788` has **eight distinct characters** and passes a diversity filter while
+being **structurally a ladder.** **A DIVERSITY FILTER DOES NOT CATCH STRUCTURE.** One of its own holes
+evaporated on re-run. Circulated: reject **ramps, repeated n-grams, byte-repeats and fills** regardless
+of character count.
+
+**CONVICTION BAR SETTLED BY THREE LANES INDEPENDENTLY: ENTROPY + SEMANTICS + CITATION.** core supplied
+the decisive proof that dating cannot carry it: **for `851fdee3` the SAME BYTES sit on BOTH SIDES of the
+date line** — TV21 predates the constant by three weeks, TV31 postdates it by five days. **Dating is not
+merely weak there, it is INCAPABLE.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-124 — A MATCHING SHA PROVES YOU READ THE SAME FILE, NOT THAT THE FILE DISCHARGES THE CONDITION.
+
+**specs discharged condition 3 and RELEASED `msg_type 18` emission — on evidence it computed itself.**
+
+> **specs: "A SHA SOMEONE SENDS ME IS NOT A THING I HAVE SEEN UNTIL I COMPUTE IT."** It re-ran both
+> digests on the box rather than accepting core's report of them.
+
+> **AND THEN THE PART THAT MATTERS MORE: IT CHECKED CONTENT, NOT ONLY THE DIGEST — because A MATCHING
+> SHA PROVES YOU READ THE SAME FILE, NOT THAT THE FILE DISCHARGES THE CONDITION.** Two different
+> questions, and only the second was the condition. **Digest-matching is the check that FEELS like
+> verification and answers the wrong question.**
+
+**AND THE POSITIVE CONTROL WAS SITTING THERE AND NOBODY NAMED IT, INCLUDING ME:** **`captures/X1/` is
+EMPTY and already classified.** Roy's wording was *before the first capture*. **A sidecar can only ever
+demonstrate classification AT capture; an empty directory that is already covered demonstrates
+classification BEFORE it.** Discriminating evidence for the exact clause, **it cost one `ls`, and every
+one of us walked past it while arguing about markers.**
+
+**RESIDUAL PRICED, AND IT AMENDS THE CANON HOOK:** the marker is **adjacent** to the bytes — copy the
+`.bin` out and the class does not travel. **Metadata about opaque bytes is always detachable, so the only
+durable fix is a CONTAINER, never a neighbour file.** That converts the §3.7.2 CBOR frame from a nicety
+into **the only artifact where the class rides at SCHEMA level with the payload.** **A+C must PREFER
+CONTAINERS, not merely forbid publication** — a clause that only forbids leaves every holder with a
+detachable marker and calls it compliance.
+
+**specs retracted a false docstring about another repo (`ddbc009`).** Note the direction: **it told a
+reader that an upstream edit IS detected downstream when NOTHING detects it.** **A false cross-repo
+assertion that OVERSTATES coverage is strictly worse than one that understates, because it retires the
+question.**
+
+**AND specs MEASURED A FLEET-LEVEL FACT ABOUT ITSELF:** while it was mid-reconciliation, **its
+uncommitted file WAS the fleet's reference copy**, because the only working detector read the worktree —
+**and nothing announced the difference.**
+
+> **STANDING, specs' form: A CROSS-REPO COMPARISON MUST NAME A REF, NOT A PATH.** Every lane comparing
+> against a working tree is comparing against whatever its owner happens to be typing.
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-125 — ALL FOUR hive HITS EXONERATED. THREE CHECKER DEFECTS THAT WOULD HAVE SHIPPED.
+
+**hive applied my correction against its own finding.** It had convicted the `BENCH-BOARD-FACTS` beacon
+on **postdating + entropy** — using the date test as a convictor an hour after I ruled it cannot be one —
+and caught it when the ruling arrived.
+
+**Re-adjudicated, the direction runs the other way again:** `7fce111165325a9a` enters hive at `c3e2c85`
+**2026-07-10**; the vector value was authored **2026-07-11**. **hive predates by one day**, and its
+archive shows it building **TO** that canon commit. **The beacon in the vector file embeds hive's own
+bench values.**
+
+> **hive holds ZERO transcriptions from the vectors.** Four hits, four exonerations, each on a *different*
+> mechanism. **And it kept EXONERATION IS NOT COVERAGE at the front — a clean sweep is exactly when that
+> gets dropped.** The three files still would not go red if the spec moved.
+
+**hive's distinction on pins, which resolves an ambiguity in my own rule:** **a provenance record of what
+was vendored is NOT a comparison target.** A sha recorded as **history** is fine; a sha **compared
+against** is a frozen snapshot.
+
+**core's checker caught THREE defects in itself and all three would have shipped:**
+1. the reported canonical sha came from a **shell variable** — command substitution strips trailing
+   newlines — so it did not match the file sha, **and core would have quoted it to me as a canonical
+   pin.** **A wrong pin arriving with correct-looking provenance is the worst failure mode in this whole
+   thread.**
+2. it assumed every literal lived in one file and reported TV14 as DRIFT when the bytes were elsewhere —
+   **a checker looking in the wrong place reports the absence of its own aim.**
+3. it matched only contiguous hex and could not see the Rust byte-array form — **reporting the limits of
+   its own matcher as a finding about the code.**
+
+**(2) and (3) are one disease in two costumes, both producing a CONFIDENT FALSE POSITIVE — and core got
+lucky on direction: they failed LOUD. The same defects pointed the other way are silent greens.**
+
+**core's self-referential fix: the manifest green now PRINTS its scope** — *checked against THIS
+manifest, not against specs; self-consistency is not conformance.* **Printed, not commented, because a
+caveat nobody reads is not a scope statement.** And it **flagged in the script's own output that it is
+not wired into CI**: *a green is a statement about the moment someone ran it.*
+
+**composer's F7 ruling accepted, and its reason is the ruling:** **`::warning::` RENDERS GREEN.** A job's
+green makes exactly one claim, and when the gate could not run **that claim is false** — the cause does
+not change what the green asserts. **UNVERIFIED IS A FAILURE, NOT A SKIP.** Its declared limit stands as
+a limit: it exercised the **shell decision**, not the Actions runtime. Its near-miss — a first draft
+appended to the **wrong job** — is the same class as everything tonight: **a step that looks wired and is
+not.**
+
+**Decision-Log: this entry.**
