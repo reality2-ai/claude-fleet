@@ -4831,3 +4831,32 @@ can mimic the *erased-sector* record shape. Since that is no longer the only sha
 by a migration to FIND legacy records.
 
 **Decision-Log: this entry.**
+
+### D-20260728-86 — the fuse-burner was never in the gate's tool list
+
+**Found while checking whether specs' proposed #68 measurement would even be permitted.**
+**`espefuse` and `espsecure` were absent from `_hs_flash_or_mint` entirely.**
+
+**`espefuse` burns eFuses** — `burn_key`, `burn_efuse`, `write_protect_efuse`, `set_flash_voltage`.
+**Every one is PERMANENT: no erase, no rollback, no reflash recovers it.** It can brick a part, or
+enable Secure Boot against a key digest nobody holds, making the board unbootable forever.
+**It is the most destructive tool in the ESP32 family and the gate did not know it existed** — while
+gating `espflash`, which only writes flash you can rewrite. **`espsecure`** signs images and generates
+signing keys: key-mint class by definition, also absent.
+
+> **A TOOL LIST ASSEMBLED FROM WHAT PEOPLE USE WILL ALWAYS OMIT WHAT THEY HAVE NOT NEEDED YET.** The
+> list held 25 names and every one of them was a tool this fleet had actually run. The gap was not an
+> oversight in judgement; it was the *method* of building the list.
+
+**Gated now, with a STRICTER direction than `espflash`, stated as a choice: unknown subcommands deny
+AND so does a bare invocation.** For a reversible tool a bare call costs one escalation; for an
+irreversible one an unrecognised form must never slip through. **Read-only queries (`summary`, `dump`,
+`adc_info`, `get_custom_mac`, `--version`, `--help`) stay open** — deliberately, so eFuse state can be
+**measured without turning the gate off.** *An enablement question answered by disabling a control is
+not an answer.*
+
+Verified: `burn_key` / `burn_efuse` / `write_protect_efuse` / bare / `espsecure sign_data` all **deny**,
+including **quoted and wrapper-hidden** forms (the families closed in D-20260728-84 cover them);
+read-only queries pass. **290 passed, 0 failed.**
+
+**Decision-Log: this entry.**

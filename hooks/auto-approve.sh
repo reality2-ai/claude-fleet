@@ -452,6 +452,35 @@ _hs_flash_or_mint() {
       # literally this tool with no arguments.
       [[ "$(printf '%s' "$seg" | tr -s '[:space:]' ' ' | sed 's/^ *//; s/ *$//')" == "$1" ]] && return 1
       return 0 ;;
+    # espefuse / espsecure WERE ABSENT FROM THIS LIST ENTIRELY until 2026-07-28.
+    #
+    # espefuse BURNS eFUSES: burn_key, burn_efuse, write_protect_efuse, set_flash_voltage.
+    # Every one is PERMANENT — no erase, no rollback, no reflash recovers it. It can brick
+    # a part outright, or enable Secure Boot against a key digest nobody holds, which
+    # makes the board unbootable forever. It is the most destructive tool in the ESP32
+    # family and the gate did not know it existed, while gating `espflash`, which only
+    # writes flash you can rewrite. A tool list assembled from what people USE will
+    # always omit what they have not needed yet.
+    #
+    # espsecure signs images and generates signing keys — key-mint class by definition.
+    #
+    # DIRECTION IS STRICTER HERE THAN FOR espflash, DELIBERATELY: unknown subcommands
+    # deny, AND so does a bare invocation. For a reversible tool a bare call costs an
+    # escalation; for an irreversible one an unrecognised form must never slip through.
+    # Read-only queries stay open so the eFuse state can be MEASURED without turning the
+    # gate off — an enablement question answered by disabling a control is not an answer.
+    espefuse|espefuse.py)
+      case " $seg " in
+        *' summary '*|*' dump '*|*' adc_info '*|*' get_custom_mac '*|\
+        *' --version '*|*' --help '*|*' -h '*)
+          return 1 ;;
+      esac
+      return 0 ;;
+    espsecure|espsecure.py)
+      case " $seg " in
+        *' --version '*|*' --help '*|*' -h '*) return 1 ;;
+      esac
+      return 0 ;;
     esptool|esptool.py)
       case " $seg " in
         *' merge_bin '*|*' image_info '*|*' elf2image '*|*' version '*|\
