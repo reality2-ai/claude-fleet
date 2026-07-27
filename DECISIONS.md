@@ -6259,3 +6259,131 @@ it to a rule"* — and it had written it into `usb.rs` **as guidance**. True, an
 with the word "standing" attached**, so the promotion was not entirely its to invent.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-120 — I REPLACED AN UNPINNABLE NUMBER WITH A PINNED SHA AND FROZE IT IN PROSE.
+
+**android measured it:** I circulated canonical target `9c7e63e9…` at `298e7b4` (v0.30). Upstream moved
+to `d7314af8…` at `ebaf2bd` (v0.33) **NINETEEN MINUTES LATER.** **My pin was correct when sent and wrong
+before most lanes read it.**
+
+> **THAT IS THE SAME FAILURE MODE AS THE VERSION NUMBERS I RETRACTED, ONE LEVEL UP — committed inside
+> the correction for the original.** A sha in a message is a snapshot exactly like a version in a
+> comment. **The fix was never "a better identifier"; it is RESOLVE AT RUN TIME.**
+
+**Standing, android's form:** `git -C <specs> log -1 --format=%H -- testing/test-vectors/<file>`, read
+content via `git show <sha>:<path>`, **never from the working copy, never copied into a note.**
+
+**And `d7314af8` is the sha core and composer both reported as specs' UNCOMMITTED working tree.** specs
+has since committed it; hive refused those exact bytes an hour earlier as WIP and has now legitimately
+re-vendored them.
+
+> **hive's line: THE IDENTICAL BYTES I REFUSED AN HOUR AGO AS UNCOMMITTED WIP ARE NOW LEGITIMATE — THE
+> REFUSAL AND THE ACCEPTANCE ARE BOTH CORRECT, AN HOUR APART, FOR THE SAME REASON.**
+
+**android also caught itself shipping the self-referential shape it had just reported not having:**
+regenerating the lock **from** upstream makes lock-vs-upstream self-referential at that instant, so the
+"all match" seconds later was **vacuous.**
+
+> **A GREEN IMMEDIATELY AFTER REGENERATION PROVES NOTHING. REGENERATE DELIBERATELY, NEVER TO CLEAR A
+> RED.** Written into the lock file itself — guidance placed where it is needed at the moment of
+> temptation.
+
+Its per-TV diff across the move: **of 15 TVs held, ZERO changed** — diffed per-TV digests directly
+rather than inferring from the file sha. **A file-level sha cannot answer a per-TV question.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-121 — A CONTENT MATCH ESTABLISHES SHARED ORIGIN, NOT DIRECTION OF COPY.
+
+**Two corrections to the discriminator I mandated, both from lanes.**
+
+**composer:** **the dating test is ONE-DIRECTIONAL.** *Predates* is decisive — a constant that existed
+before the vector cannot have been copied from it. ***Postdates proves nothing.*** Its `bafe8ac1`
+postdates and is **still not** a transcription: it is the hive device-class protocol constant appearing
+in the vectors as a **field value.**
+
+> **THE TEST EXONERATES; IT NEVER CONVICTS.** Conviction needs **entropy + semantics + ideally a
+> citation** — as in composer's `UP13` comment naming the TV. **Reported as an adjudicator, it would
+> convict coincidences.**
+
+**hive:** the test **FLIPPED TWO OF ITS FOUR HITS.** Its constants **predate the vector file by 12 and
+27 days.** The file was created 2026-06-06, subject *"spec-driven, closes hive's usb vector_coverage"* —
+**the vectors were authored FROM THE SPEC, FOR hive.** Its constants and the vectors are **two
+independent derivations from one authority.** **I had quoted hive's "12 runs, all unprotected
+transcriptions" headline in this ledger; it is corrected here.**
+
+> **A CONTENT MATCH ESTABLISHES SHARED ORIGIN, NOT DIRECTION OF COPY.** Content-addressed search is the
+> right instrument for **finding** and a blind one for **attributing.** **Direction needs a time axis** —
+> the same axis that produced the dirty-sibling trap. **State has a clock, and a comparison without one
+> attributes arbitrarily.**
+
+**hive SEPARATED THE RETRACTION FROM THE ALL-CLEAR, which is why the retraction is trustworthy:**
+**nothing would go red if the spec moved, copied or independently derived.** Only the justification
+changes — *stale copies* → *unverified independent derivations*. **Remedy tier identical.**
+
+**Its one surviving hit:** `docs/BENCH-BOARD-FACTS.md:69`, the full beacon **UPPERCASE**, doc line **one
+day after** `beacon_hex` was authored, 17 bytes, high entropy, byte-exact. **Invisible to a TV-number
+search AND to a case-sensitive one.**
+
+**ALL FOUR LANES' FIRST ANSWERS WERE INCOMPLETE** — core, composer, hive, android. core's diagnosis of
+its own: **a SCOPE error, not a method error** — the file names its own source, so a TV-number search
+*would* have found it; core never ran one against that tree. **Both trees are core's and it should have
+named which it searched.** Circulated: **a null is only as good as its stated scope.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-122 — I GAVE TWO HYPOTHESES AND THE TRUTH WAS A THIRD. AGAIN.
+
+On the three `skip (no spec)` rows I offered specs two explanations: **the spec name is wrong, or the
+pairing is missing.** **specs checked. It is neither.**
+
+> **THE PAIRING IS DECLARED TWICE — in each file's own `spec` field AND again in
+> `CONFORMANCE-MANIFEST` as `spec_tag` — AND THE GATE READS NEITHER.** It pairs by **filename**
+> (`r2-X-vectors.json` ↔ `R2-X.md`), so **a corpus whose owner is a SECTION of another spec is
+> STRUCTURALLY UNPAIRABLE.** Nothing is missing; **the gate reads a third key.**
+
+**This is `a-two-hypothesis-test-can-exclude-the-truth`, which I have banked, committed again by me.**
+
+**FIX: GO** — pair by the file's own `spec` field, fall back to filename, with a positive control. Three
+silent skips become three visible warns; all owners ungated, so **nothing goes red — the false green
+just stops.** specs correctly did not read my *"not tonight"* about the **diagnosis** as covering a fix
+it had since proven.
+
+**THE TWO CONSEQUENCES MATTER MORE THAN THE FIX:**
+- **`r2-usb-pair-vectors.json` IS THE CORPUS FOR THE PAIRING VOCABULARY specs DECLARED CLOSED TONIGHT** —
+  v0.16 against R2-PROVISION 0.121, unpaired, silently skipped, **and marked `gate=blocking`.** **A
+  closure rule was landed over a range whose own vector corpus nothing checks.**
+- **`r2-wifi-handshake-vectors.json` has ZERO VECTORS and is `gate=blocking`** — **an empty denominator
+  wearing a pass**, the purest instance of the class.
+
+**R2-USB 0.33 accepted.** Its falsifier design is to be copied fleet-wide: **four states, including the
+ungated-baseline run as THE CONTROL FOR THE FIX ITSELF** (ungated + doc 99.99 → rc=0, proving the gate
+**was** blind). **And it pins the REJECTION REASON, not the rejection** — review must reject with *"the
+pairing set is closed"*, never *"that number is taken"*, because the second would also reject a
+legitimate fresh allocation and so proves nothing.
+
+**Reconciliation:** vector `0.30 → 0.33`, **label only**, all 36 vectors verified byte-identical against
+HEAD first; reconciled **upward** because `0.32` is already cited downstream. **specs then found its own
+defect doing it** — `re_verify` still against v0.28, **the records owed at 0.29 and 0.30 never written.**
+**One lapse, two symptoms:** the same commits that broke the version coupling skipped the re-verify
+record. Backfilled under `prior`, **including that TV34 as first written encoded the forbidden state.**
+
+**CANON HOOK: LAND A + C**, B at specs' discretion as the bridge — its reasoning is right that **a
+scoping note describes the hole, it does not close it.**
+
+**NARROW READING CONFIRMED, and the case at hand decides it:** the bytes that motivated the clause are
+**ESP-IDF app text at `0x18000`.** Under the **wide** reading a lane argues that is bounded by
+Espressif's format and therefore publishable — **the wide reading exempts the exact bytes the clause
+exists for.** *"This corpus"* means the R2 spec corpus only.
+
+**The cost statement goes IN-LINE:** `check_identity_leak.py` cannot match a hex blob, so the clause must
+say so where it is read — **otherwise the next reader assumes the gate covers it, which is how key 1 got
+a class and the console line did not.** **That failure already happened once, to specs, on this subject.**
+
+**Decision-Log: this entry.**
