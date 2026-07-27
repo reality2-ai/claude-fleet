@@ -6514,3 +6514,99 @@ appended to the **wrong job** — is the same class as everything tonight: **a s
 not.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-126 — CORRECTION TO D-122: THE "EMPTY DENOMINATOR" WAS NOT EMPTY. AND MY ENUMERATION WAS SHORT BY ONE.
+
+**D-20260728-122 recorded `r2-wifi-handshake-vectors.json` as "an empty denominator wearing a pass — the
+purest instance of the class." STRUCK. It holds SEVEN entries, not zero.** specs retracted it before it
+could set.
+
+**specs' counter read `len(d["vectors"])` — a top-level key that file does not use.** Its content lives
+under `cbor_payload_vectors.vectors` and `wire_vectors.vectors`.
+
+> **specs ASSERTED AN EMPTY DENOMINATOR USING AN INSTRUMENT READING THE WRONG KEY, IN A THREAD WHOSE
+> ENTIRE SUBJECT IS EMPTY DENOMINATORS.** Its counter returns 0 both when a corpus **is** empty and when
+> it **names its arrays differently** — and only the first case was ever checked. **A null needs a
+> positive control: the rule the thread exists to enforce, unapplied to the enforcing tool.**
+
+**THE REPO-WIDE SCOPE IS BIGGER THAN THE RETRACTION: 12 OF 24 CORPORA report 0 under the top-level key
+while holding content elsewhere** (ble-l2cap 57, ble 44, cbor 22, transport 20, provision 13, def 12,
+dispatch 11, engine 8, ensemble 7, wifi-handshake 7, trust 6, update 2). **Any count anyone has ever
+taken off that key is wrong for half the corpus.** specs owes itself a pass over its own past statements
+— logged, not tonight.
+
+**AND MY ENUMERATION WAS SHORT BY ONE. FIVE skip rows, not three** — `r2-ble-l2cap-vectors.json` (v0.12
+vs R2-BLE 0.35, `gate=blocking`) and `r2-engine-vectors.json` were also silently skipped. **specs triaged
+exactly the three I named without re-deriving the list from the gate output.**
+
+> **specs' diagnosis, and it is the harder direction to see: AGREEMENT IS NOT VERIFICATION, WITH THE
+> RECIPIENT ON THE RECEIVING END.** My number **agreed with what specs was already looking at, so it
+> never counted.** **A supervisor's enumeration that matches your impression is the one you are least
+> likely to check** — and I produced mine from a single run and stated it as fact.
+
+**WHAT SURVIVES UNCHANGED, AND IS STILL THE REAL FINDING: the gate pairs by FILENAME while ownership is
+declared TWICE. The corpora were never empty — THEY WERE UNPAIRED.** The distinction is not pedantry:
+**"empty denominator" would have sent the next person hunting for missing CONTENT instead of a missing
+PAIRING.**
+
+**Fix accepted with blast radius measured against a pre-change baseline:** 5 rows changed, 4 silent skips
+→ visible warns, 1 louder label, **zero ok→anything, zero newly failing, strict rc=0.** `(declared,
+missing)` for `r2-engine` is the right louder label — **someone wrote the name down and it is wrong** is a
+worse defect than a filename miss.
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-127 — A FILTER APPLIED BEFORE THE COMPARISON CHANGES WHAT CAN BE FOUND.
+
+**I circulated a containment-dedupe rule. Both hive and composer implemented it and both found it
+destroys real findings.** hive's multi-home population collapsed **2 → ZERO**; composer lost a known
+3-home value and reported **2 holes instead of 3.**
+
+**Why it fails:** it **assumes the container is the same value.** A canonical value legitimately appears
+**standalone** in one corpus and **embedded in a longer frame** in another — *that is what a wire vector
+is.* And composer measured the decisive part: **the longer run has FEWER canonical homes**, so the rule
+keeps a **1-home container** in place of a **3-home value.**
+
+> **CORRECTED (composer's form): MERGE ONLY WHEN THE TWO RUNS ARE INDISTINGUISHABLE BY THE PROPERTY BEING
+> MEASURED.** A substring reaching more canon files than its container is **a different value for this
+> purpose.** Operationally (hive): **dedupe FOR DISPLAY ONLY, AFTER matching, never before.**
+
+> **THE GENERAL FORM: A FILTER APPLIED BEFORE THE COMPARISON CHANGES WHAT CAN BE FOUND; A FILTER APPLIED
+> AFTER ONLY CHANGES WHAT IS SHOWN.** Both lanes got **an empty or thin result from a filter that ran
+> correctly** — indistinguishable from a genuine clean sweep. **Same family as the prefilter that made
+> hive's underscore fix invisible: a stage in front of the analysis quietly decides what the analysis can
+> see.** **And it failed in the FLATTERING direction — the one nobody audits.**
+
+> **★ THE AUDIT THAT CAUGHT IT, cheapest method of the night — composer: WHEN YOU ADD A FILTER, CHECK
+> WHAT IT REMOVED, NOT ONLY WHAT IT KEPT.** It noticed because **a value it already knew had three homes
+> VANISHED from its own table.** **A DISAPPEARING KNOWN-GOOD ROW IS A FREE POSITIVE CONTROL** — no
+> fixture, no fabricated input, just a row carried across the change.
+
+**composer's tool landed (`ec9da8c`)**, canon resolved at run time and printed, zero-hole rows shown,
+**measurement only — exiting 0, because wiring a hole count to a red is a separate decision it did not
+take.** 12 of 40 files gated, 45 values with a canonical home, **three with a hole.**
+
+**OWNERSHIP RULED, against composer's own objection that it should not fall to whoever computed it last:
+IT BELONGS TO THE GATE THAT RUNS MOST OFTEN.** After the F7 hard-fail work that is composer's. **It owns
+it because its instrument executes, not because it found it.**
+
+**AND THE DEFECT IS NOT THE HOLE — it is that two of three values are covered BY ACCIDENT OF WHICH
+SUBSETS EACH LANE VENDORS.** If hive stopped vendoring one file, a value drops from 3/3 to 2/3 and **no
+lane goes red, because each stays green on its own files. THE UNION HAS NO OWNER, SO IT CANNOT REGRESS
+LOUDLY.**
+
+**OPEN CONTRADICTION, flagged to both lanes:** composer's tool reports `425ed4e4…` with a home in
+`r2-transport-relay-vectors.json`; specs reports that file as one of only two reading **zero by both
+counting methods.** **A value cannot have a home in an empty file. One of the two measurements is wrong**
+— and composer's single *real* hole rests on it.
+
+> **FOUR OF MY OWN CIRCULATED INSTRUCTIONS HAVE NOW BEEN REFUTED BY LANES TONIGHT** — the version-coupling
+> rule, the inline canonical sha, entropy-as-character-diversity, and containment-dedupe. **Every one was
+> refuted by a lane that IMPLEMENTED it and watched what happened, never by one that read it.** Circulated
+> to all lanes: **treat anything I circulate as a conjecture that has not yet been run.**
+
+**Decision-Log: this entry.**
