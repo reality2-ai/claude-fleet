@@ -3604,3 +3604,61 @@ grant now says so as an authorised-scope clause rather than leaving it true by a
 carrying a different persona is not authorised by it.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-61 — RETRACTION. I truncated my own evidence, then made an ABSOLUTE NEGATIVE from it.
+
+**WITHDRAWN, from D-20260727-53:** *"`PERSONA_OFFSET` appears in exactly one read (`:3358`, under
+`cfg(not(baked_persona))`) and in NO write anywhere in the crate."* **FALSE.**
+
+    4b4a71e5 platforms/dfr1195/src/main.rs:3582
+      if store_blob_verify(PERSONA_OFFSET, &accum[..*accum_len]) {
+
+**A console-driven persona write to 0x12000. Not cfg-gated. Operator-triggered over serial.** Found by
+composer, reported against **its own premise**, and it refutes a claim **I verified personally and
+told Roy in plain words** — *"the firmware never wrote that region; an external tool did."*
+
+**HOW I PRODUCED THE FALSE CLAIM, because the mechanism is the lesson:** I ran the grep with `| head
+-20`. **The output stopped at `:3475`. The write is at `:3582`.** I then made an **absolute negative
+— "no write anywhere"** — from a listing **I had capped myself.**
+
+**A truncated listing cannot support an absolute negative. Ever.** *The denominator is as much an
+instrument as the matcher* — and here **I was the one who broke the instrument**, in the same command
+that produced the evidence. **The cap is invisible in the output: twenty lines of hits look exactly
+like all the hits.**
+
+**Worse, the source flagged it and the flag was inside my own truncation.** Line `:3329` reads *"THIS
+PATH IS LIVE AND THE WRITE IS…"* — **I read that line, quoted the file around it, and the sentence
+that would have stopped me was below the cut.**
+
+**WHAT IS AND IS NOT AFFECTED, stated precisely rather than defensively:**
+
+- **The baked path still writes nothing.** `read_persona` under the feature parses a compiled-in
+  const; the flash read is the other branch. **Tonight's mechanism is unchanged and still touches no
+  raw region.**
+- **But the claim I built the ruling's comfort on was wider than the truth.** *"The firmware never
+  writes 0x12000"* is false. The correct statement is **"OUR PATH writes nothing; a DIFFERENT path in
+  the same firmware does."** Those differ, and the difference is exactly the kind I have spent the
+  evening insisting on elsewhere.
+
+**AND specs escalated it further, correctly.** Canon §9.12.1 is a **MUST**: *the persona address MUST
+be resolved through a declared region descriptor, never baked into the code; a hard-coded absolute
+offset MUST NOT be the persona path.* **`store_blob_verify(PERSONA_OFFSET…)` IS that prohibited
+pattern, on the WRITE side** — and the clause's own falsifier (*move the region and confirm the
+persona is still found*) **is already written, and this fails it.**
+
+**So there are TWO identity-install paths on this platform and NEITHER carries the keystore
+machinery** — no claim state, no hardware epoch, no slot. **Owner-to-owner protection has no home
+here** (composer's wording, and it is right). **Second instance in one evening of *guards bind to code
+paths, not to outcomes*** — a raw offset write reaches the sanctioned outcome with none of the
+sanctioned machinery.
+
+**A pre-existing firmware defect, not introduced by tonight's work, and not on tonight's path.**
+
+**RULING — PROCEED.** The op does not take the console path; act 1 writes an image and the identity
+comes from rodata. **Holding buys nothing and costs the bench window.** Roy has the canon question and
+can override; **the finding is on the table BEFORE the irreversible write, which is what composer
+flagged it for.**
+
+**Decision-Log: this entry.**
