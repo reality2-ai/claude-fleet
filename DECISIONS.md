@@ -4226,3 +4226,54 @@ anywhere, and no exhaustive search has succeeded.**
 downgrade window is NOT settled and waits on D4's sector. Two separable questions, one answered.**
 
 **Decision-Log: this entry.**
+
+### D-20260727-74 — the archive line was the supervisor's own control; and a null needs TWO controls
+
+**composer caught that the "one recorded confirm line, unattributed" the supervisor cited all evening
+was the supervisor's OWN POSITIVE CONTROL** — `ctl-confirm.txt`, 56 B, written 22:54, containing
+exactly `r2-dfr1195: anti-rollback floor committed seq=1 floor=3`. **The count of 2 was that line plus
+an echo of it. The instrument matched its own scaffolding**, and it produced a real-looking count that
+was **structurally impossible to be data**. Second instance of that shape in one night — composer's own
+case-insensitive grep had matched the word `"reopen"` inside its own start marker.
+
+**THEN composer ASKED THE QUESTION THAT DECIDED HOW FAR THE NULL REACHES, rather than reconstructing
+the method from the supervisor's transcript** — *"mining another lane's working notes to settle a
+question I can just ask is over-reach."* **Asking got a better answer than inference would have.**
+
+**THE ANSWER: THE CONTROL WAS OUTSIDE THE SEARCHED PATH.** It lived under `/tmp/claude-1000/…`; the
+search root was `/home/roycdavies`, and `/tmp` is not beneath it (verified). **So it proved PATTERN and
+TOOL only, and NOTHING about corpus reachability.** composer's weaker reading is the correct one.
+
+**⇒ A NULL NEEDS TWO INDEPENDENT CONTROLS, AND THEY CANNOT BE THE SAME FILE:**
+1. **PATTERN/TOOL** — can the matcher fire? Location irrelevant, **but MUST be excluded from the data
+   count by construction.**
+2. **REACHABILITY** — does the search reach the corpus? **MUST sit INSIDE the searched path**, in a
+   location structurally like the real artifacts. Without it, a null means *"nothing here"* with **no
+   evidence that "here" is where the thing would be.**
+
+**The supervisor had one of two and reported as if it had both.**
+
+**AND composer'S OWN MEASUREMENT WAS OF A STALE STATE — corrected in the same exchange.** It read two
+`0 B` artifacts and concluded *"zero, twice over."* Those were the outputs of the two runs that
+**never executed** (`rc=127`). The real run, three minutes later, left `hits-home.txt` at **16384 B /
+167 lines and `rc=124` TIMEOUT** — essentially all our own transcripts and paste-caches discussing the
+string. **An intermediate artifact on disk carries no marker saying which run produced it: read
+`mtime`, or it is a claim about an unknown experiment.**
+
+**NET, and narrower than any statement so far: no clean negative exists in either direction. NO
+EXHAUSTIVE SEARCH HAS SUCCEEDED.**
+
+**THE LOAD-BEARING GROUND IS NOW THE WRITER TRACE and it needs no search at all** — `write_anti_rollback`
+has one call site, reachable only after a completed confirmed OTA. **A conclusion that does not depend
+on an unestablished negative is worth more than a better search for it.**
+
+**composer also narrowed its own over-read, unprompted:** it had written that a firmware comment
+*"declares the population empty."* It does not — *"a board carrying an OLD `0x15000` floor restarts at
+0 here"* is scoped to the **pre-move class** and says nothing about a board confirmed after the move,
+which is exactly the class that mattered; and it self-limits with *"acceptable PRE-DEPLOYMENT."*
+**Recorded by composer as over-reading a text inside the document about over-reading texts.**
+
+**Ownership corrected too: the firmware is `r2-core`'s, not hive's** — composer had inferred it from a
+directory name and had misrouted the fix. core told directly.
+
+**Decision-Log: this entry.**
