@@ -4718,3 +4718,60 @@ because the first pass had not yet been recorded. **A false report from a lane c
 fleet truth in one commit.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-84 — firmware gate rebuilt; 290/290, and the suite fails against the old hook
+
+**Roy authorised the full fix.** Landed with the regression suite in the same change, because a fix
+whose test cannot fail is not a fix.
+
+**PROVEN BOTH WAYS.** Against the **pre-fix** hook, **20 assertions FAIL** — the four indirection
+families and the three quoting forms return **no decision at all**, the three laundering cases return
+**`allow`**, and four benign offline ops return **`deny`**. Against the fixed hook: **290 passed, 0
+failed**, no regressions in the pre-existing 264.
+
+**CLOSED — silent bypasses (previously no allow, no deny, no record):** wrapper script (token only
+inside the file), `ssh` remote exec, `python -m` / `uvx` / `pipx` runners, `make <firmware-target>`,
+variable-carried argv, and **quote/escape of the tool name** — `"espflash"`, `'espflash'`, `\espflash`,
+which needed no wrapper at all and defeated the key-mint gate too.
+
+**CLOSED — grant laundering, which was worse than the silent path.** `_hs_authorized` now receives the
+**matched segment with any trailing comment stripped**, not the whole command. Tokens in a comment or
+in a different segment no longer authorise anything, and **a flash grant no longer authorises
+`read_flash` of the NVS region.**
+
+**CLOSED — audit integrity.** The record now carries the **command's own text** alongside the grant
+fields (it previously recorded only the grant's, so a laundered erase was logged as a flash of the
+granted artifact — a record that *misdescribed* the operation). **Denials are recorded**, so absence is
+no longer ambiguous between refused / never-evaluated / never-attempted. **An unwritable log now FAILS
+CLOSED**: the audit is a precondition of the allow, not a side effect of it.
+
+**CLOSED — the false-positive side, which is what created the bypass.** `espflash`/`esptool` gained the
+subcommand discrimination their `probe-rs`/`picotool`/`arduino-cli` siblings always had. `save-image`,
+`merge_bin`, `--version`, `--help` and bare invocation no longer deny. **Direction is declared and
+fail-closed: an unknown subcommand denies.**
+
+**CORRECTED — a comment that overstated the control.** The header claimed *"It authorizes one
+operation, not a class."* Measured false (allow/allow/allow on one grant). It now states what a grant
+actually is: **a time-windowed class authorisation for one (artifact, target) pair, unlimited uses
+until expiry — retirement is a separate act the granter must perform.**
+
+**THREE OF MY OWN OVERREACHES WERE CAUGHT BY THE GATE FIRING ON ME, MID-BUILD, AND ALL THREE ARE THE
+SAME CLASS AS THE DEFECT I WAS FIXING:**
+1. The script look-through denied `bash -n hooks/auto-approve.sh` — **a syntax check that executes
+   nothing.** Fixed with a noexec exemption.
+2. It then denied `command grep -n espflash file` — **reading a file that merely mentions a flasher.**
+   Fixed by resolving the actual **program** instead of scanning every token.
+3. Program resolution then broke `ssh`, whose first operand is the **destination**, not the program.
+   Caught by the suite regressing A3 to silence.
+
+**Each was a gate blocking something harmless — the exact engine that produced the wrapper era.** They
+are recorded rather than quietly fixed because the lesson is that *tightening a matcher generates
+false positives at the same rate it closes holes*, and only the false-positive rows catch them.
+
+**STILL NOT CLOSED, and not claimed to be:** enforcement end-to-end remains **inference** — every
+assertion measures what the hook *prints*, not what the harness does with it. Hook wiring beyond one
+`settings.json`, the production payload shape, `Write`/`Edit` and MCP routes, heredocs, `docker exec`,
+PATH-shadowing and `FLEET_FIRMWARE_GATE=off` are all still unprobed. **And the gate's coverage differs
+by TOOL: it never fired on any of my `Edit` calls to the hook itself, only on Bash.**
+
+**Decision-Log: this entry.**

@@ -763,6 +763,68 @@ assert "a commit containing a decision record can publish" git -C "$DECREPO" pus
 # Measured while writing these: asserting only a NON-ZERO EXIT let the blob case pass while
 # the obj_type guard was disabled — the blob fell through to the enumerator guard and was
 # refused for a different reason. A control that cannot tell WHICH guard fired tests neither.
+# --- 11c. MAIL-PATH MAC SCAN + EQUIVALENCE WITH pre-push -----------------------
+# lib/macscan.sh is the CANONICAL rule; pre-push keeps an inline copy because it is
+# installed standalone into .git/hooks across seven repos and cannot source lib/.
+# That duplication is unavoidable today, so it is MECHANICALLY POLICED here: the two
+# must AGREE AT THE BOUNDARY over a shared corpus. Behavioural equivalence, not textual
+# — a text diff would break on formatting and prove nothing about behaviour.
+section "11c. mail-path MAC scan + pre-push equivalence"
+MACSCAN="$ROOT/lib/macscan.sh"
+assert "macscan.sh parses (bash -n)" bash -n "$MACSCAN"
+assert "comms.sh still parses after wiring (bash -n)" bash -n "$ROOT/lib/comms.sh"
+# shellcheck source=lib/macscan.sh
+. "$MACSCAN"
+
+# 1) the lib rule FIRES on a real-looking value. Reuses $REALMAC, assembled at runtime
+#    in section 11 — this file must never carry a 6-octet literal or it makes the repo
+#    unpushable by its own gate.
+if [ -n "$(fleet_mac_values "device = $REALMAC")" ]; then
+  ok "lib rule flags a real-looking MAC"; else no "lib rule flags a real-looking MAC"; fi
+
+# 2) every allowlisted form passes, INDIVIDUALLY — a combined fixture would let one
+#    surviving form hide behind another's pass.
+_allowed_ok=1
+for _a in "02:11:22:33:44:55" "aa:bb:cc:dd:ee:ff" "de:ad:be:ef:00:01" \
+          "00:00:00:00:00:00" "ff:ff:ff:ff:ff:ff" "11:22:33:44:55:66"; do
+  [ -z "$(fleet_mac_values "x=$_a")" ] || { _allowed_ok=0; break; }
+done
+if [ "$_allowed_ok" = 1 ]; then ok "every allowlisted form passes individually"
+else no "an allowlisted form was flagged ($_a)"; fi
+
+# 3) THE WARNING MUST NOT BECOME THE LEAK IT REPORTS. It may name the count and the OUI;
+#    it must never echo a device-unique value into a terminal or CI log.
+_warn_out="$(fleet_mac_warn "device = $REALMAC" "test" 2>&1 >/dev/null)"
+case "$_warn_out" in
+  *"$REALMAC"*) no "warning text does not contain the full MAC value" ;;
+  *"${REALMAC%:*:*:*}"*) ok "warning names the OUI only, never the full value" ;;
+  *) no "warning did not name the OUI (got: ${_warn_out:-empty})" ;;
+esac
+
+# 4) FAIL-OPEN IS THE PROPERTY MAIL DEPENDS ON. A diagnostic that can wedge the transport
+#    it observes is a worse defect than the one it reports, so this asserts rc=0 on the
+#    path that WARNS — not merely on the quiet path.
+_mw_rc=0; fleet_mac_warn "device = $REALMAC" "test" 2>/dev/null || _mw_rc=$?
+if [ "$_mw_rc" = 0 ]; then ok "fleet_mac_warn returns 0 even when it warns (never blocks mail)"
+else no "fleet_mac_warn returned $_mw_rc — this would block mail"; fi
+
+# 5) the documented off-switch actually switches off
+if [ -z "$(FLEET_MAC_SCAN=off fleet_mac_warn "device = $REALMAC" "test" 2>&1 >/dev/null)" ]; then
+  ok "FLEET_MAC_SCAN=off silences the mail warning"
+else no "FLEET_MAC_SCAN=off did not silence the mail warning"; fi
+
+# 6) EQUIVALENCE AT THE BOUNDARY — the whole point of this section. For the same input,
+#    the lib rule's verdict must match what pre-push actually does to a push.
+#    lib FLAGS  <-> pre-push BLOCKS   |   lib PASSES <-> pre-push ACCEPTS
+_eq_ok=1
+[ -n "$(fleet_mac_values "device = $REALMAC")" ] || _eq_ok=0        # lib flags it
+mac_case "equivalence: lib flags it AND pre-push blocks it" "device = $REALMAC" block
+_allow_fixture="$(printf 'a=02:11:22:33:44:55\nb=aa:bb:cc:dd:ee:ff\nc=de:ad:be:ef:00:01\n')"
+[ -z "$(fleet_mac_values "$_allow_fixture")" ] || _eq_ok=0          # lib passes them
+mac_case "equivalence: lib passes them AND pre-push accepts them" "$_allow_fixture" pass
+if [ "$_eq_ok" = 1 ]; then ok "lib verdict agrees with pre-push on both fixtures"
+else no "lib verdict DIVERGED from pre-push — the inline copy has drifted"; fi
+
 section "11b. pre-push gate controls (forced failures)"
 GATEREPO="$TMP/gaterepo"; GATEREMOTE="$TMP/gateremote.git"
 git init -q --bare "$GATEREMOTE"; git init -q "$GATEREPO"
@@ -857,6 +919,101 @@ if [ "${_gate_lines:-x}" = "3" ]; then ok "denominator counts exactly the added 
 # The hooks drifted for weeks because NOTHING installed or checked them. These cover the
 # installer (idempotent, preserves foreign hooks as chained *.local files) and the drift
 # state machine doctor reports from.
+# --- 11d. FIRMWARE GATE — bypass families, grant scope, audit integrity ---------
+# Every assertion here FAILED against the pre-fix hook (md5 1765961515a6d574e6f510f308e1517e),
+# measured by a 7-route probe on 2026-07-28 (D-20260728-82). Roy-authorised full rebuild.
+#
+# SAFETY: the hook is a pure TEXT CLASSIFIER — it contains no eval and never executes the
+# payload. G-rows assert that premise rather than assuming it, and a PATH tripwire proves
+# no firmware tool was invoked by any case. All targets are non-existent tokens.
+section "11d. firmware gate (bypass, grant scope, audit)"
+GW="$TMP/gatework"; TRIP="$TMP/tripwire"; STUB="$TMP/stubs"
+mkdir -p "$GW/.fleet" "$GW/work" "$TRIP" "$STUB"
+# G1 — stubs that record and refuse. If the hook ever EXECUTES a payload, $TRIP fills.
+for _t in espflash esptool esptool.py openssl ssh python python3 make dfu-util uvx pipx; do
+  printf '#!/bin/sh\ntouch "%s/%s"\nexit 99\n' "$TRIP" "$_t" > "$STUB/$_t"; chmod 755 "$STUB/$_t"
+done
+_g_live_before="$(cd "$ROOT/.." 2>/dev/null && ls -l .fleet/flash-authorization 2>/dev/null | wc -l)"
+printf 'expires=%s\nartifact=probe-fixture.bin\ntarget=/dev/ttyPROBE0\nsha256=%s\n' \
+  "$(( $(date +%s) + 86400 ))" "$(printf '0%.0s' $(seq 1 64))" > "$GW/.fleet/flash-authorization"
+printf '#!/bin/bash\nespflash flash --port /dev/ttyNOPE9 app.bin\n' > "$GW/work/flash-board.sh"
+
+# decide <command> -> echoes allow|deny|none
+g_decide() {
+  PATH="$STUB:$PATH" jq -nc --arg cwd "$GW/work" --arg cmd "$1" \
+    '{tool_name:"Bash",cwd:$cwd,tool_input:{command:$cmd}}' \
+    | PATH="$STUB:$PATH" bash "$ROOT/hooks/auto-approve.sh" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.permissionDecision // "none"' 2>/dev/null || echo none
+}
+# g_case <desc> <cmd> <expected: deny|allow|notdeny>
+g_case() {
+  local d; d="$(g_decide "$2")"
+  case "$3" in
+    deny)    [ "$d" = deny ]  && ok "$1" || no "$1 (got '$d')" ;;
+    allow)   [ "$d" = allow ] && ok "$1" || no "$1 (got '$d')" ;;
+    notdeny) [ "$d" != deny ] && ok "$1" || no "$1 (got '$d')" ;;
+  esac
+  # G1 asserted PER CASE, not once at the end: a single leak must name its own row.
+  if [ -z "$(ls -A "$TRIP" 2>/dev/null)" ]; then :; else no "TRIPWIRE: a firmware tool was EXECUTED by: $1"; rm -f "$TRIP"/*; fi
+}
+
+# G2 — the premise that makes this suite safe to run at all.
+if [ "$(command grep -c '\beval\b' "$ROOT/hooks/auto-approve.sh" || true)" = 0 ]; then
+  ok "G2 hook contains no eval (payload is never executed)"
+else no "G2 hook contains eval — this suite is no longer safe"; fi
+
+# A — indirection routes that formerly produced NO decision at all
+g_case "A1 wrapper script (token only inside the file)"      'bash flash-board.sh'                              deny
+g_case "A2 wrapper script via ./ form"                       'bash ./flash-board.sh X1'                         deny
+g_case "A3 ssh remote exec"                                  "ssh h.invalid 'espflash flash x.bin /dev/ttyN'"   deny
+g_case "A4 python -m interpreter indirection"                'python -m esptool --chip esp32s3 erase_flash'     deny
+g_case "A5 uvx runner indirection"                           'uvx esptool --chip esp32s3 erase_flash'           deny
+g_case "A6 make firmware target"                             'make flash'                                       deny
+g_case "A7 variable-carried argv"                            'T=espflash; $T flash n.bin /dev/ttyN'             deny
+
+# B — quote/escape normalisation at TOKEN level
+g_case "B1 double-quoted tool name"                          '"espflash" flash --port /dev/ttyN app.bin'        deny
+g_case "B2 single-quoted tool name"                          "'espflash' flash --port /dev/ttyN app.bin"        deny
+g_case "B3 backslash-escaped tool name"                      '\espflash flash --port /dev/ttyN app.bin'         deny
+
+# C — grant scope: the allow path must not launder
+g_case "C0 granted op in one segment ALLOWS"                 'esptool.py --port /dev/ttyPROBE0 write_flash 0x0 probe-fixture.bin' allow
+g_case "C1 grant tokens in a COMMENT do not authorise"       'esptool.py --chip esp32s3 erase_flash # probe-fixture.bin /dev/ttyPROBE0' deny
+g_case "C2 grant tokens in ANOTHER SEGMENT do not authorise" 'echo probe-fixture.bin /dev/ttyPROBE0 && esptool.py --chip esp32s3 erase_flash' deny
+g_case "C3 flash grant does NOT authorise NVS extraction"    'esptool.py --port /dev/ttyACM0 read_flash 0x9000 0x6000 s.bin # probe-fixture.bin /dev/ttyPROBE0' deny
+
+# D — audit integrity
+rm -f "$GW/.fleet/flash-authorization.log"
+g_decide 'esptool.py --port /dev/ttyPROBE0 write_flash 0x0 probe-fixture.bin' >/dev/null
+if [ "$(awk -F'\t' '$2=="USED"' "$GW/.fleet/flash-authorization.log" 2>/dev/null | wc -l)" -ge 1 ]; then
+  ok "D1 an allowed op writes a USED record"; else no "D1 no USED record written"; fi
+if command grep -q 'cmd=' "$GW/.fleet/flash-authorization.log" 2>/dev/null; then
+  ok "D2 the record carries the COMMAND text, not only the grant fields"
+else no "D2 record omits the command — it can misdescribe the operation"; fi
+g_decide 'esptool.py --chip esp32s3 erase_flash' >/dev/null
+if [ "$(awk -F'\t' '$2=="DENIED"' "$GW/.fleet/flash-authorization.log" 2>/dev/null | wc -l)" -ge 1 ]; then
+  ok "D3 a DENIED op is also recorded (absence no longer ambiguous)"
+else no "D3 denials leave no record"; fi
+chmod 0444 "$GW/.fleet/flash-authorization.log" 2>/dev/null; chmod 0555 "$GW/.fleet" 2>/dev/null
+if [ "$(g_decide 'esptool.py --port /dev/ttyPROBE0 write_flash 0x0 probe-fixture.bin')" != allow ]; then
+  ok "D4 an unwritable audit log FAILS CLOSED (does not allow)"
+else no "D4 allowed an op it could not record"; fi
+chmod 0755 "$GW/.fleet" 2>/dev/null; chmod 0644 "$GW/.fleet/flash-authorization.log" 2>/dev/null
+
+# E — false-positive side. LOAD-BEARING, not a courtesy: denying benign offline ops is
+# what taught the operator to wrap commands in scripts, and every wrapper was silent.
+g_case "E1 offline save-image is not denied"                 'espflash save-image --chip esp32s3 target/app app.bin' notdeny
+g_case "E2 offline merge_bin is not denied"                  'esptool.py --chip esp32s3 merge_bin -o o.bin 0x0 b.bin' notdeny
+g_case "E3 --version is not denied"                          'espflash --version'                               notdeny
+g_case "E4 command -v lookup is not denied (#88)"            'command -v espflash'                              notdeny
+g_case "E5 bash -n syntax check is not denied"               'bash -n flash-board.sh'                           notdeny
+g_case "E6 reading a script that mentions a flasher"         'command grep -n espflash flash-board.sh'          notdeny
+
+# G4 — the live authorisation state must be untouched by this suite.
+_g_live_after="$(cd "$ROOT/.." 2>/dev/null && ls -l .fleet/flash-authorization 2>/dev/null | wc -l)"
+if [ "$_g_live_before" = "$_g_live_after" ]; then ok "G4 live .fleet/flash-authorization untouched"
+else no "G4 the suite touched the LIVE authorisation state"; fi
+
 section "12. git-hook installer + drift check"
 export TOOL_ROOT="$ROOT"                 # lib/githooks.sh resolves the source from TOOL_ROOT
 # shellcheck source=../lib/githooks.sh

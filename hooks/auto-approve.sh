@@ -252,11 +252,79 @@ _hs_is_assign() {
   [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]
 }
 
+# A shell invoked in NOEXEC mode parses its input and runs NOTHING. `bash -n file.sh`
+# is a syntax check, not an execution, so the file's contents must not be classified.
+#
+# FOUND BY THE FIX FIRING ON ITS AUTHOR, minutes after it landed: the new script-file
+# look-through read `hooks/auto-approve.sh` during a routine `bash -n` syntax check,
+# found flasher names in the source, and denied. That is precisely the false-positive
+# shape that produced the wrapper era — a gate blocking a harmless op teaches the
+# operator to route around it — so it is closed HERE rather than worked around.
+_hs_is_noexec() {
+  local seg="$1" base t
+  base="$(_hs_detok "${seg%%[[:space:]]*}")"
+  case "$base" in sh|bash|dash|zsh|ksh) : ;; *) return 1 ;; esac
+  for t in $seg; do
+    case "$(_hs_detok "$t")" in -n|--noexec|-vn|-nv) return 0 ;; esac
+  done
+  return 1
+}
+
+# Strip shell quoting/escaping from a SINGLE TOKEN so a basename comparison sees the
+# real program name. TOKEN-level only — never applied to a segment.
+#
+# WHY NOT AT SEGMENT LEVEL: _hs_segments preserves quote characters as DATA on purpose,
+# because prose-quoting-prose is the common case here (a fleet message whose text
+# contains `"… ; write-persona …"` must not be split on that ';'). Stripping quotes
+# earlier would reopen that. So the strip happens exactly where a name is compared.
+#
+# MEASURED DEFECT THIS CLOSES (2026-07-28 probe, route 7 verification): `${first##*/}`
+# on `"espflash"` yields the literal token `"espflash"` — quote included — which matches
+# no case arm and no wrapper arm, so the gate NEVER FIRED. `"espflash" flash --port …`,
+# `'espflash' …`, `\espflash …` and `esp''flash …` were all silent. ONE KEYSTROKE
+# defeated both the flash gate and the key-mint gate, with no wrapper file involved.
+_hs_detok() {
+  local t="$1" out='' i=0 n ch
+  n=${#t}
+  while (( i < n )); do
+    ch="${t:i:1}"
+    case "$ch" in
+      "'"|'"') : ;;                              # drop quote characters entirely
+      '\')     out+="${t:i+1:1}"; (( i++ )) ;;   # escaped char: take the escapee
+      *)       out+="$ch" ;;
+    esac
+    (( i++ ))
+  done
+  printf '%s' "${out##*/}"                       # basename AFTER unquoting: "/usr/bin/espflash"
+}
+
 _hs_is_wrapper() {
   case "$1" in
     env|command|sudo|doas|nice|ionice|chrt|nohup|setsid|stdbuf|time|timeout|xargs|\
     sh|bash|dash|zsh|ksh) return 0 ;;
+    # ADDED 2026-07-28 after the probe measured each of these passing a flasher
+    # through silently. `ssh host 'espflash …'` was route 3; `python -m esptool`,
+    # `uvx esptool` and `pipx run esptool` were found by route 6's verifier. These are
+    # program RUNNERS: whatever they are handed is the real operation, so the token
+    # scan must look through them exactly as it does through `env`/`sudo`.
+    ssh|python|python3|pipx|uvx|perl|ruby|node|npx) return 0 ;;
   esac
+  return 1
+}
+
+# `make <target>` cannot be resolved without reading the Makefile, so it is gated on the
+# TARGET NAME instead — fail-closed on the names that conventionally drive a programmer.
+# This is a heuristic and is labelled as one: it will not catch a flashing recipe behind
+# an innocuous target name, and it is not claimed to.
+_hs_is_make_firmware() {
+  local seg="$1" t
+  [[ "$(_hs_detok "${seg%%[[:space:]]*}")" == make ]] || return 1
+  for t in $seg; do
+    case "$(_hs_detok "$t")" in
+      flash|flash-*|*-flash|erase|erase-*|*-erase|burn|burn-*|program|program-*|\
+      upload|dfu|ota|*-ota) return 0 ;;
+    esac
+  done
   return 1
 }
 
@@ -350,9 +418,46 @@ _hs_openssl_mutates() {
 _hs_flash_or_mint() {
   local base="$1" seg="$2" cargo_sub cargo_d; local -a _cw
   case "$base" in
-    espflash|esptool|esptool.py|dfu-util|dfu-programmer|st-flash|stm32flash|openocd|\
+    dfu-util|dfu-programmer|st-flash|stm32flash|openocd|\
     nrfjprog|nrfutil|adafruit-nrfutil|JLinkExe|teensy_loader_cli|teensy-loader-cli|\
     cargo-embed|cargo-flash|probe-run|elf2uf2-rs|avrdude|bossac)
+      return 0 ;;
+    # espflash / esptool GAIN SUBCOMMAND DISCRIMINATION (2026-07-28), which their
+    # siblings probe-rs / picotool / pyocd / arduino-cli have always had.
+    #
+    # WHY THIS IS A SECURITY CHANGE AND NOT A CONVENIENCE ONE. These two were an
+    # UNCONDITIONAL basename match, so `espflash save-image` — a pure offline ELF→image
+    # conversion with no port, no board, no device of any kind — was DENIED, three times
+    # in one session on 2026-07-27. No grant could rescue it: `save-image` names no
+    # target, so _hs_authorized fails its target test before it can allow. The operator's
+    # only remaining routes were escalate-to-a-human or wrap-it-in-a-script, and the
+    # wrapper era followed. A GATE THAT BLOCKS THE HARMLESS TRAINS PEOPLE TO ROUTE AROUND
+    # IT, and every route around is silent and unaudited. Fixing the matcher without
+    # fixing this leaves the incentive that produced the bypass fully intact.
+    #
+    # DIRECTION IS FAIL-CLOSED AND DECLARED: an UNKNOWN subcommand DENIES. Only an
+    # explicit, enumerated set of no-device operations returns 1. A new espflash verb we
+    # have never seen is treated as device-touching until someone adds it deliberately.
+    espflash)
+      case " $seg " in
+        # file-only / informational: no port is opened, nothing is written to a device
+        *' save-image '*|*' --version '*|*' -V '*|*' --help '*|*' -h '*|*' completions '*)
+          return 1 ;;
+      esac
+      # Bare `espflash` with no subcommand prints usage and touches nothing.
+      # COMPARE AGAINST THE RESOLVED BASENAME ($1), NOT THE SEGMENT'S FIRST TOKEN. The
+      # first cut compared the segment to its own first word, so `T=espflash` — a segment
+      # that IS its first word — was classified "bare" and let the variable-carried route
+      # straight through. The exemption must apply only when the thing being run is
+      # literally this tool with no arguments.
+      [[ "$(printf '%s' "$seg" | tr -s '[:space:]' ' ' | sed 's/^ *//; s/ *$//')" == "$1" ]] && return 1
+      return 0 ;;
+    esptool|esptool.py)
+      case " $seg " in
+        *' merge_bin '*|*' image_info '*|*' elf2image '*|*' version '*|\
+        *' --version '*|*' --help '*|*' -h '*)
+          return 1 ;;
+      esac
       return 0 ;;
     probe-rs)
       case " $seg " in *' download'* | *' run'* | *' erase'* | *' flash'* | *' gdb'*) return 0 ;; esac ;;
@@ -591,31 +696,115 @@ _hs_is_fleet_msg() {
 }
 
 hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operation?
-  local c="$1" first base seg tb inner body; local -a segtoks
+  local c="$1" first base seg tb tbn inner body; local -a segtoks
   # git and fleet-messaging are exempted PER-SEGMENT (never whole-command): the
   # commit message / note may MENTION mint/sign/cert as prose, but a real flasher
   # after `git commit && …` is its OWN segment and must still be gated.
   while IFS= read -r seg; do
     seg="${seg#"${seg%%[![:space:]]*}"}"
     [[ -n "$seg" ]] || continue
-    first="${seg%%[[:space:]]*}"; base="${first##*/}"
+    first="${seg%%[[:space:]]*}"; base="$(_hs_detok "$first")"
     case "$seg" in *'$('* | *'`'*) : ;; *)
       [[ "$base" == git ]] && continue ;;   # git segment = source control, never a runtime flash/mint
     esac
     _hs_is_fleet_msg "$seg" && continue
     _hs_is_lookup "$seg" && continue      # `command -v espflash` runs nothing (#88)
-    _hs_flash_or_mint "$base" "$seg" && return 0
+    _hs_is_noexec "$seg" && continue      # `bash -n file` parses, executes nothing
+    _hs_flash_or_mint "$base" "$seg" && { _HS_MATCHED_SEG="$seg"; return 0; }
+    _hs_is_make_firmware "$seg" && { _HS_MATCHED_SEG="$seg"; return 0; }
     # look THROUGH a command-wrapper (env/sudo/timeout/nice/bash -c … <flasher>):
     # re-classify every token's basename so the wrapper can't hide the real op.
     if _hs_is_wrapper "$base" || _hs_is_assign "$first"; then
       read -ra segtoks <<<"$seg"
+      # AN ASSIGNMENT CARRIES ITS PAYLOAD ON THE RIGHT OF THE '='. `T=espflash` tokenises
+      # whole, so the basename compared was the literal `T=espflash` and matched nothing —
+      # `T=espflash; $T flash …` went straight through. Test the VALUE. This scan is safe
+      # over ALL tokens because `X=espflash` is unambiguous: nothing else has that shape.
       for tb in "${segtoks[@]}"; do
-        [[ "${tb##*/}" == git ]] && continue
-        _hs_flash_or_mint "${tb##*/}" "$seg" && return 0
+        _hs_is_assign "$tb" || continue
+        _hs_flash_or_mint "$(_hs_detok "${tb#*=}")" "$seg" && { _HS_MATCHED_SEG="$seg"; return 0; }
       done
+      # RESOLVE THE PROGRAM, DO NOT SCAN EVERY TOKEN.
+      #
+      # THIRD OVERREACH CAUGHT BY THE SUITE: scanning all tokens denied
+      # `command grep -n espflash flash-board.sh` — the tool name there is a SEARCH
+      # PATTERN, not the program. Under the all-tokens rule, any command that so much as
+      # MENTIONS a flasher was refused, which is the false-positive engine that produced
+      # the wrapper era in the first place.
+      #
+      # Walk past wrapper names, options and numeric arguments (`timeout 60 espflash`);
+      # the first token that is none of those IS the program. Classify only that, then
+      # stop — a flasher appearing after the program is an argument, not an operation.
+      # `ssh` takes a DESTINATION before the remote command, so the first non-option
+      # token is the host, not the program. Missed on the first cut and caught by the
+      # suite: A3 regressed to silence because `h.invalid` was resolved as the program.
+      local _skip_operand=0
+      [[ "$base" == ssh ]] && _skip_operand=1
+      for tb in "${segtoks[@]:1}"; do
+        tbn="$(_hs_detok "$tb")"
+        case "$tbn" in
+          ''|-*) continue ;;                    # option
+          *=*)   _hs_is_assign "$tb" && continue ;;
+        esac
+        [[ "$tbn" =~ ^[0-9]+$ ]] && continue    # e.g. the seconds in `timeout 60 …`
+        if _hs_is_wrapper "$tbn"; then          # chained wrappers: env sudo espflash
+          [[ "$tbn" == ssh ]] && _skip_operand=1
+          continue
+        fi
+        if (( _skip_operand )); then _skip_operand=0; continue; fi   # ssh destination
+        [[ "$tbn" == git ]] && break
+        _hs_flash_or_mint "$tbn" "$seg" && { _HS_MATCHED_SEG="$seg"; return 0; }
+        break                                   # program identified and it is not gated
+      done
+      # SCRIPT-FILE LOOK-THROUGH — the route that actually fired in production.
+      # `bash flash-board.sh X1` carries the flasher only INSIDE the file, so no token
+      # scan can ever see it. Read the file and classify its CONTENT. Depth-limited so a
+      # script that sources itself cannot spin. If the file is named but UNREADABLE we
+      # deny: an invocation whose program we cannot inspect is exactly the laundering
+      # shape, and failing open there is what made routes 2 and 4 silent.
+      # ONLY when the file is being EXECUTED, never when it is merely NAMED.
+      #
+      # SECOND OVERREACH CAUGHT BY THE GATE FIRING ON ITS AUTHOR: the first cut scanned
+      # every token, so `command grep -n pattern some-script.sh` — a READ of a file that
+      # happens to mention a flasher — was denied. `cat`, `wc`, `grep`, `shellcheck` on
+      # any script mentioning espflash would all have denied. A gate that fires on
+      # READING a file is worse than the bypass it replaced.
+      #
+      # The interpreter must be a SHELL, and the candidate must be the FIRST NON-OPTION
+      # argument — i.e. the thing the shell is being asked to run.
+      if (( ${_HS_FILE_DEPTH:-0} < 3 )) && [[ "$base" =~ ^(sh|bash|dash|zsh|ksh|source|\.)$ ]]; then
+        local _cand='' _body=''
+        for tb in "${segtoks[@]:1}"; do
+          tbn="$(_hs_detok "$tb")"
+          case "$tbn" in -*|'') continue ;; esac
+          _cand="$tbn"; break                     # first non-option arg = the program
+        done
+        # RESOLVE RELATIVE TO THE PAYLOAD'S cwd, not the hook's. The hook does not chdir,
+        # so `bash flash-board.sh` — the exact shape that fired in production — resolved
+        # against the wrong directory, `-f` failed, and the look-through silently did
+        # nothing. A path test against the wrong base is a check that always passes.
+        [[ -n "$_cand" && "$_cand" != /* ]] && _cand="$cwd/$_cand"
+        if [[ -n "$_cand" && -f "$_cand" ]]; then
+          if [[ -r "$_cand" ]]; then
+            _body="$(cat -- "$_cand" 2>/dev/null)" || _body=''
+            if [[ -n "$_body" ]]; then
+              _HS_FILE_DEPTH=$(( ${_HS_FILE_DEPTH:-0} + 1 ))
+              if hs_bash "$_body"; then
+                _HS_FILE_DEPTH=$(( _HS_FILE_DEPTH - 1 ))
+                _HS_MATCHED_SEG="$seg"; return 0
+              fi
+              _HS_FILE_DEPTH=$(( _HS_FILE_DEPTH - 1 ))
+            fi
+          else
+            # named as the program but UNREADABLE → fail closed. An invocation whose
+            # program cannot be inspected is the laundering shape itself.
+            _HS_MATCHED_SEG="$seg"; return 0
+          fi
+        fi
+      fi
     fi
     # explicit signed-OTA / cert-mint / persona-write verbs on any tool
-    _hs_verb_seq "$seg" && return 0
+    _hs_verb_seq "$seg" && { _HS_MATCHED_SEG="$seg"; return 0; }
     # a command substitution embeds a REAL command — scan its body too, so
     # `fleet send hive "$(espflash flash …)"` cannot launder a flasher through
     # an exemption. Terminates: each pass consumes one `$(`.
@@ -623,7 +812,7 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
     while [[ "$inner" == *'$('* ]]; do
       inner="${inner#*\$(}"
       body="${inner%%)*}"
-      [[ -n "$body" ]] && hs_bash "$body" && return 0
+      [[ -n "$body" ]] && hs_bash "$body" && { _HS_MATCHED_SEG="$seg"; return 0; }
     done
   done < <(_hs_segments "$c")
   return 1
@@ -648,9 +837,17 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
 #         target=<device or host:device>
 #         sha256=<expected digest>          # audit; see the honest limit below
 #
-# The gate allows a flash ONLY when a live record exists AND the command names BOTH
-# that artifact and that target. It authorizes one operation, not a class, and it
-# stops authorizing when it expires.
+# The gate allows a flash ONLY when a live record exists AND the MATCHED SEGMENT names
+# BOTH that artifact and that target, and it stops authorizing when it expires.
+#
+# ★★ CORRECTED 2026-07-28 — THIS COMMENT USED TO SAY "It authorizes one operation, not a
+# class." THAT WAS FALSE AS WRITTEN, and it was measured false: three identical payloads
+# against one grant returned allow / allow / allow with the grant file intact.
+# `_hs_authorized` never consumed, decremented or invalidated anything. What a grant
+# actually is: A TIME-WINDOWED CLASS AUTHORISATION for one (artifact, target) substring
+# pair — unlimited uses until expiry. It is written that way now because a comment that
+# overstates a control is worse than no comment: the next reader trusts it and stops
+# looking. Retiring a spent grant is a SEPARATE ACT the granter must perform.
 #
 # ★ THE HONEST LIMIT, STATED IN THE FILE RATHER THAN ASSUMED. This raises the bar; it
 # is NOT a boundary against a determined agent, because any process that can read this
@@ -682,16 +879,43 @@ _hs_authorized() {
   done < "$f"
   # every field is REQUIRED — a partial record authorizes nothing. An empty
   # artifact or target would otherwise substring-match every command.
-  [[ -n "$expires" && -n "$artifact" && -n "$target" ]] || return 1
-  [[ "$expires" =~ ^[0-9]+$ ]] || return 1
-  [[ "$expires" -gt "$(date +%s)" ]] || return 1
-  # the command MUST name both the authorized artifact and the authorized target
-  [[ "$c" == *"$artifact"* ]] || return 1
-  [[ "$c" == *"$target"* ]] || return 1
-  # audit: append-only, never rewritten, so a grant that was used is reconstructable
-  printf '%s\tUSED\tartifact=%s\ttarget=%s\tsha256=%s\n' \
-    "$(date -Is)" "$artifact" "$target" "${sha256:-unrecorded}" \
-    >> "$ws/.fleet/flash-authorization.log" 2>/dev/null || true
+  [[ -n "$expires" && -n "$artifact" && -n "$target" ]] || { _hs_audit DENIED no-grant-fields "$c"; return 1; }
+  [[ "$expires" =~ ^[0-9]+$ ]] || { _hs_audit DENIED bad-expires "$c"; return 1; }
+  [[ "$expires" -gt "$(date +%s)" ]] || { _hs_audit DENIED expired "$c"; return 1; }
+
+  # MATCH AGAINST THE MATCHED SEGMENT, WITH ANY TRAILING COMMENT REMOVED.
+  #
+  # THE LAUNDERING DEFECT THIS CLOSES (measured 2026-07-28). This function used to test
+  # the WHOLE command string while hs_bash had matched PER SEGMENT. Under a grant for
+  # (probe-fixture.bin, /dev/ttyPROBE0) all of these were ALLOWED:
+  #   esptool.py --chip esp32s3 erase_flash # authorized: probe-fixture.bin -> /dev/ttyPROBE0
+  #   echo probe-fixture.bin /dev/ttyPROBE0 && esptool.py --chip esp32s3 erase_flash
+  #   esptool.py --port /dev/ttyACM0 write_flash 0x0 attacker.bin   (tokens echoed ahead)
+  #   esptool.py --port /dev/ttyACM0 read_flash 0x9000 0x6000 secrets.bin # <tokens>
+  # The last one is the worst: A FLASH GRANT AUTHORISING NVS / KEY EXTRACTION. Tokens in
+  # a comment, or in a different segment, are not part of the operation being authorised.
+  local segn="${c%%#*}"
+  [[ "$segn" == *"$artifact"* ]] || { _hs_audit DENIED artifact-not-in-segment "$c"; return 1; }
+  [[ "$segn" == *"$target"*   ]] || { _hs_audit DENIED target-not-in-segment   "$c"; return 1; }
+
+  # AUDIT IS A PRECONDITION OF THE ALLOW, NOT A SIDE EFFECT OF IT.
+  # Previously `>> … 2>/dev/null || true`: an operation whose audit write FAILED was
+  # allowed anyway and was byte-identical in the record to one that never happened.
+  # If we cannot record it, we do not authorise it.
+  _hs_audit USED allowed "$c" || return 1
+  return 0
+}
+
+# One audit writer for both outcomes. Records the COMMAND's own text alongside the grant
+# fields — the old line recorded only the GRANT's artifact/target, so a laundered erase
+# was logged as a flash of the granted artifact: a record that AFFIRMATIVELY MISDESCRIBED
+# the operation. Returns non-zero if the record could not be written.
+_hs_audit() {
+  local outcome="$1" reason="$2" cmd="$3" logf="$ws/.fleet/flash-authorization.log"
+  local safe; safe="$(printf '%s' "$cmd" | tr '\t\n' '  ' | cut -c1-160)"
+  printf '%s\t%s\treason=%s\tgrant_artifact=%s\tgrant_target=%s\tsha256=%s\tcmd=%s\n' \
+    "$(date -Is)" "$outcome" "$reason" "${artifact:-none}" "${target:-none}" \
+    "${sha256:-unrecorded}" "$safe" >> "$logf" || return 1
   return 0
 }
 
@@ -720,8 +944,13 @@ case "$tool" in
   Bash)
     c="$(printf '%s' "$payload" | jq -r '.tool_input.command // .input.command // .params.command // .command // ""' 2>/dev/null)"
     [[ -n "$c" ]] || ask
+    _HS_MATCHED_SEG=''   # reset per invocation; a stale value would authorise the wrong text
     if [[ "${FLEET_FIRMWARE_GATE:-on}" != "off" ]] && hs_bash "$c"; then
-      if _hs_authorized "$c"; then
+      # PASS THE MATCHED SEGMENT, NEVER THE WHOLE COMMAND — see the laundering note in
+      # _hs_authorized. Empty means hs_bash matched by a path that failed to record which
+      # segment did it: FAIL CLOSED rather than fall back to whole-command matching,
+      # because that fallback IS the defect.
+      if [[ -n "$_HS_MATCHED_SEG" ]] && _hs_authorized "$_HS_MATCHED_SEG"; then
         allow "firmware op under a live per-operation authorization (see .fleet/flash-authorization)"
       fi
       deny "firmware flash / firmware sign / key-mint operation — report to the supervisor with the exact artifact + target + authority + reason; do not auto-run"

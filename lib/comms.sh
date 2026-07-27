@@ -9,6 +9,20 @@
 #
 # Requires: registry.sh + tmux.sh sourced. Uses flock when available.
 
+# MAC-value warning on outbound mail (2026-07-28, authorised by Roy). Sourced HERE, relative to
+# THIS file, rather than relying on bin/fleet's source chain: comms.sh is also sourced directly
+# by hooks/on-stop.sh, lib/responder.sh, lib/transport.sh and bin/fleet-unblock.sh, which do not
+# load that chain. Sourcing from the caller would have left the scan silently absent in exactly
+# the paths that deliver mail without a human watching.
+if [[ -z "${_FLEET_MACSCAN_LOADED:-}" ]]; then
+  _fm_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _fm_dir=""
+  if [[ -n "$_fm_dir" && -r "$_fm_dir/macscan.sh" ]]; then
+    # shellcheck source=lib/macscan.sh
+    source "$_fm_dir/macscan.sh" && _FLEET_MACSCAN_LOADED=1
+  fi
+  unset _fm_dir
+fi
+
 # Hard cap on conversation depth, to stop two agents ping-ponging forever.
 # Auto-tracked: a message a sender produces right after receiving one inherits
 # hop+1; the cap refuses sends past it. Configure via [supervisor] max_hops.
@@ -29,6 +43,11 @@ fleet_enqueue() {
   # The readers below all gate on `[[ -f "$f" ]]`, which absorbs an empty path on its
   # own; this WRITER cannot — it would mkdir/lock/append relative to $PWD. Fail closed.
   f="$(fleet_inbox_file "$to")" || { warn "refusing to enqueue mail for invalid member id '$to'"; return 1; }
+  # MAC-value diagnostic. WARNS, never blocks, and CANNOT affect delivery — see lib/macscan.sh
+  # for the argued fail-open. The `declare -F` guard is deliberate: if macscan.sh is missing or
+  # unreadable, mail still flows. A diagnostic that can wedge the transport it observes is a
+  # worse defect than the one it reports.
+  declare -F fleet_mac_warn >/dev/null 2>&1 && fleet_mac_warn "$text" "mail to '$to'" || true
   mkdir -p "$(dirname "$f")"
   # A valid id still lets an attacker pre-plant OR race-replant a SYMLINK at the inbox or
   # the lock. Confirmed 2026-07-15 against 6d19957: a link at "$f.lock" was followed by the
