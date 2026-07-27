@@ -4591,3 +4591,83 @@ artifact to reconstruct history.
 spent; the live file is now deliberately unsatisfiable.
 
 **Decision-Log: this entry.**
+
+### D-20260728-82 — the firmware gate is not a control: 6 bypass families, grant laundering, misrecording audit
+
+**Seven-route probe of `hooks/auto-approve.sh` (md5 `1765961515a6d574e6f510f308e1517e`), ten agents,
+every DENY adversarially re-tested. No firmware tool executed, no port or board touched, live `.fleet/`
+never written. Positive control passed and was independently replicated, so the matrix is
+interpretable.**
+
+**RIG-ALIVE FIRST:** route 6 (`esptool.py … erase_flash`) DENIED, replicated by a second lane with a
+byte-identical reason string, plus `FLEET_FIRMWARE_GATE=off` flipping the same payload deny→silent.
+The rig discriminates allow / deny / silence.
+
+**SILENT BYPASS — gate never fires, no allow, no deny, NO RECORD:**
+| route | shape |
+|---|---|
+| 2 | wrapper script — token only inside the `.sh` file |
+| 3 | `ssh host '…espflash…'` — `ssh` is absent from `_hs_is_wrapper` (:255-261) |
+| 4 | token in file content — `bash -c "$(cat f)"`, `source`, `eval`, `xargs -a`, `sh < f` (8 shapes) |
+| 5 | variable-carried argv — `T=espflash; $T flash …` (7 shapes) |
+
+**AND TWO FAMILIES THE VERIFIERS FOUND THAT NEED NO WRAPPER AT ALL:**
+- **QUOTING THE TOOL NAME.** `"espflash" flash --port … app.bin`, `'espflash' …`, `\espflash …`,
+  `esp''flash …`, `"openssl" genpkey …` — **all silent.** `_hs_segments` keeps quote characters as
+  data, so `${first##*/}` yields the literal token `"espflash"` and matches no arm. **One keystroke
+  defeats both the flash gate and the key-mint gate.**
+- **INTERPRETER INDIRECTION.** `python -m esptool`, `python3 -m esptool`, `pipx run esptool`,
+  `uvx esptool`, `make flash` — silent; those runners are not in the wrapper list.
+
+**⚠ GRANT LAUNDERING — THE ALLOW PATH IS WORSE THAN THE SILENT PATH.** `_hs_authorized` (:689-690)
+does two bare substring tests over the **whole command string**, while `hs_bash` matched per segment.
+Measured ALLOWs under a grant for `artifact=probe-fixture.bin, target=/dev/ttyPROBE0`:
+- `esptool.py … erase_flash # authorized: probe-fixture.bin -> /dev/ttyPROBE0` — **tokens in a COMMENT**
+- `echo probe-fixture.bin /dev/ttyPROBE0 && esptool.py … erase_flash` — **tokens in another SEGMENT**
+- `esptool.py --port /dev/ttyACM0 write_flash 0x0 attacker.bin` — **ungranted artifact to an ungranted
+  port**
+- `esptool.py --port /dev/ttyACM0 read_flash 0x9000 0x6000 secrets.bin # <tokens>` — **A FLASH GRANT
+  AUTHORISES NVS / KEY EXTRACTION.**
+
+**THE AUDIT LINE AFFIRMATIVELY MISREPRESENTS THE OPERATION.** It records the **grant's**
+`artifact`/`target`, not the command's — so a laundered erase or an NVS dump is logged as a flash of
+the granted artifact. **Worse than no record: a wrong one that reads as authoritative.**
+
+**And an empty log is consistent with FOUR states** — nothing attempted; attempted and denied (deny
+writes nothing); never evaluated (NO_FIRE); allowed with the audit write silently swallowed by
+`|| true`. **A bypassed flash leaves a log that looks exactly like a quiet day.**
+
+**BOTH DENY ROWS WERE REFUTED.** Route 6 flips to ALLOW with a trailing comment; route 7 goes silent if
+the tool name is quoted. **DENY means "this exact spelling is refused", never "this route is closed."**
+
+**MEASURED CONFIRMATION OF TWO THINGS I HAD ONLY ARGUED:** the grant is **never consumed** —
+allow/allow/allow on three identical payloads, grant intact — so the header comment at :652,
+*"It authorizes one operation, not a class,"* **is false as written.** And **`sha256` is never
+enforced**: 64 zeros accepted without complaint.
+
+**FALSE-POSITIVE SIDE CONFIRMED AND IT IS COUPLED TO THE BYPASS.** `espflash save-image`,
+`esptool.py merge_bin`, `espflash board-info --help`, and bare `espflash` all **DENY** —
+`_hs_flash_or_mint` (:353) is an unconditional basename match with no subcommand discrimination,
+unlike its `probe-rs`/`picotool`/`arduino-cli` siblings. **So the compliant path is the expensive one
+and every bypass is free and silent.** Tightening the matcher alone raises the cost of compliance while
+leaving all six bypass families open — **and the route-around produces no deny to escalate and no
+audit line, so the visible effect is fewer denials, which reads as improvement.**
+
+**There is even an escape that looks compliant from inside the tool:** declaring the **chip family** as
+the grant target (`target=esp32s3`) turns the denied `save-image` into an ALLOW and writes an audit
+line recording a **non-device as a device**.
+
+**HELD AS INFERENCE, NOT MEASUREMENT — the largest gap.** Every row measures **what the hook prints**,
+not what the harness does with it. That NO_FIRE means the command *runs* rests on the hook header plus
+`--dangerously-skip-permissions` in `lib/provider.sh:151` and `lib/faculty-bg.sh:27,109` — **read, not
+observed.** Also unprobed: hook wiring beyond one repo `settings.json`; the production payload shape;
+`Write`/`Edit`, Task dispatch and MCP routes entirely; heredoc, `docker exec`, PATH-shadowing, aliases,
+functions, `FLEET_FIRMWARE_GATE=off` as a worker-available escape; and ~23 of the ~25 gated tool names,
+which generalise **by construction, not by measurement.**
+
+**A 40-assertion regression suite is specified (G1-G4 device-call tripwires, A1-A15 no-fire, B1-B5
+quote normalisation, C1-C6 grant scope, D1-D5 single-use and audit integrity, E1-E6 false-positive
+side), every one of which FAILS against the current hook. Not implemented — the hook change is Roy's
+to authorise.**
+
+**Decision-Log: this entry.**
