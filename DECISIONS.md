@@ -4096,3 +4096,57 @@ and violates `:1492`.** core asked to say plainly if **one record is the wrong c
 independently-advancing quantities** — that is a design finding worth more than a magic byte.
 
 **Decision-Log: this entry.**
+
+### D-20260727-71 — the threat was written down in the same file, twice, and guarded everywhere but here
+
+**specs and hive both converged on the anti-rollback reader from different directions; the supervisor
+verified each at source, and the finding got materially stronger.**
+
+**specs' contribution — WHY A SANITY CHECK CANNOT WORK.** `seq = 0x65717569` is ASCII `"equi"`; floor
+`0x72656420` is `"red "`. **Concatenated: `"equired"` — the tail of `"required"` in a leftover string
+buffer.** Both are perfectly plausible `u32`s. **A range check passes. Monotonicity passes.
+Plausibility passes.** ⇒ **only authentication of RECORD IDENTITY separates *a record saying N* from
+*something else read as N*. Validate the container, not the contents.**
+
+**And it retires the coupling framing entirely:** *"two correctly-independent reads of one
+unauthenticated buffer."* **Nothing was coupled.** A canon clause forbidding a shared derivation source
+was nearly drafted; it would have contradicted §9.2, which **mandates** one for the neighbouring pair.
+
+**hive's contribution — THE CONVENTION ALREADY EXISTS.** Sweep of all 11 config-plane raw-offset
+readers at `4b4a71e5`: **9 validate a BE-`u32` tag and return `None` on mismatch.** The only two that
+do not are `read_anti_rollback` (`0x18000`, fired, **security-critical**) and `read_board_profile`
+(`0x13000`, cosmetic). **Spot-checked both outliers at source by the supervisor; confirmed.**
+
+**SUPERVISOR ADDITION, VERIFIED AT SOURCE AND STRONGER THAN EITHER LANE STATED — THE THREAT IS WRITTEN
+DOWN IN THE FILE'S OWN COMMENTS, TWICE:**
+- `:6203` **`COARSE_CHECKPOINT_MAGIC`** `"CT1\0"` — *"guards an erased/foreign sector reading as 0"*
+- `:8147` **`ROLLBACK_REC_MAGIC`** `"RBK1"` — *"guards an erased/foreign sector reading as **valid**"*
+
+**The author named this exact failure mode in prose, implemented the guard for the neighbouring
+rollback RECORD, and left the anti-rollback FLOOR two sectors away unguarded.** This is not a
+convention nobody knew — **it is a guard the codebase already knows it needs, absent from the one place
+it is security-critical.**
+
+**hive's design catch — THE FIX ITSELF OPENS A DOWNGRADE WINDOW.** A bare magic **invalidates every
+legitimately-written legacy record**, so boards holding a real floor drop to zero. Discriminator reuses
+composer's negative control: the writer erases 4 KB then writes 8 bytes, **so a genuine record has
+`0xFF` from byte 8 onward and foreign data does not.** *An observation made to prove one thing became
+the mechanism for another.*
+
+**SUPERVISOR REQUIREMENT ADDED TO THAT MIGRATION.** *"All-`0xFF` tail ⇒ legacy, trust it"* is a
+**PERMISSIVE DEFAULT** and must be **declared and argued, never inferred from absent contrary data**.
+hive owes: (1) the fail-safe **direction**, stated and justified — trusting untagged bytes opens an
+acceptance window, dropping to `(0,0)` opens a downgrade window, say which is chosen and why; (2) **a
+falsifier for the LEGACY path itself** — craft 8 non-`0xFF` bytes followed by `0xFF` and confirm the
+intended branch fires, since that shape is indistinguishable from a real legacy record **by
+construction**; (3) an explicit accepted-risk statement for a foreign buffer that happens to end in
+`0xFF`. **Low probability is not a design answer.**
+
+**TWO METHOD DISCLOSURES WORTH KEEPING.** hive first reported **10/11** — its own regex scored
+`read_board_profile`'s `b[0] != 0x00` as a validity check when it is data interpretation, caught by
+eye-checking source before sending. **The night's "a written assumption standing in for a check" shape,
+pointed at an instrument.** And hive distinguished its **static** attestation (blob in `.rodata`,
+`PT_LOAD`, tag in region, byte-search on the `.bin`) from the **runtime** claim that the bake took **on
+the board** — *"two different claims, and only now are both discharged."*
+
+**Decision-Log: this entry.**
