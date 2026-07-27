@@ -3913,3 +3913,35 @@ cited backstop as verified and stops looking.** Same mechanism as *"post-init = 
 correction is appended to the grant in place rather than edited over the original text.
 
 **Decision-Log: this entry.**
+
+### D-20260727-67 — the artifact awaiting Roy was on tmpfs; now durable
+
+**specs found a durability defect in its own artifact of record and reported it rather than fixing it
+unasked.** The supervisor had said *"the draft file stays the artifact."* **`findmnt -no FSTYPE -T /tmp`
+= `tmpfs`.** The only copy of a decision artifact waiting on the principal sat in one volatile,
+session-scoped place — **on no ref, no remote, in no repo. A record that cannot notice itself
+disappearing**, which is the night's recurring shape pointed at our own process instead of the
+firmware's.
+
+**Copied to `docs/pending-rulings/2026-07-27-68-baked-persona-three-drafts.md`**, specs' recommendation
+(2) of three: the ledger is already home to recommendations-pending-Roy, and **specs does not write to
+this repo**, so the durable move needed the supervisor. Option (1) — committing a draft into the canon
+repo — was declined on specs' own stated risk: a later reader mistaking a draft for a proposal in
+flight.
+
+**REPRODUCED VERBATIM. The supervisor edited nothing.** A stale line survives in specs' text: §C
+retracts the cost warning, but the closing *"WHAT IS TRUE UNDER BOTH"* item 3 still carries the
+un-retracted *"a blend inherits (A)'s cost and (B)'s hole."* **Flagged in a preamble above the copy
+rather than corrected inside it — editing another lane's artifact to fix its conclusion is how
+provenance is lost.** Item 3 is right about the holes, superseded about the cost.
+
+**PUBLIC-REPO CHECK RAN WITH A POSITIVE CONTROL.** claude-fleet is public. The file was read in full
+before copying, then swept for MAC shapes, private-key headers and 40/64-hex blobs. **The matcher was
+first proven live against a copy with a planted MAC and a planted 64-hex string (2 matches), then run
+clean over 193 lines.** An unproven matcher returning nothing is not evidence of nothing.
+
+**A supervisor instrument error, caught and stated:** the first sweep annotated its result with `$?`
+after a pipe to `head` — **that reports `head`, not `grep`.** The empty output was the evidence; the
+return code beside it was meaningless. Re-run properly rather than left standing.
+
+**Decision-Log: this entry.**
