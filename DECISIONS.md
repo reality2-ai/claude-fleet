@@ -3945,3 +3945,69 @@ after a pipe to `head` — **that reports `head`, not `grep`.** The empty output
 return code beside it was meaningless. Re-run properly rather than left standing.
 
 **Decision-Log: this entry.**
+
+### D-20260727-68 — act 1b: the anti-rollback sector holds application strings, and the operator stopped
+
+**composer ran act 1b exactly as granted** — `0x18000`, length `0x1000`, 4096 B, chip MAC MATCH against
+the handle, tool entry and `--after hard-reset` exit — **and the sector is not a record at all.**
+
+**MEASURED:** first 16 B = ASCII **`"equired eFuse bits not burnt"`**. 3951/4096 printable, **ZERO
+`0xFF` bytes**. Also `"no mem for adc calibration scheme"`,
+`"//IDF/components/esp_adc/adc_cali_curve_fitting.c"`. **Decoded as the firmware decodes it:**
+`current_seq = 0x65717569` LE = **1,769,304,421** (the ASCII `"equi"`); floor = `"red "` = 543,450,482.
+**Text read as `u32`.**
+
+**⇒ THE LADDER COULD NEVER HAVE TERMINATED.** `read_anti_rollback` (`main.rs:8076-8088`) maps only
+`0xFFFFFFFF` → 0 — **no magic, no validity check** — so leftover bytes present as an astronomical
+floor. No seq in 1..39, nor 60, nor any sane number, could exceed 1.77 billion. **A threshold of 60
+was set in the belief the ladder terminated.**
+
+**AND X1 HAS NEVER HAD A CONFIRMED OTA — proven, not inferred.** `write_anti_rollback` erases 4 KB then
+writes 8 bytes, so any board that ever confirmed shows ~4088 B of `0xFF`. **X1 shows none.** A negative
+control proving absence rather than an absence of evidence.
+
+**THE OPERATOR STOPPED BECAUSE THE TEST PASSED.** Act 2B step 2 required the dial to exceed the floor;
+numerically **1769304422 > 543450482 PASSES**. composer refused anyway: **the step assumes the sector
+HOLDS A RECORD, and measurement falsified that premise.** Proceeding would have sealed at a seq that is
+ASCII text and, on confirmed boot, committed a **~1.77-billion permanent floor**, burning the board's
+entire sequence space. **The standing no-blind-high-bump rule would NOT have caught it — the number
+came from a flash read, so it carried the provenance of a measurement.**
+
+**THREE SUPERVISOR CLAIMS RETIRED:**
+1. *"The ladder terminates because the floor is real"* — **WRONG.** Both lanes ran a two-option test
+   (blank vs real); the truth was a third, **NOT BLANK AND NOT A RECORD**. **Second independent
+   instance of that shape in one night.** Worse than the first because **the supervisor corroborated
+   it, turning one lane's hypothesis into a shared premise nobody was still testing.**
+2. *"The BLE address is MAC-derived so it does not move"* — **REFUTED by measurement.** X1's BLE
+   address **changed across a single reset** (values withheld — the operator holds them locally and
+   re-derives them per run; they do not belong in a public repo). Asserted by the supervisor, measured
+   by the operator. **Stale target strings must be re-derived, never carried.**
+
+   *Recorded against the supervisor: the first draft of this entry pasted both addresses in full, and
+   **this repo's own pre-push gate refused it** — `2 real-looking MAC-address value(s) in added lines`.
+   The standing rule is the supervisor's own (**refer by label, never by value, in fleet comms and
+   public surfaces**), and it was broken by the person who wrote it, in the entry congratulating an
+   operator for discipline. **Fixed by removing the values, not by `FLEET_MAC_SCAN=off`.** The same two
+   values also went out in a fleet message to composer before the gate could see them — **mail has no
+   such gate, which is itself the finding.***
+3. *"The archived confirm line belongs to a different board"* — **right conclusion, wrong reason.** It
+   was argued from inconsistency with a floor of 39+, and that floor was garbage. **It survives on
+   composer's evidence instead:** zero `0xFF` ⇒ no X1 confirm ever happened.
+
+**FIRMWARE DEFECT FILED WITH core AT TOP RANK, and the control is in the same file:** `read_ota_pending`
+(`0x1A000`, `main.rs:8111-8113`) **validates an `OPND` magic and returns `None` on mismatch.** Same
+file, same author — **the non-critical record self-validates, the security-critical one does not. The
+asymmetry is the finding.** core also asked to enumerate — not sample — the other raw offsets
+(`0x12000` persona, `0x13000` board profile, `0x14000` TG override, `0x1B000` label) for the same
+pattern, and to state the fail-safe DIRECTION explicitly.
+
+**NO WRITE OR ERASE AT `0x18000` GRANTED TONIGHT**, and composer was told not to ask again before
+morning. **A new operation class on the config plane with CCR1 one sector away** makes a length error
+destructive — and **the right fix may not be an erase at all**: an unvalidated reader is a defect on
+every board, and erasing X1 papers over it on one. **core rules on the firmware fix first.**
+
+**Board state:** healthy on baked-A, hive `06fd011a`, tg_hash `cf1bf564`, build `otav3.A.baked.0727`,
+**identity intact**, advertising recovered (2 beacons). **Act 2B stays granted and stays BLOCKED** —
+payload verified on disk, target restated. **It waits on the sector; the sector waits on Roy.**
+
+**Decision-Log: this entry.**
