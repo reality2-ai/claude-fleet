@@ -3475,3 +3475,43 @@ axes now pinned by something checkable. The old grant is archived, marked supers
 was ever written under it.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-58 — A corrupted digest in my own message, caught by the lane holding the real value
+
+**I inserted a digit into the payload digest** in the first line of an order, then quoted it correctly
+two lines later. composer **read the value it already held**, saw the mismatch, and refused the bad
+one by name rather than silently using the good one.
+
+**A corrupted digest is the failure mode with no symptom.** It does not error. It fails to match
+later, and sends someone hunting the artifact when the pin was wrong all along.
+
+**Checked rather than assumed it was contained.** Grepped every artifact in this repo for the
+malformed prefix — **absent, exit 1**. The ledger entry never quoted the digest at all, so the bad
+value existed in exactly one message and died there. **The scope of a correction is measured, not
+inferred from "I fixed it in the next line."**
+
+**Recorded once, correctly — stage 2 pins:**
+
+    payload sha256 70619b6dc369c13d701c8b65bcbdaeaf1d44244868d606add8345dc19c2b4012  (857600 B)
+    signer   tg_pk  4e2a9a30cb37c0e797ef0e9052f455bcacc0c946a0e583744cedf342cfaf7706
+
+**A sequencing precondition I should have stated and composer did:** gate 4 reads the **RUNNING**
+image, so the baked image must be on the board over the cable **before** the unbaked payload goes over
+the air. A push before that reproduces reason=4 **and wastes the falsifier**, which only fires once.
+
+**And the falsifier's real strength is its anchor.** The predicted unprovisioned hive id is not a
+derivation — **it is what the board shows RIGHT NOW, measured this session.** A prediction tied to a
+present measurement can fail visibly. **That is the whole difference between a prediction and a
+rationalisation written after the fact.**
+
+**RATIFIED — the coupling constraint is canon-bound, not bench trivia:** every future payload for this
+board carries this same blob, or the board forgets who it is. composer's off-bench reading stands —
+**a stock image de-provisions the board, and identity can never be changed over the air under this
+mechanism.** That belongs in the OTA canon.
+
+**Not Roy-gated per push.** He authorised provisioning X1 explicitly and asked for the first OTA in as
+many words. **The grant covers the cable write; the air push follows on my order.**
+
+**Decision-Log: this entry.**
