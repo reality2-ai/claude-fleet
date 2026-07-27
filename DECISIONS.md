@@ -5215,3 +5215,125 @@ caveat: posture on a bench console is immaterial; posture in a durable, potentia
 per-board file is a different claim. Re-examine on deployment.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-95 — MY STOP CONDITION WAS A SHAPE PREDICATE AIMED AT A NOVELTY QUESTION. RETRACTED.
+
+**Ruling: BUILD `c7a1d67a`. The stop condition is void. The defect was mine, not the branch.**
+
+The build order carried: *"If your checkout somehow contains `sign_extended` without a `cfg(multitg)`
+gate on the emit path, STOP AND REPORT — that would mean the branch is not what I verified."*
+
+hive found the **antecedent TRUE and the consequent FALSE**, and refused to decide the conflict itself.
+`sign_extended` compiles in the ordered feature set at `main.rs:1888`, inside `async fn io_task`
+(`:1818`) whose only gate is `#[cfg(feature = "ble")]` (`:1816`) — and `ble` is in the closure. But
+`d9c701af` is still not an ancestor, and the code is **pre-existing**.
+
+**WHAT THE CONDITION WAS ACTUALLY ASKING:** *did this branch introduce a new extended-frame emit?*
+That is a **novelty** question. I wrote it as a **shape** predicate over the current tree.
+
+> **A SHAPE PREDICATE CANNOT DETECT NOVELTY. Only a diff against a baseline can.**
+> A property the tree has *always* had satisfies a shape predicate perfectly — so the test fires on
+> history and stays silent on arrival. It is not a weak version of the right test; it answers a
+> different question, and its passes and failures are both uninformative about the one that matters.
+
+**ROOT CAUSE, AND IT IS THE INSTRUMENT AGAIN.** I had run a check labelled *"is the cfg(multitg) gate
+still on the sign path?"*. Its entire output was one line — the `sign_extended` **call** at `:1888`.
+**It never displayed a gate.** I read *gate still on* out of output that only proved the call existed,
+then **built a stop condition on that reading and shipped it to a worker as a bright line.**
+See `a-sound-instrument-can-answer-a-different-question`, and note the compounding: an unchecked
+reading became a **rule imposed on another lane**, which is how a private error becomes fleet policy.
+
+**REPLACEMENT:** stop only if the branch **introduces or moves** an extended-frame emit relative to
+`4b4a71e5`. Verified: it does not.
+
+**hive's refusal to self-release was correct and is now standing practice.** My census-posture message
+arrived while it was stopped; it did not mention `sign_extended`, so hive read it as *"the census
+ruling does not withdraw the order"* rather than a release. **An explicit STOP is released only by an
+explicit release that names it** — not by a later unrelated message from the same authority. Do not
+soften that even when the wait costs a build.
+
+**MY CORRECTION TO hive'S REPORT — THE DENOMINATOR.** hive reported **three** call sites and declared
+the other two gated out. There are **SIX** at `c7a1d67a`: `1888, 2193, 2489, 2646, 3371, 4280`.
+`2646` is a **second ungated wire emit in the same `io_task`** (bench Event via
+`mesh_broadcast_extended`; the `#[cfg]`s at `2602-2630` sit on **let-bindings, not on the call**).
+`4280` is `ota_health_check`'s codec self-test — encode/decode/verify into a local buffer, **never
+transmitted**, not a wire emit. `3371` (`RT-REPLY`/`ROUTETEST_HASH`) is **UNRESOLVED**: my line-scan
+cannot separate a block `#[cfg]` from a binding `#[cfg]`, and I record it unresolved rather than assert
+the convenient answer.
+
+**hive's conclusion survives and gets STRONGER than hive proved it.** At `4b4a71e5` — the sha the image
+**currently on X1** was built from — the same 9 occurrences and the **same six** call sites exist
+(`1757/2062/2358/2515/3211/4120`), with `read_rollback_record` at `:1733` and `ROLLBACK_HASH` at
+`:1746`. **Nothing arrived with this branch.**
+
+**A BELIEF OF MINE THAT WAS NEVER TRUE, now retired:** *"no extended frames leave the board unless
+`multitg`."* Two ungated emit paths have been broadcasting since act 1. This does not change the
+pending hb-sign ruling, but it removes a premise I would have reasoned from. **Going to Roy as
+context.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-96 — A GATE WHOSE FILTER EXEMPTS THE WHOLE LINE HAS A DENOMINATOR OF ZERO. FIX IN LANE.
+
+hive, auditing the file it had just extended, found the **TERM class** in `ci/public-hygiene.sh` uses a
+whole-line `grep -v` allowlist: **18 lines match, 0 survive the filter. Effective denominator ZERO.**
+It reports clean because it can no longer see anything.
+
+**Ruled: this is not Roy's and must not wait.** Convert TERM to the same token-level (`-inoE`) shape as
+the UUID/key classes, landed with a positive control that **FAILS before the fix and PASSES after**,
+reporting before/after denominators explicitly.
+
+> **A whole-line exemption removes from view precisely the lines nobody re-checks.** Their failure was
+> the only signal the matcher was wrong, so the exemption **hides defects in the gate itself**, not
+> merely in the corpus. See `an-exemption-hides-defects-in-the-gate-itself`.
+
+**The census-posture class hive landed (`78537fd`) is ACCEPTED** — token-level not whole-line, shape
+patterns **inline** rather than in the out-of-repo denylist (they are field *names*, not values, and a
+shape pattern must never become the last authoritative copy of what it describes), and **KAT-verified
+in both directions**: synthetic line ⇒ rc=1 naming all four tokens; line removed ⇒ clean. **An inert
+class is indistinguishable from a clean tree**, which is exactly the defect it found next door.
+
+**`ci/shape-scan-vectors.tsv` is a cross-repo contract with a pinned content-sha.** hive correctly did
+**not** change it unilaterally. **Coordination is mine:** hive drafts the vector set and sha delta and
+sends it to me; I put it to specs/core/composer/android. **No commit in the meantime.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-97 — TWO LANES AGREEING FROM ONE SOURCE IS ONE READING, NOT CONFIRMATION.
+
+core independently ruled the SoC posture `Publish:PRIVATE` and asked whether publication policy is
+Roy's alone. **Answer: no, and the ruling is not provisional** — D-20260728-94 already stands, so core's
+ruling needs no re-work.
+
+**But the ledger must not imply two.** core and I reached it from the **same input** — hive's report and
+its synthetic-line gate measurement. **Same subject, same evidence path.** Recorded as **one**.
+See `two-observations-sharing-a-precondition-are-one`.
+
+**Authority, stated so it is not re-asked:** Roy owns brand and public-surface classes. **A supervisor
+Publish class on fleet-internal output is mine, and a lane may classify PRIVATE in-lane without
+escalating** — that is the reversible direction. **The escalation trigger runs the other way: PRIVATE to
+PUBLIC always comes up.**
+
+**A VERIFY SLOT IS ONLY REAL IF THE VERIFIER CAN REACH THE ARTIFACT.** core had assigned host-end
+verification of a USB census frame to composer — **which holds no `FfiUsbSession`, no `r2-usb-pair`, no
+USB seam code at all.** The plan was waiting on a phantom. **Check reachability BEFORE allocating a
+verification slot, not when the report comes back empty.** Reassignment to android is correct;
+composer on artifact-side verification is correct.
+
+**core retracted an unverified claim of its own** — *"USB seam byte-exact vs android `FfiUsbSession`"*
+(`Cargo.toml:304`, `main.rs:7163`) was its assertion, never measured, and composer had relayed it as
+fact. **Fifth of that class today and the first where core was the ORIGINATOR rather than the finder** —
+the harder direction, and the one that stops a comment becoming fleet truth. Marking **UNVERIFIED in
+place** with what would settle it named is the right shape; deletion would lose the conjecture.
+
+**android's tolerant-catch-all citation came from a HEAD mirror and is load-bearing** — it is the only
+reason firmware could emit a census control frame ahead of host work. **Hold the line core drew:
+nothing authored until specs allocates the msg_type AND the live confirm lands.**
+
+**Decision-Log: this entry.**
