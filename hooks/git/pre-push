@@ -176,10 +176,39 @@ if [[ "${FLEET_HOOK_SELFTEST:-0}" == "1" ]]; then
 
   # 3) NEGATIVE CONTROL — the gate must actually REDDEN on a known-bad line. Cases 1-2 only
   #    prove it refuses; without this nothing proves it CATCHES anything.
-  grep -qiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_-]{16,}' \
-    <<<'+api_key = "ZmFrZVNlbGZUZXN0VmFsdWUxMjM0NTY3ODkw"' \
-    && st_ok "the secret-value pattern matches a known-bad line" \
-    || st_bad "the secret-value pattern did NOT match a known-bad line"
+  #
+  #    THE FIXTURE IS ASSEMBLED, NOT WRITTEN OUT, and that is not cosmetic. Held as a literal,
+  #    this line made THIS FILE a secret-bearing file: pushing the hook tripped the hook, and
+  #    the gate blocked its own commit. Measured, not predicted — that is how it was found.
+  #    The two wrong fixes were both available and both refused: exclude this path from the
+  #    scan (a gate exempting itself — the exact class this file exists to refuse), or weaken
+  #    the pattern until the fixture slipped through (breaking the gate to fix the test).
+  #
+  #    SPLIT AT THE KEYWORD AND ACROSS THE VALUE so no single source line carries
+  #    keyword-separator-value. The MATCHED string is byte-identical to the old literal, so the
+  #    control tests exactly what it tested before — the matcher, not the corpus.
+  st_kw='api'; st_v1='ZmFrZVNlbGZUZXN0'; st_v2='VmFsdWUxMjM0NTY3ODkw'
+  st_line="+${st_kw}_key = \"${st_v1}${st_v2}\""
+  # ASSERT THE FIXTURE BEFORE TRUSTING THE MATCH. A botched assembly that yields a short or
+  # keywordless value would fail the grep below and read as "the pattern is broken" — the same
+  # green-for-the-wrong-reason this whole file is hardened against, inverted.
+  if (( ${#st_v1} + ${#st_v2} < 16 )) || [[ "$st_line" != *"${st_kw}_key"* ]]; then
+    st_bad "the known-bad fixture did not assemble (len $(( ${#st_v1} + ${#st_v2} )))"
+  else
+    grep -qiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_-]{16,}' \
+      <<<"$st_line" \
+      && st_ok "the secret-value pattern matches a known-bad line" \
+      || st_bad "the secret-value pattern did NOT match a known-bad line"
+  fi
+
+  # 5) THIS FILE MUST NOT TRIP THIS FILE. A gate whose own source matches its own pattern can
+  #    never be pushed — it blocks every commit that touches it, and the only ways out are
+  #    self-exemption or weakening. Standing control so the literal cannot come back.
+  if grep -qiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_-]{16,}' "$0"; then
+    st_bad "THE HOOK SOURCE TRIPS THE HOOK — a secret-shaped literal is in this file"
+  else
+    st_ok "the hook source does not trip its own secret-value pattern"
+  fi
 
   # 4) STDERR IS NOT SCAN INPUT — a command that succeeds while writing to stderr must not
   #    contaminate the enumerated value (the OPEN item this version closes).

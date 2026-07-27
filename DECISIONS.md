@@ -3332,3 +3332,41 @@ the built image inherits it and the image is secret-class. That question went to
 production order rather than being answered by me from the format comment.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-54 — The gate blocked its own commit, and both easy fixes were the defect
+
+**Pushing the hardened secret-scan hook tripped the hardened secret-scan hook.** Its negative
+control — the known-bad line that proves the pattern CATCHES something — was a secret-shaped
+literal sitting in the file. So the file became a secret-bearing file, and the gate refused it.
+**Correctly.** The scan was not wrong for one line.
+
+**Found by measurement, not foresight.** I wrote the control, verified it, deployed it to seven
+repos, and only discovered this when `git push` blocked me. **A control that has never been run
+against the corpus it lives in has not been fully tested.**
+
+**Two fixes were immediately available and both were the defect wearing a fix's clothes:**
+
+- **Exclude this path from the scan.** A gate exempting itself — *exemption by self-reference*,
+  the same shape as excusing a repo from a CI check because it had none, which I did yesterday
+  and withdrew. The gate that cannot scan itself is the one place a secret is guaranteed to sit
+  unread.
+- **Weaken the pattern until the fixture slips through.** Breaking the instrument to pass the
+  test. The fixture is *supposed* to match.
+
+**Taken instead: assemble the fixture at runtime.** Split at the keyword and across the value so
+no source line carries keyword-separator-value; the string handed to the matcher is
+**byte-identical** to the old literal. **The control tests exactly what it tested before — the
+matcher, not the corpus.** Guarded by an assertion that the assembly actually produced a
+keyword-bearing 16+ char value, because a botched assembly would fail the grep and read as *"the
+pattern is broken"* — green-for-the-wrong-reason, inverted.
+
+**And a fifth standing control: THIS FILE MUST NOT TRIP THIS FILE.** Verified both ways — passes
+clean, and **fails loudly on an injected literal** (measured on a copy, not asserted). A gate whose
+source matches its own pattern can never be pushed, and the only exits are self-exemption or
+weakening. **The control exists so the literal cannot come back.**
+
+Suite 254/254. Redeployed; **sha256 identical across all seven repos (one unique digest).**
+
+**Decision-Log: this entry.**
