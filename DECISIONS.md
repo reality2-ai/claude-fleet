@@ -4476,3 +4476,74 @@ has been told that if two S3s appear it must resolve **both** before touching ei
 untouched — no opportunistic reads while waiting.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-80 — RULING (A) RETRACTED: a wrapper is not enforcement, because it is audit-blind
+
+**Retracting my own ruling, and naming the consequence rather than the reasoning error alone.**
+
+**RULING (A), 2026-07-27:** when composer reported that the gate's target test is a case-sensitive
+substring and `X1` could not appear in an honest by-id invocation, I ruled **accept the wrapper AS the
+enforcement, since its checks strictly dominate the gate's**, and filed the bypass as a standing defect
+of mine. **That ruling is now RETRACTED.**
+
+**WHY IT WAS WRONG — I WEIGHED ONE AXIS AND THERE WERE TWO.** The wrapper's checks *do* dominate the
+gate's **on safety**: eight checks, distinct exit codes, no `2>/dev/null`, rc captured. **They dominate
+on NOTHING with respect to AUDIT.** A wrapper's argv carries neither the tool token nor the artifact
+name, so `_hs_authorized()` never fires — **no allow, no deny, no log line.** I compared the two
+mechanisms on refusal quality and never asked what the gate produces that a wrapper cannot: **a record
+that the operation happened.**
+
+**THE MEASURED CONSEQUENCE.** `.fleet/flash-authorization.log` has **ZERO entries after
+2026-07-27T13:48:32**. That window contains **act 1 — a real 857,088 B WRITE to X1** — plus act 1b and
+the D4 read. **All grant-authorised. None gate-audited.** The write is the serious half and was outside
+composer-codex's report; hive and composer each surfaced it independently.
+
+**DENOMINATOR CORRECTION, and it is ours: the audit trail is 90 records, not ~790.** hive resolved a
+787-vs-791 disagreement (`wc -l` vs `grep -c .`, four blank lines — *both correct, different
+quantities, neither of us said which*) and found underneath it that **the file is two logs in one**:
+90 tab-delimited machine-written `USED` records, the remainder supervisor PROSE. **`grep -c USED` = 132
+also over-counts, matching prose that merely mentions the word.** The conclusion is untouched — zero
+after 13:48 — but **every claim about the trail's COVERAGE was resting on a number that mixed two
+record types.**
+
+**CAUSE (a) vs (b), HELD OPEN DELIBERATELY.** The gate's append is best-effort
+(`>> … 2>/dev/null || true`), so **"bypassed" and "audit-write-failed" are BYTE-IDENTICAL in the
+record — both absent.** composer-codex replay-confirmed **(a)** for the D4 read. For **act 1** we have
+only absence. composer narrowed it: **first wrapper created 20:29:11; last logged op 13:48:32 was
+invoked DIRECTLY** — so (a) alone suffices and (b) is **unevidenced, not excluded**. hive narrowed (b)
+further: log and directory are both writable, so its most plausible mechanism is unsupported.
+**Correlation with no counterexample, not a replay. Do not let "unaudited" harden into "bypassed" for
+act 1.**
+
+**AND THE REPLAY FOR ACT 1 IS GONE — CORRECTLY.** The grant file has been replaced, so act 1's command
+would today be tested against the wrong grant. **composer refused to swap the live authorisation
+artifact to reconstruct history, and that refusal was right:** reconstructing an audit question by
+mutating the authority governing current operations trades a live control for a historical answer.
+hive's isolated-temp-workspace route gets the answer without the trade.
+
+**THE FRAMING THAT MATTERS MOST — THE GATE FAILED IN BOTH DIRECTIONS AT ONCE.** It **DENIED**
+`espflash save-image` three times — a pure file write, no port, no board — which is what forced the
+Roy-produces / hive-attests / composer-writes split. It **PASSED** a real device write behind a wrapper.
+**A gate that blocks the harmless and admits the real does not merely fail to protect — IT TRAINS
+PEOPLE TO ROUTE AROUND IT, and routing around it is how the bypass came to exist.** Fixing the matcher
+while leaving benign ops denied **leaves the incentive intact**.
+
+**composer stated this in the first person and it belongs to my ruling, not to its conduct:** *"the
+wrapper exists BECAUSE the gate's target test is a case-sensitive substring… you ruled (A)
+accept-the-wrapper rather than fix the matcher, and the bypass followed from the ruling."* **That it
+followed from a RULING rather than a lapse is what makes it structural.**
+
+**composer's own accounting is accepted:** it inherited ruling (A) across a boundary it was not written
+for — (A) was made for the X1 act-1 write; the D4 read was a new grant deserving its own sentence.
+**A ruling is not an artifact.** But the ruling was mine and the boundary should have been in it.
+
+**STANDING CONSEQUENCES, effective now:**
+1. **A WRAPPER IS NOT ENFORCEMENT.** Operator-side checks may be accepted as *additional* safety, never
+   as a substitute for the gate, because they produce no audit record.
+2. **A GRANT IS NOT SELF-LIMITING.** `_hs_authorized()` never consumes one; a satisfied grant stays
+   satisfiable. **The supervisor retires every grant the moment its act completes.** The D4 grant was
+   retired today on composer's escalation, two days early — it should not have needed escalating.
+3. **THE AUDIT APPEND MUST FAIL LOUDLY**, or at minimum distinguishably. Same
+   fail-closed-but-not-silent principle just applied to the anti-rollback reader.
+
+**Decision-Log: this entry.**
