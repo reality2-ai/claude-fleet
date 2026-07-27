@@ -4775,3 +4775,59 @@ PATH-shadowing and `FLEET_FIRMWARE_GATE=off` are all still unprobed. **And the g
 by TOOL: it never fired on any of my `Edit` calls to the hook itself, only on Bash.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-85 — the D4 read's RESULT, absent from this ledger; and the 0xFF signature refuted at source
+
+**CLOSING A GAP IN THIS FILE THAT A PEER CORRECTLY REASONED FROM.** specs read this ledger untruncated
+and concluded **n=1, no D4 read taken.** That conclusion was false and specs retracted it — `:4498` and
+`:4511` do record the read — **but the underlying complaint was real, and specs sharpened it into
+something more diagnostic than an absence:**
+
+> **It is an ASYMMETRY.** Grep of this ledger: X1's decoded floors **are** here (`1769304421` ×1,
+> `543450482` ×2). D4's are **not** — capture sha `1cbc138a` 0 hits, `543437616` 0 hits, `1920099616`
+> 0 hits. **The ledger records what the X1 read FOUND, and for D4 records only THAT it happened.**
+> **The recording practice existed and lapsed on the second read.** A pure absence would say nobody
+> records results; an asymmetry says somebody stopped.
+
+**THE D4 RESULT, RECORDED NOW.** Capture
+`/home/roycdavies/.local/share/r2-bench/captures/D4/2026-07-28-antirollback-0x18000.bin`, 4096 B,
+sha256 `1cbc138a88d0be2a4c248e0e75f7e26f965cbd040e3d445460adc6e1b76e5cfb`. `0xFF` count **1 of 4096**,
+first non-`0xFF` at offset 0. First 16 bytes `30 33 64 20 20 65 72 72 3d 25 30 33 64 20 20 73` =
+`"03d  err=%03d  s"`. Decoded as the firmware decodes it: `current_seq = 543437616`,
+`floor = 1920099616`. **Class (a).** Independently re-derived by hive **from the durable capture**, not
+from composer's report — the capture policy paying off on its first application.
+
+**AND THE EVIDENCE UNDER CLASS (a) IS REFUTED AT SOURCE.** composer's adversarial audit had three
+independent lenses converge on the `0xFF` premise, which is why it opened the dependency instead of
+trusting its own sentence. **`esp-storage` 0.6 `storage.rs:58-70` is a READ-MODIFY-WRITE** — read the
+whole 4 KB sector, overlay, erase, write the entire buffer back. **The erase is real; the sector is not
+left blank.**
+
+⇒ **"a real record leaves ~4088 bytes of `0xFF`" IS FALSE. A genuine record and foreign app text can
+COEXIST**, so `0xFF` count is not a record-presence test, and **class (a) is ambiguous by
+construction** — it conflates *no record* with *record + preserved foreign data*. hive withdrew its own
+published version of this claim after verifying at source.
+
+**WHAT SURVIVES, ON REPLACED EVIDENCE: the FIRST 8 BYTES on their own merits.** On both boards they are
+printable ASCII continuous with surrounding text. Any realistic record is not: `seq=1` →
+`01 00 00 00 …`, `seq=39` → `27 00 00 00 …` — **a monotonic counter leaves high-order zeros.** So text
+cannot be mistaken for a record nor a record for text. **Neither board holds a valid record now.**
+The `0xFF` count is demoted to corroboration about the sector's *history* and **must never again screen
+for record presence.**
+
+**n CALIBRATED, and composer got there before the challenge arrived: n = 2 for SECTOR CONTENT** (X1 and
+D4, distinct values, genuinely independent), **n = 1 for REFUSAL BEHAVIOUR — no delivery was ever
+attempted on D4.** Its refusal is *inferred from a sector decode*. My GitHub comments said "both boards
+therefore refuse every delivery"; **a second correction has been posted to both issues.**
+
+**AND IT MAKES A PENDING REQUIREMENT MANDATORY.** A board holding a real record over app text would,
+under tag-only, **silently lose a valid floor and look identical to one that never had a record.** That
+is precisely what **fail-closed-but-not-silent** was for. **The loud diagnostic is now REQUIRED, not
+optional** — without it the one population we most need to hear about is the one that vanishes quietly.
+
+**hive also narrowed its own padding argument unprompted:** it only ever addressed whether foreign data
+can mimic the *erased-sector* record shape. Since that is no longer the only shape a record takes,
+**a record written over app text is invisible to shape entirely** — so tail-shape also cannot be used
+by a migration to FIND legacy records.
+
+**Decision-Log: this entry.**
