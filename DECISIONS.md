@@ -4277,3 +4277,43 @@ which is exactly the class that mattered; and it self-limits with *"acceptable P
 directory name and had misrouted the fix. core told directly.
 
 **Decision-Log: this entry.**
+
+### D-20260727-75 — the repair would erase the question; measurement before fix
+
+**hive accepted the grounds correction and named its own error precisely:** it had said it would not
+assert the global negative, **then built the drop-recommendation on it anyway.** Core brief re-grounded
+on the authentication argument, which is independent and holds **even if legacy records exist**. The
+two claims are now stated separately, with the supervisor's wording carried verbatim and **not
+upgraded**: *no legacy record observed anywhere, no exhaustive search has succeeded.*
+
+**AND IT RAISED AN ORDERING HAZARD THAT IS NOW PINNED IN THE FLASH GRANT, not only in a code review:**
+
+> **THE FIX MUST NOT AUTO-REPAIR BY WRITING A TAGGED `floor=0` OVER UNTAGGED BYTES.**
+
+**The natural instinct on shipping a validator is "repair it so it cannot recur." That write would
+destroy, on every board the fix lands on, the only evidence of how large the affected population is** —
+**including D4's `0x18000`, the queued measurement that decides whether retiring the legacy leg opens a
+real downgrade window.** **A fix that ships before the read does not merely lose data: IT ERASES THE
+QUESTION**, and makes the measurement unrepeatable and unfalsifiable.
+
+**GRANT LANGUAGE ADDED:** read-only handling of untagged bytes until the population is characterised;
+**no grant will be written for a repair write before the D4 read is taken.** Standing order of
+operations recorded: **(1) measure D4, bounded exactly as act 1b; (2) core's fix, tag-only, read-only
+on untagged; (3) any repair write only then, under its own grant, with the population known.**
+**Reversing 1 and 2 costs the only chance to size the problem.**
+
+**AND: FAIL CLOSED IS NOT FAIL SILENT — adopted verbatim.** `(0,0)` is the right value and the wrong
+UX: a board dropping to `floor = 0` **has lost downgrade protection with nothing to notice.** core
+asked to distinguish **non-erased untagged** bytes from an ordinary **erased** sector and **say so**
+(boot diagnostic, better a health field). That converts a silent security regression into an observable
+one — **and makes the affected population countable in the field with no grant per board, which is
+worth more than the diagnostic itself.**
+
+**THE INSTRUMENT LESSON, RESTATED FOR THE RECORD BECAUSE THE CONCRETE BUGS ARE THE LESS IMPORTANT
+HALF.** hive banked the two mechanical faults (`grep | head` returns `head`'s rc; `timeout` cannot exec
+a shell builtin, so `rc=127` means the search never ran). **But fixing both would have produced a
+better-executed WRONG measurement.** The proxy was wrong: the corpus was self-polluting and the
+question was never *"does the string appear in logs."* **When an instrument fails three times, stop
+repairing it and ask whether it measures the thing at all.**
+
+**Decision-Log: this entry.**
