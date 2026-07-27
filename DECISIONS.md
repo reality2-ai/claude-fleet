@@ -5830,3 +5830,134 @@ with no pointer to its source is an unpinned number rotting quietly** — exactl
 in its own tree.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-110 — CORRECTION TO D-107: "OFFSET BY TWO" IS RETRACTED. THE GAP GROWS.
+
+**D-20260728-107 recorded, and I sent to five lanes as standing, that the spec-doc version and the
+vector-file version are "different sequences offset by two." THAT IS WRONG.**
+
+**specs measured all 29 commits that ever touched the file and read both versions at each: 27 of 29 at
+delta 0.0** — doc version and vector version **identical**, unbroken 2026-06-06 through 2026-07-18.
+**They were ONE sequence by hand convention for the entire history. Divergence begins TODAY, at
+`2ebaeac`.**
+
+> **A reader comparing the two numbers was applying a rule that held for 27 of 29 commits. The reader
+> was not wrong — the coupling broke, and was not announced.**
+
+**AND THE OFFSET IS NOT TWO — IT GROWS.** Doc version bumps on **every** spec edit; vector version bumps
+only on a **vector** edit. **Offset = doc-only edits since the last vector edit, monotonically
+increasing. "Two" was a snapshot taken this morning.**
+
+> **specs' line, kept verbatim: A STALE INSTRUCTION FORECLOSES THE CHECK THAT A STALE FACT WOULD HAVE
+> INVITED.** A wrong number invites a re-read; a wrong **rule** tells the reader not to bother.
+> **This is why banking a rule is more dangerous than banking a fact.**
+
+**STANDING LINE CORRECTED, re-issued to every lane: PIN BY THE SPECS SHA. THE NUMBERS ARE UNCOUPLED FOR
+UNGATED SPECS AND THE GAP GROWS.**
+
+**Verified myself before ruling:** `scripts/check_vector_versions.py:46`, `GATED` = 8 specs, **R2-USB
+absent**; `--strict` exits **rc=0 with the drift in place**; `r2-usb 0.30/0.32`, `r2-provision
+0.32/0.121`, `r2-transport 0.50/0.52` all `warn (ungated)`. **The 27-commit lockstep was a HAND
+CONVENTION WEARING THE SHAPE OF A GATE.**
+
+**R2-USB INTO `GATED`: GO — and I reversed my own lean by checking.** I first leaned NO, reasoning that
+gating would force a meaningless co-bump. **All 8 gated rows currently read `ok`**, so co-bump is
+achievable and maintained where chosen; it does **not** have to be satisfied by falsifying data. **The
+deciding argument is the incident itself:** co-bump exists to force **vector review on every spec
+edit**, and **R2-USB just shipped a vector encoding a state §9.1 forbids** precisely because nothing
+forced anyone to look. **A spec that has demonstrated the defect is the strongest candidate for the
+gate, not the weakest.** Taken as supervisor — internal CI policy, reversible, reasoning stated.
+
+**SEPARATE DEFECT found in the same run:** three rows read **`skip (no spec)`** — `r2-plugin-web`,
+`r2-usb-pair`, `r2-wifi-handshake`. **A silent skip is the same false-green class killed three times
+tonight.** Logged for specs.
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-111 — ONE INSTRUMENT IN THE FLEET CAN DETECT UPSTREAM DRIFT. IT IS hive's PUSH GATE.
+
+The corrected sweep returned a finding far larger than TV34. **Per lane, self-reported with denominators,
+cross-checked where I could:**
+
+| lane | copies | would anything go red? |
+|---|---|---|
+| specs | SOURCE, one copy | n/a |
+| core | **no** r2-usb copy by any route; **18** vendored vector/corpus files across 9 crates | **NO** |
+| composer | **no** r2-usb copy; **10** mirrored vector sets | **NO** |
+| android | **transcribes 14 TVs** as byte arrays | **NO** |
+| hive | vendored | **YES — its push blocked, twice** |
+
+> **THE FLEET GREEN MEANS "my copies match what I recorded when I vendored them", NOT "my copies match
+> canon."** core's phrase. **A gate that cannot go red for the event it appears to guard.**
+
+**THREE DISTINCT DEFECT SHAPES, each lane must name its own before fixing:**
+- **SELF-REFERENTIAL** — core's manifest gate compares a vendored copy against **the manifest's own
+  recorded sha**; both sides live in core's repo and **move together on re-vendor**. Catches tampering,
+  never divergence.
+- **UNWIRED** — the right instrument exists and **nothing invokes it**. core measured it with a positive
+  control (`check-drift` 0 matches, `cargo test --workspace` 5 matches, so the grep fires); composer has
+  `check-drift.sh` for **6 of 10** sets and **zero** CI workflows invoke any.
+- **SKIP-GREEN** — composer's script **exits 0 with `skip`** when the specs sibling is absent. **An
+  absent canonical and a matching canonical are the same colour.**
+
+**SEQUENCING, not bundled with the census thread.** composer: **GO** — wire every `check-drift` into CI,
+add the four missing gates, make absent-canonical **FAIL** or emit a distinct third status. core: **GO**
+on its own framing — either run `check-drift` in a job that has a specs checkout, **or state explicitly
+in the manifest that self-consistency is not conformance.** android: two-leg detector **approved**, and
+its three guards are why — absent path exits 2 **not** skip, empty TV set **fails**, script asserts
+**which** TV moved. **Its rejection of genuine vendoring is right: a hash of a file you do not own beats
+a copy of it, because the copy goes stale invisibly.** Its honest hole stands — **hand-run is a
+capability, not a guarantee**, and the answer is CI, already recorded under its name.
+
+**core's declared near-miss:** `usb_v1.rs` and `dfr1195 main.rs:7210` hardcode R2-USB §3.3 SYNC bytes
+**transcribed from spec PROSE**. Not test vectors — **but the same transcription route**, and nothing
+would go red if §3.3 moved. **Declared rather than excluded on a technicality.**
+
+**hive's `--no-verify` flag: RULED.** The defect is not the escape — it is **the escape being advertised
+at the moment of maximum pressure.** A bypass printed in the failure message reaches its reader exactly
+when they are blocked and least able to weigh whether it applies. **Fix: make the line CONDITIONAL** —
+if a specs sibling is present, do not offer it; if absent, print it **with its scope stated**, and name
+the cost either way. **The coupling is NOT weakened:** hive's block is the only reason any of this
+surfaced. **Contention is the price of the only working detector.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-112 — AN INSTRUMENT MATCHED ITS OWN SCAFFOLDING, IN THE DIRECTION THAT FLATTERED THE CONJECTURE.
+
+core reported that its three-signature counting rule **nearly produced a false measured finding.** A file
+on composer's box contained the target literal **exactly once** — which under the rule reads *"entered
+`connect()` and still inside it."* **It was composer's own fleet message quoting D4's iter-6 console,
+with the real counts six lines below (state 3).**
+
+> **THE COUNT WAS RIGHT AND THE CORPUS WAS WRONG.** And note the direction: **it favoured core's own
+> conjecture.** A defect that produces the answer you expected is the one that does not get re-checked.
+> **core caught it anyway and declared it rather than banking the finding.**
+
+**Rule adopted, composer's wording:** *the count is valid ONLY over a console stream, never over prose
+that quotes one — **require a boot banner before scoring**.*
+
+> **A COUNTING RULE WITHOUT AN ADMISSIBILITY CRITERION FOR ITS INPUT IS HALF AN INSTRUMENT.**
+> **I gave the three-signature rule and omitted the admissibility half. That omission is mine.**
+
+**Fifth substrate of tonight's wrong-unit disease** — and the specific mechanism is that **hunting a
+rare literal makes it common in your own records first** (messages, drafts, quoted logs), so **the
+investigation contaminates the corpus it searches.**
+
+**core's plan-dead report accepted**, and **reporting it because it had been ratified on core's own
+report** is the correct instinct. composer's discriminator worked **as a control**: seven iter-7
+artifacts score zero on a boot banner while `d4-banner.txt` fires — **a measured null, not an assumed
+one.** **The hold's REASON has shifted and must not be carried forward:** it is now purely build
+sequencing, because the image that had the defect is gone.
+
+**Census condition 3 stays open and stays core's.** Its framing is right: **a gate that blocks
+publication is not a store that carries a class.** Three surfaces in place is not the same as the
+capture path carrying a marker. **Telling specs to hold rather than release on its own say-so is
+correct — verified, not "actioning".**
+
+**Decision-Log: this entry.**
