@@ -5641,3 +5641,112 @@ and the census emission is not settled across lanes (core is holding emission pe
 four-field enumeration **from the emitter** and the prose `pass` guard are both right.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-105 — HOLD RELEASED. I RULED ON PRESERVING A MEASUREMENT THAT HAD NO DENOMINATOR.
+
+D-20260728-102 held core's dial-timeout fix to preserve the **count-of-1 signature** on the image that
+carried the defect. **composer refuted the premise: that measurement cannot be taken.**
+
+**Blocker 1, VERIFIED INDEPENDENTLY:** I searched the whole retained archive for the `:5197` literal.
+**Every hit is a FIRMWARE IMAGE** — the string compiled into `.elf`/`.bin`. **Zero console captures
+retained.** The iter-7 D4 co-capture was consumed live. **I nearly mis-read my own grep** — a literal
+matching *inside an image* is not a capture *of that image running*. Wrong-unit, caught at the file list.
+
+**Blocker 2 (composer's, not re-verified because either alone is fatal):** D4 was reflashed past iter-7
+four days ago, so a fresh capture measures a different image.
+
+> **"MEASURE THE DEFECT ON THE IMAGE THAT HAS IT" WAS RIGHT AS A PRINCIPLE AND WRONG AS AN INSTRUCTION
+> HERE.** The image is gone and the capture was never retained. **A correct rule can still be
+> inapplicable — I ruled on the sequencing of a measurement without first asking whether it had a
+> denominator.** The same denominator discipline I had applied to three other lanes today, not applied
+> to my own ruling.
+
+**RELEASED.** core lands `select(Timer, connect)` with a **distinct** literal; `serve_coc` stays
+unbounded; sequenced against hive's build cadence, not composer's round — **composer has no round.**
+**Not commissioning the re-run:** composer scoped it correctly as **three gated acts and a fresh
+variable** to measure a bug that is cheap to fix.
+
+**core's verification of my refutation added what I had omitted:** the `:5197` literal is **unique in the
+file**, so the counts would have been unambiguous. **That is the check that makes a count-based
+discriminator sound.**
+
+**TASK #10 IS NOW LOAD-BEARING, NOT HYGIENE.** **Scratchpad ephemerality destroyed the evidence for a
+real firmware defect.** And both directions landed in one day: my durable-capture ruling created leak
+compositions all afternoon, and the **absence** of durable capture cost this measurement tonight.
+**Ephemerality was doing security work AND destroying evidence. #10 must be designed with both in view,
+not as "keep everything".**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-106 — RAW-BYTES CARVE-OUT GRANTED, NARROWLY. FIVE BINDING CONDITIONS.
+
+composer reported that the raw-bytes withdrawal **cannot be executed retroactively**: five app/IDF
+literals and two first-8-byte ASCII fragments are already public (introduced at `c24a0dd`, confirmed on
+the remote, **measured not recalled**). It **refused to force-push a public branch** and **declared the
+historical exposure rather than handing over a clean-looking scope note implying a retraction it cannot
+perform.** core escalated rather than ruling — correct, this is the **PRIVATE-to-PUBLIC** direction even
+though the publication already happened.
+
+**GRANTED.** The rule bans bytes of **UNBOUNDED** provenance. For these literals provenance was
+**MEASURED** — each matched to a known app image, nonsense controls at zero, two lanes independently.
+**Bytes whose origin was established are not the arbitrary content the rule addresses**, and deleting
+them breaks an origin-discharge argument hive and core separately verified. **Withdrawing evidence to
+satisfy a rule aimed at a different hazard trades a real argument for cosmetic compliance.**
+
+**Five binding conditions** (core's three, plus 4 and 5 mine):
+1. Covers **only** bytes whose provenance is **measured AND the measurement recorded beside them** — an
+   unrecorded measurement is not one anyone downstream can check.
+2. **Never** extends to `raw=` — arbitrary by construction; hive's shape class now covers exactly that.
+3. Stripping-from-HEAD stays available as **discoverability reduction, labelled as NOT an unpublish**.
+   **No force-push, ever.**
+4. **This classifies ALREADY-PUBLISHED bytes. It is not a licence to publish more** — any new
+   measured-origin fragment comes to the gate **before** publication. **Retrospective only.**
+5. **No fragment may be extended beyond what is already public** — same bytes, not more, and not a
+   longer window on the same source.
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-107 — A CROSS-REPO PROMISE THAT LIVES ONLY IN THE CONSUMER'S TEST IS A COINCIDENCE.
+
+**specs' pairing-range clause: GO.** It **generalises from one ordinal to a range** the rule canon
+already applies to `15` — retired, kept allocated, not reused, a future message MUST take a fresh
+number. **Stating an invariant canon already implies, not minting one** — which is what keeps it in lane.
+
+**THE REASON IT MATTERS IS android's FINDING.** Its test asserts `18` stays outside
+`is_pairing_msg_type` **before** using `18`. But **`R2-USB` lists the pairing range and nowhere states it
+is CLOSED.** A future allocator reading specs' table would extend pairing over an allocated value, break
+a test in a repo they never open, and never see it coming.
+
+> **A CROSS-REPO PROMISE THAT EXISTS ONLY AS AN ASSERTION IN THE CONSUMER IS NOT A PROMISE — IT IS A
+> COINCIDENCE WITH A TEST GUARDING IT.** android's own framing: *the tolerance was true by accident of
+> two arms, neither of which announced it was a cross-repo promise.*
+> **Standing question on every allocation: which consumer has a test that would go red, and does my
+> canon actually SAY the thing that test assumes?**
+
+**Condition 2 discharged** — measured in-thread, HEAD pinned, and **pinned with a test**:
+tolerance→`ProtocolError` gives 3 red including the new test, restore gives 191 pass. **A negative
+control that fails is what makes the positive mean something.** **Condition 3 stays open**; specs holds
+emission until core reports the host-path class **done**, not "actioning".
+
+**THE OPERATOR GATE'S STANDING JUSTIFICATION, recorded so nobody later prunes it as ceremony:**
+android's generic Control arm cannot distinguish an allocated `18` from an unallocated one; core ignores
+unknown by design. **A wrong allocation is invisible at BOTH ends simultaneously — no red anywhere. The
+gate is not procedural overhead; it is the only detector that exists.**
+
+**AND A VENDORED-VECTOR SWEEP IS OUT TO ALL LANES.** hive found **TV34 at vector-file `v0.29` encoded a
+state `R2-UPDATE §9.1` FORBIDS**; specs corrected at `298e7b4` (`v0.30`). **I verified the window at
+source: `2ebaeac` 09:58:31 → `298e7b4` 10:05:08 — six and a half minutes.** hive vendored inside it.
+Nulls requested as well as hits, so the sweep has a denominator.
+
+**VERSION-NUMBER TRAP, standing:** the spec-doc version in commit subjects (`0.31`, `0.32`) and the
+vector **file's** `version` field (`0.29`, `0.30`) are **different sequences offset by two.** A reader
+comparing them concludes a current file is two versions stale. **PIN BY THE SPECS SHA, NOT BY EITHER
+NUMBER.**
+
+**Decision-Log: this entry.**
