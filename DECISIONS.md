@@ -5578,3 +5578,66 @@ me, hive and core as much as specs. **None of us grepped canon before spending a
 false-greens-from-blind-instruments.** Recorded as a fleet miss with specs' rule as the remedy.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-104 — ONE CHARACTER DEFEATS TWO GUARDS. A LOOKBEHIND-ONLY FIX LEAVES THE HOLE OPEN.
+
+hive drafted the cross-repo vector proposal I authorised, and volunteered a **Part A it was not asked
+for**: an audit of an *existing* class found that **0 of the 49 current vectors place an underscore
+against a hex tail**, so a real form was never exercised. **It proposed vectors its own gate fails.**
+
+**Verified before ruling:** `ci/shape-scan-vectors.tsv` sha256 `79fdc80e…70a9` matches the current pin
+exactly; **49 data rows**; **zero** place an underscore against a hex tail. `public-hygiene.sh:411` uses
+`(?<![0-9a-z_])` while the MAC-run loop at `:389` uses `(?<![0-9a-f])`. **hive's asymmetry claim is
+real.**
+
+**BUT hive NAMED ONE MECHANISM AND THERE ARE TWO.** Bare compact tails also require **device context**
+(`:421`), and context comes from word-boundary terms plus `has_compact_context` (`:361`,
+`$before =~ /\b(?:DEV|device|board|hive)\s*(?:[=:]\s*)?\z/i`). **In `board_02345A` the `$before` is
+`board_` — the trailing underscore is a WORD character, so the anchor never fires and `\bboards?\b`
+never matches inside the token either.**
+
+**Measured with hive's own patterns:**
+
+| vector | token now | token if `_` removed | ctx |
+|---|---|---|---|
+| `board_02345A.log` | n | **Y** | **n** |
+| `x_02345A` | n | **Y** | **n** |
+| `dev_0x02345A` | n | **Y** | n |
+| `board 02345A` *(control — the form the 49 DO cover)* | Y | Y | Y |
+
+**After a lookbehind-only fix only `dev_0x02345A` flags**, and only because the `0x` prefix **exempts it
+from the context requirement.** The other two match the token and are **still skipped at the report
+step.** Vector 4 (`log_02-34-5a.txt`) goes through the **dash-run** loop, whose lookbehind already
+passes an underscore — it is blocked **purely by context**, so the proposed fix does nothing for it
+either way.
+
+> **ONE DEFECT WEARING TWO GUARD FAILURES — the inverse of two-holes-being-one-hole.** A single
+> character defeats two independent guards, so **fixing either alone leaves the hole open**, and the
+> fix would have shipped with a KAT built from the same incomplete model.
+
+**THE HOLE IS BIGGER THAN REPORTED, WHICH MAKES PART A MORE IMPORTANT, NOT LESS.** hive is authorised to
+fix **both** mechanisms with a fail-before/pass-after KAT on all four; **if a vector still does not flag,
+say which and why rather than adjusting the vector to fit the fix.**
+
+**FALSE-POSITIVE SIDE IS NOW LOAD-BEARING.** Fixing context makes `hive_abc123` flag, because `abc123`
+**is** six hex characters, and at that point a legitimate identifier and a device tail are genuinely
+indistinguishable. **Fail-safe direction RULED EXPLICITLY: flag it** — a false positive costs one
+review, a false negative leaks a per-device fingerprint. **Declared, not inferred from whichever vectors
+got written.**
+
+**THE LIVE CONNECTION NOBODY HAD DRAWN:** durable board captures are **my** ruling (D-20260727-77), and
+captures get named after the board. **`board_<tail>.log` is the obvious filename, and filenames feed the
+scanner.** Latent today, reachable the moment capture naming lands. **Fourth composition in two days
+involving that same ruling.**
+
+**SEQUENCING CHANGED FROM hive's:** it fixes both and lands the KAT **first**; **then** I circulate Part
+A to specs/core/composer/android. **I will not put a pin to four lanes that the proposing lane still
+fails.**
+
+**PART B HELD** — hive's own recommendation and I agree: it obliges every lane to implement a new class,
+and the census emission is not settled across lanes (core is holding emission pending android). Its
+four-field enumeration **from the emitter** and the prose `pass` guard are both right.
+
+**Decision-Log: this entry.**
