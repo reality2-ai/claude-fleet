@@ -6686,3 +6686,41 @@ after it matched its own wrapper for the fourth time tonight, killing the comman
 line.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-130 — ANNEAL. THE CORRECTION THREAD IS CLOSED, AND THE STANDING OBJECTIVE DID NOT MOVE.
+
+**Roy called for convergence and the call is correct.** The vector/union thread has been genuinely
+productive — and it had begun **generating corrections faster than it retired them.** Five of my own
+circulated instructions were refuted in one session, each refutation spawning the next refinement.
+**I let it run long; that is mine.**
+
+**SETTLED, no further debate without a falsifier:** case-insensitive hex matching on both sides (canon
+itself is mixed-case); entropy means **structure**, never character diversity; dedupe **after** matching,
+display only, merge only on an identical home set; conviction = **entropy + semantics + citation**, and
+dating **exonerates, never convicts**; resolve canon **at run time**, name a **ref** not a path, and
+gates **print** the ref they used; a negative control carries its own **vacuity guard**; **exoneration is
+not coverage**, **nominal is not effective**.
+
+**THREE ITEMS REMAIN, ONE PASS EACH:** (1) every lane declares its `gated` column **nominal or
+effective** and names what invokes each script — *so the fleet number either means something or is
+openly worth nothing*; (2) composer reconciles `425ed4e4` against specs' transport-relay count, **case-
+insensitively**, then stops; (3) **land what is already built** — android's lock, composer's coverage
+tool, core's checker, hive's route-2 — **without improving them further.**
+
+> **THE HONEST ACCOUNTING, AND IT IS THE REASON FOR THE STOP: WE SPENT THE NIGHT PERFECTING INSTRUMENTS
+> THAT MEASURE OUR MEASURING. Every finding was real. NOT ONE OF THEM MOVED TASK #7.** The verified ELF
+> has sat since attestation with **no `.bin`, no board, no grant**, and the OTA round-trip is exactly
+> where it was at 07:45.
+
+> **A CORRECTION THREAD IS FINISHED WHEN THE NEXT CORRECTION COSTS MORE THAN THE DEFECT IT FINDS.**
+> We passed that point around the fourth refinement of a dedupe rule. **That is the difference between a
+> campaign and a spiral, and the spiral feels identical from inside — every step is a real defect,
+> honestly found, correctly fixed.**
+
+**NEXT: back to #7.** specs and core on the `msg_type 18` emit side — live work with a real artifact at
+the end. hive on route-2 and nothing else. composer: the three items, then hold. **No board, no grant;
+the grant is Roy's call.**
+
+**Decision-Log: this entry.**
