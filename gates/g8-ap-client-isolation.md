@@ -1,4 +1,4 @@
-# Gate 8 — WiFi AP client isolation blocks the phone↔tuxedo UDP path
+# Gate 8 — WiFi AP client isolation blocks the phone↔<build-host> UDP path
 
 **Status:** 🔵 OPEN — small, physical/network, not urgent
 **Interrogate:** `cd ~/Development/R2/claude-fleet && claude` → *"read gates/g8 and tell me whether the transport-only annotation is honest"*
@@ -6,7 +6,7 @@
 ## Background
 
 The phone UDP metal test is complete except its last hop. The phone sends the probe
-correctly and tuxedo's echo server works — but the datagram never arrives. Cause is
+correctly and <build-host>'s echo server works — but the datagram never arrives. Cause is
 established, not suspected: **your WiFi AP has client isolation on**, so wireless client
 ↔ wireless client traffic is blocked. ICMP shows 100% loss both ways, which is the
 signature rather than an inference.
@@ -19,7 +19,7 @@ Which fix, or none. Any **one** of these clears it:
 
 - **Disable AP client isolation** — one router setting; affects your whole home network,
   so it is your call and not a bench detail.
-- **Put tuxedo on ethernet** — no wireless-to-wireless hop, no router change. Probably
+- **Put <build-host> on ethernet** — no wireless-to-wireless hop, no router change. Probably
   the least invasive if there is a cable path.
 - **Use a non-isolating SSID** — if the AP offers a guest/main split where one permits
   client-to-client.
@@ -39,7 +39,7 @@ principle" and "the phone path was observed working end to end on this bench".
 
 **Ethernet if a cable reaches, otherwise leave it.** Turning off client isolation
 network-wide to close one bench annotation is a poor trade — it is a standing security
-posture on your home network being spent on a two-minute test. If tuxedo can take a
+posture on your home network being spent on a two-minute test. If <build-host> can take a
 cable, that costs nothing and settles it permanently.
 
 ## Ruling syntax

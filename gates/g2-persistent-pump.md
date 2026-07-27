@@ -16,7 +16,7 @@ while a host pump drove BLE", and when the pump is off, the XIAO reads 0x24.
 Do you want the bench to show a *standing* 0x25 — BLE continuously lit — or is the
 proven-on-demand state enough?
 
-- **Standing 0x25 via pump:** a systemd-style pump service on tuxedo-os. Cheap,
+- **Standing 0x25 via pump:** a systemd-style pump service on <build-host>-os. Cheap,
   but it institutionalizes an instrument as if it were traffic — the green would be
   partly synthetic, which is against the table's own honesty rule.
 - **Standing 0x25 via board-to-board:** once the D4 initiator work (in flight right

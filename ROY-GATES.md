@@ -27,16 +27,15 @@ argument, the options and the ruling syntax.
 2. **Name the complex-Hive Xiao.** It is **in no lane's records** — identity, trust group and USB
    reachability all unknown. It is the highest-value board not to break, and the only one that cannot be
    characterised from any lane's data.
-3. **Where does supervisor bookkeeping live?** You ruled *stop publishing bookkeeping*, and **this repo is
-   public and carries the ledger, this file, and every gate brief.** Halting is free but breaks the durable
-   record. Either **make this repo private** (simplest, but it is the fleet's own tooling repo) or **move
-   bookkeeping to a private repo** and keep the tooling public. *I am pushing this update because you asked
-   directly; the destination question is still open.*
-4. **Force-push authorisation, per repo.** Your g23 ruling included *rewrite history*, which means
-   force-push — forbidden by my standing rules without an explicit line from you. **Evidence is enumerated
-   and preserved privately first**, so the scrub no longer destroys what it documents. **And the honest
-   limit: a rewrite does not un-publish.** Anything already cloned or cached persists, so the captured
-   values must be treated as **disclosed and rotated**, not merely deleted.
+3. ~~Where does supervisor bookkeeping live?~~ **RULED: keep it public, scrub the values.** *"There is no
+   harm in showing the decisions made and why."* The defect was never publication — it was that
+   **operational values rode along with the reasoning.** Scrub landed in both lane trees and in this one;
+   the coverage that scans the ledger paths is now **enforcing by default** rather than remembered.
+4. ~~Force-push authorisation.~~ **Not needed — you ruled forward-only.** History keeps what was published.
+   **Which leaves exactly one thing in g23 that no lane can close: rotate the bench network credentials.**
+   The name and passphrase were on a public ref for months; **deleting them changed nothing, changing them
+   makes every published copy worthless.** Everything else in the scrub did real work; this is the item
+   where the remedy is on the network, not in a repo.
 
 **Three architectural items open, none blocking a lane:** the **ring-signature vs no-global-roster
 conflict** (two canon documents disagree; specs reported rather than picked, because the obvious weakening
@@ -117,11 +116,11 @@ drift-detection test** was.
 
 
 **[g24 — which WiFi does the OTA proof join?](gates/g24-ota-bench-ap-credentials.md)** · **RULED overnight, pending your review**
-**Answer: synthetic AP.** Alfred has a spare, idle, route-free, AP-capable 2.4 GHz radio, so we use
+**Answer: synthetic AP.** <rig-host> has a spare, idle, route-free, AP-capable 2.4 GHz radio, so we use
 an SSID and passphrase **we choose** — synthetic by construction, no secret, no custody, and g23
 leaves this path entirely. **This reversed my own earlier ruling of real-creds-via-env**, which I
 had made believing a synthetic AP needed a human awake. The premise was refuted, so the ruling
-changed. Alfred's sole uplink radio is explicitly not to be touched. Overturn in one line if you
+changed. <rig-host>'s sole uplink radio is explicitly not to be touched. Overturn in one line if you
 disagree; the original argument is kept intact in the brief.
 
 **Superseded original framing, kept for the sequence:**
@@ -179,7 +178,7 @@ One narrow question survives: §8.2 says the narrow key is sound *because these 
 
 ### Small, not urgent
 
-**[g8 — AP client isolation blocks the phone↔tuxedo UDP path](gates/g8-ap-client-isolation.md)**
+**[g8 — AP client isolation blocks the phone↔<build-host> UDP path](gates/g8-ap-client-isolation.md)**
 Cause established, not suspected. Any one of three fixes clears it; composer re-runs in two
 minutes. The capability cell stays honest either way.
 → `gate 8: ethernet` / `disable isolation` / `other ssid` / `leave it`
@@ -204,11 +203,11 @@ minutes. The capability cell stays honest either way.
 | 4 | SEN0676 radar | set aside; D5 = bench test tool; radar later on a XIAO | #d017 | [g4](gates/g4-sen0676-radar.md) |
 | 7 | TG contact hops | relax to two-hop (one go-between; TTL=2); canon landed HEARTBEAT v0.24 §7 | #d019 | [g7](gates/g7-tg-contact-hops.md) |
 | 6 | Baked member roster | adopt as dev seed of runtime member-set; canon D-13/-14; merge + wiring dispatched | #d020 | [g6](gates/g6-baked-roster.md) |
-| 5 | Alfred rig fork | defer until phone-pair merge proven on metal; stays two hives + relay; reopens automatically | #d021 | [g5](gates/g5-alfred-rig-fork.md) |
-| 9 | D5 USB replug | replugged 07-24 06:2x; "sleeping tuxedo" = wrong-host artifact (dead node `tuxedo` vs live `tuxedo-os`); suspend/powersave asks withdrawn | #d026 | — |
+| 5 | <rig-host> rig fork | defer until phone-pair merge proven on metal; stays two hives + relay; reopens automatically | #d021 | [g5](gates/g5-<rig-host>-rig-fork.md) |
+| 9 | D5 USB replug | replugged 07-24 06:2x; "sleeping <build-host>" = wrong-host artifact (dead node `<build-host>` vs live `<build-host>-os`); suspend/powersave asks withdrawn | #d026 | — |
 | 10 | v8 OTA radio quiesce | blessed as shaped 07-24 (relay-island dark + collectors-astray accepted); v8 build GO | #d026 | — |
-| 11 | D5 replug / bench USB | closed 07-24 22:5x — tuxedo uplink cable bad (data lines); boards moved to Alfred, all 3 stable; v8.3 cycle firing | #d026 | — |
-| 12 | openocd USB perms (Alfred) | JTAG read executed clean 07-25; the "lock held" reading from that dump was later REFUTED and is retracted | #d026 | — |
+| 11 | D5 replug / bench USB | closed 07-24 22:5x — <build-host> uplink cable bad (data lines); boards moved to <rig-host>, all 3 stable; v8.3 cycle firing | #d026 | — |
+| 12 | openocd USB perms (<rig-host>) | JTAG read executed clean 07-25; the "lock held" reading from that dump was later REFUTED and is retracted | #d026 | — |
 | 14 | R=0 join frame — §9.5 vs §12.5 canon collision | CONVERTED to a note: specs RULED and landed it (R2-WIRE v0.65 §9.5.1 ROUTE-ORIGIN-1 binds EVENT/REPLY/HEARTBEAT, GROUP_MGMT exempt); supervisor accepted — I had been too conservative, it decides which of two blessed clauses governs, not new ground | D-20260725-08 | — |
 | 18 | D4/X1 have no fault-capture instrument | **rebuild now** (Roy 2026-07-26) — EXECUTED: both variants built and attested, two-leg eligibility PASS on both, positive+negative controls run. **No flash taken**; flash held by supervisor until the D5 debugger session closes (one grant at a time). Note the rebuild does **not** carry the g15 join fix — different branch, and g18 was forensics, not join | — | [g18](gates/g18-sibling-artifact-rebuild.md) |
 | 22 | Shared crates vendored per-repo | **sync procedure — use versioning** (Roy 2026-07-26): keep the copies, no path-dep, no declared forks. Versions must MOVE so the gap carries signal. Obligation keys on (repo, crate, pinned-canon-sha); content hash stays as the verifier that a bump was not forgotten. Bench safe throughout — an unfixed copy cannot carry a join. g15 identity half UNBLOCKED; reaches metal at next re-vendor, not by hot-fix | D-20260726-S29 | [g22](gates/g22-shared-crate-vendoring.md) |

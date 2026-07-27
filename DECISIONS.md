@@ -182,7 +182,7 @@ It is not a task log and does not replace specifications, ADRs, or code.
 
 ## 2026-07-22 (night) — #d007 OVERNIGHT AUTONOMY: bit5 campaign linear flow (Roy asleep)
 
-- **Decision:** Roy (verbatim): "DFR1195s, Xiao and Android are connected to tuxedo-os.
+- **Decision:** Roy (verbatim): "DFR1195s, Xiao and Android are connected to <build-host>-os.
   I need to go sleep. Work through the remaining tasks to turn the table green."
   Interpreted as a bounded overnight grant for the bit5 campaign's LINEAR flow on bench
   boards D4+XIAO only:
@@ -198,7 +198,7 @@ It is not a task log and does not replace specifications, ADRs, or code.
   4. OUT of scope overnight: D5 (#d004 held), RAK (frozen #d003), blerole/ghostfix
      images (explicitly never conflated with this flow), persona mints, history
      rewrites, HOTSPOT PSK, any repo-history or publishing action. Android lane may
-     RUN its junit suite via tuxedo-os if JDK17 already present there — no toolchain
+     RUN its junit suite via <build-host>-os if JDK17 already present there — no toolchain
      installs on Roy's machines; absent toolchain = report and hold.
 - **Rationale:** Roy armed the bench explicitly and named the goal; the campaign's next
   steps (diag flash, run-6, fix, verify) are the pre-ratified ladder. Holding every new
@@ -260,7 +260,7 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **Decision (Roy):** "go ahead with the tier 2 recommendations as well" — resolves the
   four remaining scoped items of HIVE-FIRST-ANDROID.md §6 (e06af14) per supervisor
   recommendations. Scope note: parked queue (window tension, pump, blerole slot,
-  master merge, manifest.json, D5/radar, Alfred fork) NOT included — still Roy's.
+  master merge, manifest.json, D5/radar, <rig-host> fork) NOT included — still Roy's.
 - **(b) Intermittent above-L5 tier: NO NEW TIER.** Partition model suffices
   (R2-ARCH §1 Cor 1 + R2-TRUST silence=DG-1). Revisit ONLY if bench shows a real
   failure the existing tiers cannot name.
@@ -488,11 +488,11 @@ Batch status 2026-07-23 (post-#d018): bench re-sequenced — remote quiesce infe
 #d020 [RATIFIED] 2026-07-23 scope=member-registry authority=Roy verbatim 'gate 6: adopt as dev seed'
   GATE 6 RULED: baked roster ADOPTED as DEV-TIER SEED of the runtime member-set (canon: R2-PROVISION v0.121 §1.2, R2-DISCOVERY v0.19 §3.3, ledgers D-20260723-13/-14). Execution dispatched: composer merges feat/tg-roster-blob @7346f8a (4-member 730c29e7 roster, u32 = FNV-1a projection of per-TG hive_id, linkability-checked); core wires mutable member-set seeded from BAKED_ROSTER, populated in prod by proximity enrolment + GroupHmac-frame learning; compile-time KNOWN_HIVE_IDS + one-off peer constants RETIRE. Kills the hardcoded-id miss class (4 instances in 2 days). wire_id-0 phone member: client-only, never beacons — skip correct forever, logged.
 
-#d021 [RATIFIED] 2026-07-23 scope=alfred-rig authority=Roy verbatim 'gate 5: defer until phone-pair merge proven'
-  GATE 5 RULED: Alfred rig stays TWO sovereign hives + relay (conformant; keeps inter-hive relay under continuous bench test). REOPEN CONDITION: §10.5 merge-reflash + #d009 secured bridge proven ON METAL on the phone+XIAO pair — Alfred then adopts a proven op. Merge-follows-permanence doctrine stands (resident MCU merges; visiting MCUs = two-hives+relay; attach/detach = bearer event never identity event). No lane action required; status quo is the ruling.
+#d021 [RATIFIED] 2026-07-23 scope=<rig-host>-rig authority=Roy verbatim 'gate 5: defer until phone-pair merge proven'
+  GATE 5 RULED: <rig-host> rig stays TWO sovereign hives + relay (conformant; keeps inter-hive relay under continuous bench test). REOPEN CONDITION: §10.5 merge-reflash + #d009 secured bridge proven ON METAL on the phone+XIAO pair — <rig-host> then adopts a proven op. Merge-follows-permanence doctrine stands (resident MCU merges; visiting MCUs = two-hives+relay; attach/detach = bearer event never identity event). No lane action required; status quo is the ruling.
 
 #d022 [RATIFIED] 2026-07-23 scope=bench-flash authority=Roy verbatim 'yes'
-  D5 ITER-5 REFLASH AUTHORIZED (fresh word; prior #d014 grant consumed by 656cab50). Image: d5-cos5.elf 11f2d2ef from unified 471f0cf7 (adds member-set roster feed + signed-i16 value-print; cosine attested cos!=sin). Sequence: two-party verify all 3 on alfred -> D4 c51ad8a6 -> XIAO 90d3f489 -> D5, one-op rolling grants (pair under #d011 standing slot). Post: election-driven bit0-BOTH retest + cosine value samples; logger rotates per flash with BUILD_ID coex.iter5.0723.
+  D5 ITER-5 REFLASH AUTHORIZED (fresh word; prior #d014 grant consumed by 656cab50). Image: d5-cos5.elf 11f2d2ef from unified 471f0cf7 (adds member-set roster feed + signed-i16 value-print; cosine attested cos!=sin). Sequence: two-party verify all 3 on <rig-host> -> D4 c51ad8a6 -> XIAO 90d3f489 -> D5, one-op rolling grants (pair under #d011 standing slot). Post: election-driven bit0-BOTH retest + cosine value samples; logger rotates per flash with BUILD_ID coex.iter5.0723.
 
 #d023 [RATIFIED] 2026-07-23 scope=bench-milestone authority=supervisor (Roy standing ask 'carry on and let me know the iter-7 result')
   BIT0-BOTH GREEN ON METAL — iter-7 pair b5de845c (coex.iter7.0723; D4 59de5979, XIAO 42300f6e). Co-boot capture, positive control MET: D4 captured+dialed XIAO -> ACL accepted -> L2CAP CoC accept -> serving; membership-verified BOTH directions; key0a 0x25 both boards; drops 0; accept-ERR 0. Root cascade closed: (1) unconditional dial capture (fixed iter-6 ca198a5a lowest-eligible), (2) initiator self-elect timing race (fixed iter-7, provider_capable derived from ble_role per R2-DISCOVERY §4A.6), (3) BRANCH-2 accept-hang REFUTED — earlier accept-null was a failed positive control (D4 wedged, not dialing); composer's null-discipline prevented a false verdict twice.
@@ -511,8 +511,8 @@ Batch status 2026-07-23 (post-#d018): bench re-sequenced — remote quiesce infe
   OPTIONAL (Roy word, not required): D5 reflash 70960dbc = one-lineage + elect-None end-state demo. Campaign fully closed pair-only.
   Decision-Log: #d025
 
-#d026 [RATIFIED] 2026-07-23 scope=bench-campaign authority=Roy verbatim "OK. All devices are on the bench, connected to tuxedo-os. let's get the rest of the board green over night."
-  OVERNIGHT MATRIX-GREEN CAMPAIGN AUTHORIZED. Scope: remaining code-ready (◑) cells of the reference matrix, bench boards D4/D5/XIAO on tuxedo-os. Roy's word = standing authorization for tonight's bench flash ops on the ESP32 trio; supervisor still issues per-op sha-locked grants one at a time (gate discipline unchanged). RAK stays FROZEN per #d003 (not named by Roy; #d001 image preserved). Wave-0 (in flight): D5 conformant reflash a0157eb2 + 3-board bar-A score. Wave-1 targets (cheapest metal first): LoRa + ESP-NOW BEACON plane (B cells — code-ready in 70960dbc, may green by observation alone), extended-wire-on-metal check. Wave-2: OTA rung (ota-tcp, ESP32-only, canon preflight: OTA authority TG-locked). Wave-3 (no flash): wasm hive legs — UDP/TCP + web UX visualiser on tuxedo; android Inet/UDP legs if cheap. L6 re-attest (all-✕) = code+KAT overnight only if lanes free, metal not promised. Bars pre-declared per wave and pushed to ALL scorers before metal (standing rule).
+#d026 [RATIFIED] 2026-07-23 scope=bench-campaign authority=Roy verbatim "OK. All devices are on the bench, connected to <build-host>-os. let's get the rest of the board green over night."
+  OVERNIGHT MATRIX-GREEN CAMPAIGN AUTHORIZED. Scope: remaining code-ready (◑) cells of the reference matrix, bench boards D4/D5/XIAO on <build-host>-os. Roy's word = standing authorization for tonight's bench flash ops on the ESP32 trio; supervisor still issues per-op sha-locked grants one at a time (gate discipline unchanged). RAK stays FROZEN per #d003 (not named by Roy; #d001 image preserved). Wave-0 (in flight): D5 conformant reflash a0157eb2 + 3-board bar-A score. Wave-1 targets (cheapest metal first): LoRa + ESP-NOW BEACON plane (B cells — code-ready in 70960dbc, may green by observation alone), extended-wire-on-metal check. Wave-2: OTA rung (ota-tcp, ESP32-only, canon preflight: OTA authority TG-locked). Wave-3 (no flash): wasm hive legs — UDP/TCP + web UX visualiser on <build-host>; android Inet/UDP legs if cheap. L6 re-attest (all-✕) = code+KAT overnight only if lanes free, metal not promised. Bars pre-declared per wave and pushed to ALL scorers before metal (standing rule).
   Decision-Log: #d026
 
 #d026 addendum (wave-0 CLOSED, 2026-07-23): 3-BOARD BAR PASS — all falsifiers clear. All three boards one lineage 70960dbc (D4 724383ea / XIAO 5fb1565f / D5 a0157eb2), all bit2=0, personas preserved. FA1: ALL elect None (zero bit2 leak — the elect-None end state Roy asked for). FA2 KEY: with TWO live resolvable acceptors D4 capture-dials XIAO 8c15b0c2 (lowest-hive) not D5 — tiebreak proven on metal, the arm iter-9 co-boot could not run. Pair sustain: 0x25 + bidirectional keepalive (10/31); one transient Disrupted blip on XIAO in ~120s self-re-established (flagged to sticky-session robustness watch, not a wedge). FA4: D5 resolvable + cosine-emitting + bit0-dark unpaired, zero pair disruption. Decision-Log: #d026
@@ -533,8 +533,8 @@ Batch status 2026-07-23 (post-#d018): bench re-sequenced — remote quiesce infe
   3-WAY ATTEST PASS: hive + composer + core independent derives ALL match — otarx-wd ELF da70ee0e / BIN 0aadecc6 (869824B); otafail-wd ELF 10ae4dd6 / BIN 7880f533 (868272B). ~30KB shrink vs otatune pair = fakesensor DCE, emission suppression compiled-in cross-confirmed.
   GRANT v4 (D5-ota-cycle-ble-coc-sequence-v4): supersedes v3; e6ff5198 locks; same P1 seq=1 / P2a r4 / P2b r7 / P3 seq=2 order; watchdog falsifier IN-CYCLE observable (post-abort re-adv <=8s, else STOP); NEW MANDATORY RULE: espflash reset FORBIDDEN on ESP32-S3 USB-JTAG (connect step enters ROM download mode; ssh drop mid-reset left D5 dark in bootloader, Roy physical button recovered — proven 07-24) — resets via raw tty RTS/EN ioctl or physical button only.
   PHASE-0 DONE pre-pause: D5 base-reflashed otarx-wd, booted coex.advwd.0724, persona da73508e intact (tripwire via persona-integrity — literal offset banner not captured, printed while logger paused; acceptable, persona-correct = app@0x20000), ADV on air. Composer proceeding to path-A signing when bench returns.
-  WRONG-HOST ARTIFACT closed: overnight "tuxedo keeps sleeping" = worker pinging dead tailnet node `tuxedo` (offline 35d); live host = tuxedo-os (up 2d, suspend never fired). g9 sleep-portion retracted; memory updated.
-  PAUSED: Roy took tuxedo-os to work; composer safe-stop ordered, state on alfred; grant v4 stays live; cycle resumes on bench return. #d027 canon LANDED by specs: R2-BEACON v0.49 §3.3 + R2-BLE v0.35 §6.5 scope pin (6a80b01, D-20260724-01).
+  WRONG-HOST ARTIFACT closed: overnight "<build-host> keeps sleeping" = worker pinging dead tailnet node `<build-host>` (offline 35d); live host = <build-host>-os (up 2d, suspend never fired). g9 sleep-portion retracted; memory updated.
+  PAUSED: Roy took <build-host>-os to work; composer safe-stop ordered, state on <rig-host>; grant v4 stays live; cycle resumes on bench return. #d027 canon LANDED by specs: R2-BEACON v0.49 §3.3 + R2-BLE v0.35 §6.5 scope pin (6a80b01, D-20260724-01).
   Decision-Log: #d026
 
 #d028 [RATIFIED] 2026-07-24 scope=audit authority=Roy verbatim "now do a conformance check of the code against spec" + "report if there are decisions to be made and update the table of capabilities"
@@ -590,7 +590,7 @@ power-downs = the actual coex relief, mask-consults on direct-TX paths, hard tim
 ~90s, auto-clear on done/fail/rollback; WiFi-STA modem-sleep rides along (STA not an
 R2-visible bearer — specs stamped). Falsifiers F1-F6 ratified. BUILD HELD on Roy g10
 (graze-points: LoRa relay island dark during window; collectors show astray, truthful).
-Evidence: /tmp/d5-score.log (tuxedo-os), .fleet/flash-authorization.log 11:30-13:45 entries.
+Evidence: /tmp/d5-score.log (<build-host>-os), .fleet/flash-authorization.log 11:30-13:45 entries.
 Decision-Log: this entry.
 
 #d026 addendum-7 (2026-07-24): Roy BLESSED g10 as shaped ("gate 10 - yes, bless the v8 as
@@ -1970,7 +1970,7 @@ merely well-behaved. **Structural, not disciplinary.**
 ### Rulings I took rather than hang
 
 1. **g24 — real lab creds via env**, because a synthetic AP appeared to need a human. **Possibly
-   superseded within the hour:** I have composer checking whether **Alfred can host an AP**, which
+   superseded within the hour:** I have composer checking whether **<rig-host> can host an AP**, which
    would let us use an SSID and passphrase **we choose** — synthetic by construction, no secret, no
    custody, and g23 leaves this path entirely. That was my preferred answer; I set it aside on a
    wrong assumption.
@@ -2035,7 +2035,7 @@ Decision-Log: none
 
 **g24 RE-RULED: SYNTHETIC AP.** Ninety minutes after ruling *real creds via env*, I reversed it.
 **The reason matters more than the answer:** I ruled real-creds because I believed a synthetic AP
-**required a human awake to stand one up.** Composer's survey refuted that — Alfred carries `phy2`,
+**required a human awake to stand one up.** Composer's survey refuted that — <rig-host> carries `phy2`,
 a **spare, idle, route-free, AP-capable 2.4 GHz USB radio**, and hosts an AP natively via nmcli with
 no package install. **The ruling followed from the premise; the premise was wrong; the ruling
 changed.** Not a preference reversal, and the superseded framing is kept in place in both the brief
@@ -2046,7 +2046,7 @@ by construction**, so there is no secret, no custody question, no commit edge, a
 path entirely.** My no-print extraction authorisation is **withdrawn unused** — it was a good answer
 to a problem we no longer have.
 
-**Bound, and the lane refused it before I said so:** `wlp3s0` is Alfred's **sole uplink** (ethernet
+**Bound, and the lane refused it before I said so:** `wlp3s0` is <rig-host>'s **sole uplink** (ethernet
 unplugged). Not to be touched. If the `phy2` bring-up fails, **stop** — no fallback to the uplink
 radio, because nobody is there to plug ethernet back in. And composer raised the gap against its own
 proposal: `iw` reports AP-*capable*, which is **not** AP-*functional* — presence is not
@@ -2143,7 +2143,7 @@ Decision-Log: none
 
 Composer's own caveat was that `iw` reported the dongle **AP-capable**, which is not AP-*functional*
 — the presence-is-not-reachability shape, raised **against its own proposal**. So it tested: AP
-sustained on the spare radio, **0 drops across 7 polls over ~80 s**, and Alfred's sole uplink
+sustained on the spare radio, **0 drops across 7 polls over ~80 s**, and <rig-host>'s sole uplink
 **untouched**, with the default route verified identical before, during and after. **The caveat is
 retired by test rather than by assumption.** AP brought back down afterwards — leaving an
 untested-over-hours driver broadcasting all night was judged the flakier bet, and the profile is

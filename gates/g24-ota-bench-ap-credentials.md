@@ -4,7 +4,7 @@
 >
 > **This reverses my own ruling made ninety minutes earlier**, and the reason belongs on the
 > record: I first ruled **real creds via env**, because I believed a synthetic AP **required a
-> human awake to stand one up.** That premise is refuted. Alfred carries `phy2` — a **spare,
+> human awake to stand one up.** That premise is refuted. <rig-host> carries `phy2` — a **spare,
 > idle, route-free, AP-capable 2.4 GHz USB radio** — and hosts an AP natively through nmcli
 > with no package install. **The ruling followed from the premise; the premise was wrong; the
 > ruling changes.** That is not a preference reversal, and I would rather show the sequence
@@ -15,7 +15,7 @@
 > edge, and **g23 leaves this path completely.** The no-print extraction I had authorised as a
 > fallback is **withdrawn unused.**
 >
-> **Hard bound, and the lane refused it before I said so:** `wlp3s0` is Alfred's **sole
+> **Hard bound, and the lane refused it before I said so:** `wlp3s0` is <rig-host>'s **sole
 > uplink** (ethernet is unplugged). It is AP-capable and it is **not to be touched.** If the
 > `phy2` bring-up fails, stop — do **not** fall back to the uplink radio. Nobody is there to
 > plug in ethernet.
