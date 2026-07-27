@@ -5175,3 +5175,43 @@ claimed to be off, only not turned on by this repo.**
 **No build order issued. #d005 untouched.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-94 — ARB-CENSUS-SOC posture is Publish:PRIVATE
+
+**hive raised this BEFORE the first capture, which is the only moment it could be raised usefully, and
+identified a composition none of us chose:**
+
+1. **`ARB-CENSUS-SOC` emits SECURITY POSTURE** — `secure_boot_en`, `aggressive_revoke`,
+   `flash_crypt_cnt`.
+2. **Console captures are now DURABLE** — the per-board append-only directory, **which I ruled in
+   D-20260727-77.** Captures used to die with their session; they no longer do.
+3. **The hygiene gate is BLIND to it — measured, not assumed.** A synthetic `ARB-CENSUS-SOC
+   secure_boot_en=0 …` line scores **0 against every class** in `ci/public-hygiene.sh`: term, gateway,
+   host, IP-shape, UUID, 6/8-hex tail. **A pasted census line passes the publish gate clean.**
+
+> **COMBINED: a durable, gate-passing record enumerating WHICH BOARDS HAVE SECURE BOOT AND FLASH
+> ENCRYPTION OFF. That is an inventory of soft targets** — and the sensitive direction is **`=0`**,
+> which on a dev bench is the **common** case, not the rare one.
+
+**I REMOVED THE LIMITING FACTOR.** Ephemerality was doing security work nobody had credited it with,
+and my durable-capture ruling retired it. **A change that is right on its own axis can arm a hazard on
+another** — neither the emission nor the durability was wrong; the *composition* is new.
+
+**RULING: PUBLISH:PRIVATE. hive adds a census-posture class to `ci/public-hygiene.sh` so a pasted line
+FAILS the gate. That is its file and its fix; it is authorised.**
+
+**THE DIRECTION IS DECLARED AND ARGUED, NOT INHERITED — and the argument is asymmetry, not severity:**
+- **Publishing is irreversible; withholding is reversible.** *A scrub does not un-publish.* This fleet
+  has already learned that once, on a MAC inventory, and the honest reason to decide now is that the
+  cost of being wrong is **unrecoverable in one direction and near-zero in the other.**
+- **The cost of PRIVATE is almost nothing:** the values stay readable locally, where every consumer of
+  them actually is.
+- **Low absolute risk today is not the test.** The exposure is bench-only *now*; the entire purpose of
+  durable captures is that they outlive the context that made them safe, **and deployment is the
+  plan.** Classifying at first-capture is cheap; re-classifying after publication is not possible.
+
+**DELTA RECORDED for re-examination rather than re-argument, in the same shape as the on-air-hash
+caveat: posture on a bench console is immaterial; posture in a durable, potentially-published
+per-board file is a different claim. Re-examine on deployment.**
+
+**Decision-Log: this entry.**
