@@ -5412,3 +5412,84 @@ measured at source by the owning lane before any use. core's handling was right 
 produced a **measurement** and left the **ruling** with the authority that owns it.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-100 — ATTESTATION VERIFIED. THE MARKER SURVIVES RELEASE LTO. ELF ACCEPTED.
+
+hive built `c7a1d67a` under #d005 — inbox drained first, clean detached checkout, tree 0 modified,
+blob sha-verified before bake, **ELF only, no `.bin`, no board.** **I verified all six attested items
+independently rather than take the report.**
+
+| item | independent result |
+|---|---|
+| (a) ELF | `1367016` B, sha256 `c5e16d6d…1eff5` — **match** |
+| (b) persona | 336 B at ELF offset `0xbe44`, sha256 `243ab040…426e` — **exact** match to the authorised blob |
+| (c) key containment | **closed harder than attested** — see below |
+| (d) marker | `r2_census_capability` vaddr `0x3c00176c`, size 17, section 10 `.rodata`, **PROGBITS**, in **LOAD segment 00**; bytes read literally `R2-CENSUS-EMITS=1` |
+| (e) literals | `ARB-CENSUS-SOC` 1, `ARB-CENSUS` 3, `R2-CENSUS-EMITS` 2 — match |
+| (f) leakage | `KEY_PURPOSE` count **0** in the ELF; **zero** MAC-shaped tokens in any `ARB-CENSUS` literal |
+
+**(d) IS ANSWERED AND THE QUESTION IS CLOSED:** `#[no_mangle]` + `link_section = ".rodata"` **survives
+release LTO on `xtensa-esp32s3-none-elf`.** I derived the file offset from scratch —
+`0x3c00176c − 0x3c000120 + 0x1120 = 0x276c` — and got hive's number. **Three instruments, one artifact,
+one answer.** hive's `__user_exception` precedent check predicted it; the real artifact confirms it.
+
+**(c) — WHY I DID NOT STOP AT THE ATTESTED CLAIM.** The 32 bytes at `0xbefa` occur exactly twice, both
+inside `[0xbe44,0xbf94)`. **But reading the offsets hive named makes hive's report my precondition.** So
+I ran the superset: of **305** high-entropy 32-byte windows in the persona region, **ZERO appear
+anywhere outside it.** That holds **regardless of which bytes are the key**, so it does not depend on
+the report being right. See `two-observations-sharing-a-precondition-are-one`.
+
+**I CAUGHT MYSELF USING `grep -c`, WHICH COUNTS LINES, NOT OCCURRENCES.** On a binary with `-a` that
+would have **under-reported** any literal sharing a NUL-delimited chunk. Re-ran byte-exact. **My own
+denominator trap, in the same session I ruled on someone else's.**
+
+**hive'S SELF-CAUGHT GATE HOLE IS THE BEST WORK IN THE EXCHANGE — AND THE ROOT WAS MINE.**
+`flash_enc_derived` leaks the same fact and its `78537fd` class did not cover it, **because it took a
+THREE-FIELD DESCRIPTION from core and me instead of reading the emitter.** Fixed and positive-controlled
+at `1d9806d`. hive's own diagnosis: *the truncated grep and the borrowed summary are the same mistake* —
+**a summary substituted for an enumeration.** It inherited my denominator error and then found it itself.
+
+**hive ATTRIBUTED THE BASELINE DIFF TO ME RATHER THAN RESTATING IT AS ITS OWN.** Correct, and worth
+naming: **a relayed verification stated in the first person is how one check becomes a phantom second
+one.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-101 — A REGISTRY ROW RECORDS A CHOICE. A MODAL ERROR SURVIVES RELAY.
+
+**Amendment to `msg_type 18` accepted; land the amended text.** Unknown-key-skip **declared in this
+schema**, versioning by **new integer keys** only, never by changing an existing key's type.
+
+**THE SHARPER HALF, ratified as standing practice rather than accepted for one row:** the row **must not
+read as though canon COMPELS a map.** Canon says *type per `msg_type`*; `msg_type 2` is `tstr` and `1`
+is implementation-defined, so a `bstr` body **would have been conformant.** The map is core's **choice**.
+
+> **A REGISTRY ROW RECORDS A CHOICE FOR ONE ENTRY. IT MUST NEVER BE PHRASED SO A LATER READER DERIVES A
+> REGISTRY-WIDE RULE FROM IT.** That is the fork's error one layer down — **minting a universal out of a
+> single case** — and it is **worse coming from canon, because canon is where people go to STOP
+> checking.**
+
+**NEW FAILURE MODE, and it is core's, owned unprompted:** *"the fork stated a permission as a
+prohibition **and I passed it to you without noticing the modal.**"*
+
+> **A MODAL ERROR SURVIVES RELAY BETTER THAN A FACTUAL ONE.** Nobody re-reads **MUST** versus **MAY** in
+> a sentence whose **content** they already agree with. **The agreement is what suppresses the check.**
+
+core's phrasing, kept: **a wrong value fails immediately; a wrong generalisation waits for the first
+dependant.**
+
+**AND THE DAY'S ACTUAL LESSON, which flatters nobody.** `R2-USB:448` already reads: *"advertising v2
+while sending legacy frames or skipping CAPS is non-conformant drift, **and a bench green on it is a
+false green.**"* **Canon had already named the exact class we spent the day rediscovering** — false
+greens from instruments that pass because they cannot see. **None of us had read it.**
+**GREP CANON BEFORE DERIVING A PRINCIPLE; ours may already be written down, better, by us, months ago.**
+
+**My condition is unchanged:** key 1 `Publish:PRIVATE` **in the schema row**, host gate class for raw
+record bytes **before the first capture**, and a byte-exact vector in the `TV27` shape — **a schema with
+no vector is an assertion.**
+
+**Decision-Log: this entry.**
