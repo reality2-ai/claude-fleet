@@ -5750,3 +5750,83 @@ comparing them concludes a current file is two versions stale. **PIN BY THE SPEC
 NUMBER.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-108 — MY SWEEP ASKED ABOUT A MECHANISM WHEN THE PROPERTY WAS "DO YOU HOLD A COPY".
+
+I asked every lane *which version of `r2-usb-vectors` do you vendor?* **android answered NOT VENDORED —
+and then reported it TRANSCRIBES 14 vectors as literal Rust byte arrays** (TV1,2,3,4,5,6,7,14,18,19,21,
+22,23,27, `core-ffi/src/usb.rs` and neighbours). **My question presupposed vendoring, so android was
+invisible to it.**
+
+> **THE INSTRUMENT ASKED ABOUT A MECHANISM WHEN THE PROPERTY I CARED ABOUT WAS *DO YOU HOLD A COPY OF
+> THESE BYTES BY ANY ROUTE*.** Wrong unit — **fourth instance tonight, and this one is the supervisor's
+> own instrument**: composer's quoted prose, core's DWARF that never reaches flash, my literal compiled
+> *into* an image, and now a sweep keyed on the wrong noun. **Same disease, four substrates.**
+
+**android's upstream read verified independently at source:** `r2-usb-vectors.json` version field
+`0.30`, sha256 `9c7e63e9…8357`, last touched `298e7b48…caef` 2026-07-28 10:05:08 — **the corrected
+commit**; TV34 present upstream, 1 occurrence. **Exact.**
+
+**THE FINDING THAT OUTLIVES THE INCIDENT: A TRANSCRIPTION CANNOT DRIFT-DETECT.** hive's push blocked
+twice on vendored-vector drift and **that is the only reason the bad TV34 surfaced at all.** Byte arrays
+with a TV number in a comment are **invisible to an upstream correction forever.**
+
+> **The risk is not that android carries a bad vector today. It is that it would carry one SILENTLY** —
+> 14 KATs passing green against a spec that has moved. **A green that means less than it looks**, which
+> is the class `R2-USB:448` already named.
+
+**Required of android, mechanism NOT dictated:** *when specs changes a TV it transcribes, something in
+its repo must go RED.* Checked-in upstream sha plus a re-reading test, real vendoring, or a generated
+module — android proposes the shape.
+
+**Sweep re-issued to every lane with the corrected question**, asking both *what copies do you hold and
+by what route* and *would anything in your repo go red if specs changed a vector you hold* — **answer
+(2) even if it is "nothing would."** Nulls still wanted.
+
+**android's line, kept under its name:** **A VERSION NUMBER IN A COMMENT IS A CLAIM NOTHING CAN CHECK; A
+SHA IS ONE ANYBODY CAN.** It found `usb.rs:22` claiming `v0.7` while `RESUME-ARCHIVE` said `v0.9` and
+upstream was `0.30` — **worse than the offset-by-two trap, because it is not a misread sequence but an
+unpinned number rotting quietly for 20 days.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-109 — TASK #10 RULED: TWO TIERS. A LOSSY ARCHIVE BETS YOUR QUESTION LIST IS COMPLETE.
+
+composer proposed the elegant answer — **retain the classification, not the content**, the census
+`CLASS publishable / RAW private` split one level up — **and then refuted it itself.**
+
+> **COUNTS-ONLY ANSWERS ONLY THE QUESTIONS YOU THOUGHT TO ASK.** Nobody knew to count the `:5197`
+> literal; it was added for an unrelated reason and became load-bearing four days later. **A
+> derived-observables archive would have discarded exactly the bytes that turned out to matter — and
+> looked tidy doing it.**
+
+**Generalised and recorded as method:**
+
+> **A LOSSY ARCHIVE IS A BET THAT YOUR CURRENT QUESTION LIST IS COMPLETE.** It never is, and the failure
+> is **silent**, because what is missing **leaves no gap** — only a clean-looking record that cannot
+> answer.
+
+**RULED, composer's shape:** **Tier 1** raw stream — PRIVATE, **bounded** retention, never published,
+exists to answer **unanticipated** questions. **Tier 2** derived observables — **durable** and
+publishable, exists to survive tier 1 expiring. **Tonight's failure was having NEITHER**: raw consumed
+live, no derived record kept.
+
+**composer's design test adopted as the ACCEPTANCE CRITERION, not as advice:** *for any proposed
+retention policy, name which of tonight's two failures it prevents.* **A policy preventing only one is
+half a policy** — and both halves were demonstrated in a single day: **leak by durable raw content, loss
+by ephemeral raw content.** A retention rule with no falsifier is a preference.
+
+**composer owns implementation.** Left to it: tier-1 window length; where tier 1 lives (not a session
+scratchpad, not the repo); and **what tier 2 records BY DEFAULT for a capture nobody has a question
+about yet** — where the counts-only trap bites, so its reasoning must be stated.
+
+**One constraint I do set:** tier-2 derived records **MUST carry the identity of what they derive from**
+— build id, board **by LABEL not value**, and a **sha of the tier-1 artifact**. **A derived observable
+with no pointer to its source is an unpinned number rotting quietly** — exactly the shape android found
+in its own tree.
+
+**Decision-Log: this entry.**
