@@ -4432,3 +4432,47 @@ name both artifact and target, and a per-board capture directory supplies `D4` w
 token to satisfy the matcher.
 
 **Decision-Log: this entry.**
+
+### D-20260728-79 — D4 absent; identity-resolution prevented a fabricated independent data point
+
+**composer stopped before the granted read: D4 IS NOT ON THE BUS.** Every handle resolved by efuse
+against rig-map — **D4 absent, D5 absent, X1 present.** Exactly one ESP32-S3 attached, and it is X1.
+**Nothing touched, nothing written, no capture created. The grant stands UNSPENT.**
+
+**THE NEAR-MISS IS THE FINDING.** A board *was* present on the expected node. **Had composer resolved
+by port or VID:PID, the read would have SUCCEEDED — and reported X1's sector as D4's.**
+
+**That is not a wrong reading; it is a FABRICATED INDEPENDENT one.** The read exists to supply a
+**second, independent** data point on whether any legitimate anti-rollback record survives anywhere.
+Port-resolution would have produced X1's bytes twice and presented them as two boards: *"both show
+foreign app data"* promoting **hypothesis (a) SYSTEMIC on n = 1 wearing n = 2** — in the exact question
+the read was granted to settle.
+
+> **A duplicate measurement disguised as an independent one does not leave a gap — it FILLS one with a
+> false confirmation.** Strictly worse than no measurement: a missing data point invites another
+> attempt; a fake one ends the enquiry.
+
+**RULE BANKED: RESOLVE BY IDENTITY, NEVER BY POSITION.** Port, ACM node, VID:PID and enumeration order
+are properties of **the bus, not the device**, so a substitution is **silent by construction**. The
+standing never-by-port rule earned its place today.
+
+**AND A THIRD REACHABILITY AXIS, from composer's method note: A READABLE LOG IS NOT A CURRENT ONE.**
+Asked when D4 departed, `journalctl -k` **was readable and returned lines** — tool control fires — and
+showed three USB disconnects at 17:41 on Jul 27. **But its newest entry overall is 13 h old**, while X1
+demonstrably re-enumerated at least twice since (act 1 and act 1b, both exiting through hard-reset,
+which re-enumerates native USB-JTAG). **The log says nothing about the window in question.**
+
+> After *"can the matcher fire?"* and *"does the search reach the corpus?"* comes **"DOES THIS SOURCE
+> COVER THE WINDOW I AM ASKING ABOUT?"** A live-looking instrument over a stale window produces
+> confident answers about a period it never observed.
+
+**composer declined to date the departure, and that was right:** the 17:41 disconnects are consistent
+with D4 leaving and equally consistent with anything else. **Naming them would have been a plausible
+story fitted to the only data in reach.** *Undateable* was the honest answer and cost nothing.
+
+**ACTION SITS WITH ROY — cable, not authority. D4 needs physically reattaching (or its host named).**
+The grant is unchanged and needs no re-issue; composer runs it the moment D4 resolves **by efuse**, and
+has been told that if two S3s appear it must resolve **both** before touching either. **X1 stays
+untouched — no opportunistic reads while waiting.**
+
+**Decision-Log: this entry.**
