@@ -5042,3 +5042,51 @@ place, not supplemented.** Source comments, spec prose, gate rationale, and now 
 accurate.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-91 — the bench declaring prod is CONFORMANT, and that is the hazard
+
+**specs answered from canon with a denominator (52 live-prose hits, 11 files) and INVERTED my framing.
+I was wrong on the premise.**
+
+**MY CLAIM:** a bench board declaring `build_class=prod` is *"asserting something false about itself."*
+**FALSE.** Canon defines mode as **WHICH CODE WAS FLASHED** — R2-BUILDMODE:28, *"a build-time identity,
+NEVER a runtime switch"*, Roy-ratified 2026-07-06. **An image compiled without the `dev` feature IS a
+prod build by canon's own definition. Running it on a bench does not change what was compiled.**
+⇒ **D4 and X1 declaring prod is CONFORMANT.** My false premise was *"a bench board is a dev board."*
+**Bench-ness is not a canon concept at all.**
+
+**AND `build_class` IS READ — it is not declared-and-unused.** Two MUSTs gate on it: R2-BUILDMODE:60
+(a device decoding a peer's class as the opposite mode **MUST NOT** initiate connection, pairing or
+provisioning) and **R2-BUILDMODE:142 — *a PROD node MUST NOT select a DEV-advertised neighbour as a
+next hop and MUST NOT relay frames for one*** — realised as the ratified §4.4 viability filter.
+
+**⇒ THE INVERSE HAZARD, AND IT IS THE REAL ONE.** Homogeneity is **equality on the declared value**
+(R2-BUILDMODE:43). **Because the bench declares prod, it is mode-homogeneous with field prod nodes, so
+the §4.4 filter DOES NOT EXCLUDE IT.**
+
+> **A BENCH BOARD MAY BE SELECTED AS A NEXT HOP BY A PRODUCTION DEVICE AND MAY RELAY PRODUCTION
+> FRAMES.** The dev-isolation machinery is **fully armed and simply does not apply** — *because the
+> bench is correctly declaring prod.* **This needs no misdeclaration to occur**, which makes it larger
+> than the false-self-description I reported.
+
+**CANON ALREADY RESERVED THE MISSING CONCEPT AND LEFT IT UNUSABLE.** R2-BEACON:534 enum:
+**`0 = prod`, `1 = reserved (PROD-BENCH; NOT BEACON-EMITTABLE TODAY)`, `2 = dev`.** **Canon anticipated
+bench-ness, gave it a value, and made it un-emittable.** So core's three-fact conflation (one `dev`
+flag driving `BUILD_CLASS`, `BUILD_MODE_TAG` and `ADVERTISED_CAP_COUNT`) is a **firmware
+feature-coupling, not a defect in canon's axis.**
+
+**⇒ THE QUESTION FOR ROY IS NOT the one I asked.** Not *"should `build_class` be true"* — canon says
+yes and the bench complies. It is: **does value 1, PROD-BENCH, become emittable — and if it does,
+which side of the §4.4 viability filter does it fall on?** Homogeneity-by-equality means an emittable
+`1` **isolates the bench from BOTH prod and dev**, which may be exactly right, and **is his call
+because it changes what the #d026 P3 pair can reach.**
+
+**URGENCY, scoped: there is no field deployment, so no production device exists today to select a
+bench board as a next hop. The exposure is real and currently unreachable — and it becomes reachable
+the moment anything ships. THIS MUST BE SETTLED BEFORE FIRST FIELD DEPLOYMENT, not after.**
+
+**My do-not-solve-an-identity-declaration-problem-with-a-build-flag-coupling ruling stands
+independently** — specs confirms core's explicit gate is the right shape and does not touch what goes
+on the air.
+
+**Decision-Log: this entry.**
