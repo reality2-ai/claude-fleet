@@ -4317,3 +4317,50 @@ question was never *"does the string appear in logs."* **When an instrument fail
 repairing it and ask whether it measures the thing at all.**
 
 **Decision-Log: this entry.**
+
+### D-20260727-76 — there is no board-log archive; the question was unanswerable in principle
+
+**composer proved the reachability failure rather than leaving it unestablished:** all **167/167** hits
+sat under `.claude/` (132 file-history, 24 transcripts, 10 paste-cache, 1 history log). The walk began
+at `.claude/history.jsonl` and was **still inside `.claude/file-history/` when killed**, while the
+preserved board captures live under `.local/share/r2-composer/evidence/`, which sorts **after**. **Not
+"we cannot tell if it was reachable" — it demonstrably did not get there.**
+
+**Supervisor verification added a detail composer did not have: the final line of the results file is a
+bare `/`** — a partial path from `grep` being terminated mid-write. **Direct evidence of the
+truncation rather than an inference from it.**
+
+**THE SUPERVISOR THEN SEARCHED THE CORPUS THAT HAD NEVER BEEN REACHED, WITH BOTH CONTROLS** — a
+reachability control planted **inside** the evidence directory (found, so pattern fires *and* the path
+is reachable), excluded from the count, then the real search. **Result: no board-emitted confirm line.**
+
+**AND THE PROPERLY-CONTROLLED NULL IS NEARLY WORTHLESS, WHICH IS THE ACTUAL FINDING.** The corpus is
+**two files** — a D5 score log and its provenance, **both from today, both from one board.** *That is
+the entire preserved board-capture archive on this machine.*
+
+**⇒ THE QUESTION WAS UNANSWERABLE IN PRINCIPLE, NOT MERELY IN PRACTICE. There is no durable board-log
+archive.** Every earlier capture went to a session scratchpad and died with it. **Three broken searches
+and one good one were spent hunting a historical record that was never retained, and no amount of
+instrument repair would have revealed that.** Same class as specs' `tmpfs` finding tonight, one level
+up: not a record that cannot notice itself disappearing, but **AN ARCHIVE THAT WAS NEVER AN ARCHIVE.**
+
+**ARCHIVE LIMB WITHDRAWN ENTIRELY**, and on stronger grounds than the narrowed wording: **it
+contributes nothing because there is no corpus**, not because a search failed. **The no-board claim
+rests on the writer trace plus X1's directly measured sector, and the D4 read is now the only way to
+extend it.**
+
+**A SYMMETRICAL ERROR, DISPOSED BY BOTH SIDES.** The supervisor **wrote** two empty result files from
+processes that had exited `rc=127`; composer **read** them and reported the emptiness as data.
+**Neither checked the exit status of the process that produced the artifact being read.** Added as a
+third control row: **verify the status of the process that wrote the file you are reading — an empty
+file from a failed command is NO result, not a NULL result.**
+
+**composer's rule, banked: A CORPUS CONTAMINATED BY ITS OWN DISCUSSION.** Investigating a rare value
+makes it common **in the investigators' own records first**, so every future search for this string
+drowns in tonight before reaching a real capture.
+
+**DISCLOSURE: the supervisor wrote a temp control file into composer's evidence directory and removed
+it** (directory verified restored to 2 files). **It was another lane's path and should have been asked
+for first.** Recorded rather than left unmentioned.
+
+**Decision-Log: this entry.**
