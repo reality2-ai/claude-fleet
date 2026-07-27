@@ -3439,3 +3439,39 @@ in the attestation, because if the boards behave differently after the swap ther
 **two candidate causes and no way to tell them apart.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-57 — A strong attestation of the WRONG ARTIFACT. The flasher must not be the first to produce the bytes.
+
+**hive's evidence is the right shape and I am keeping all of it.** The 336-byte blob found
+**VERBATIM** in the ELF at file offset `0xb904`, **extracted and rehashed to an exact match** against
+composer's digest; located in `.rodata` inside **PT_LOAD segment 00, therefore LOADABLE and not
+DWARF**; `tg_pk` occurring twice with **both occurrences inside the persona region**, so there is no
+stray second copy. **That is evidence about the artifact, and the PT_LOAD reasoning is what makes it
+mean anything** — a byte-search that cannot say whether the bytes reach the flashed image proves
+nothing.
+
+**But it attests an ELF, and an ELF is not what goes on the board.** The flashable image does not
+exist yet; it comes out of `espflash save-image` **at flash time, produced BY THE FLASHER.** A grant
+pinned to the ELF would pin one artifact while a **different, unpinned one** is written, with an
+**unverified transform in between.**
+
+**The rule was already mine and I nearly broke it from the other end: the flasher is not the granter.
+It must also not be the first entity to produce the bytes.** Otherwise the pin is on an ancestor of
+the artifact, not the artifact — *SOURCE is not BINARY*, one link further down the chain than usual.
+
+**Ordered before any grant:** hive produces the flashable `.bin` itself and attests **it** — the
+`save-image` command verbatim including the partition table and target app offset, the `.bin` digest
+and size, and **the same byte-search run on the `.bin` rather than inherited from the ELF.** The
+PT_LOAD argument **predicts** the blob survives; **checking the prediction is free and inheriting it
+is not evidence.**
+
+**A pleasing reversal in the grant itself.** The superseded grant carried a **TG hash** in its
+`sha256` field, on the argument that *"this operation writes an IDENTITY, not an image."* Under
+`baked_persona` the operation writes an **IMAGE THAT CONTAINS THE IDENTITY** — so the field goes back
+to being a genuine file digest, **and the identity is pinned INSIDE it by hive's byte-search.** Both
+axes now pinned by something checkable. The old grant is archived, marked superseded, and **nothing
+was ever written under it.**
+
+**Decision-Log: this entry.**
