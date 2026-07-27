@@ -4052,3 +4052,47 @@ built from, not in the artifacts. **The attestations stand.** Neither image can 
 until the record is invalidated.
 
 **Decision-Log: this entry.**
+
+### D-20260727-70 — three values, two pairings: the record holds both canon floors
+
+**specs raised a canon angle on hive's finding; the supervisor verified it from source rather than
+relaying, and the verification changed the recommendation.**
+
+**VERIFIED, WITH A CONTROL.** `authority_epoch_floor` — **0 hits across 61 `specs/r2-core/*.md`
+files**; control term `anti-rollback` present (KEYSTORE 19, LIFECYCLE 3, PROVISION 4), so the matcher
+was live. **Canon has never used that term.** R2-UPDATE `:1238` exact as quoted: *"the two floors
+advance at **different** times by brick profile."*
+
+**BUT THERE ARE THREE VALUES IN PLAY AND TWO DISTINCT PAIRINGS. specs had conflated them.**
+
+**PAIRING 1 (§9.2, `:1268`, `:1641`)** — bootloader-backend value ↔ signed `seq`. **Canon MANDATES a
+SHARED source:** *"MUST be derived from the authenticated r2 `seq` at build time, never an independent
+number … one source of truth."* **Splitting is the bug here**, and `staged_rollback_value()` is a
+**REQUIRED, no-default** method existing solely to prevent it — the earlier `Option<u64>` shape was
+refuted as **omittable**.
+
+**PAIRING 2 (`:1258`, `:1492`, Roy-ratified 2026-06-26)** — firmware floor (`seq`/`security_version`,
+confirmed-boot, **real brick risk**) ↔ `authority_epoch` floor (activation, **no brick risk**).
+
+**hive's finding is PAIRING 2.** specs' proposed clause — *"the two floors MUST NOT share a derivation
+source"* — **would contradict §9.2 if written generally.** It must name the pairing.
+
+**AND specs' PREMISE WAS FACTUALLY OFF IN A WAY THAT STRENGTHENS THE FINDING.** It is **not** one
+garbage value feeding both floors. hive measured **two distinct `u32`s from adjacent bytes of one
+corrupt record** — `0x65717569` (`"equi"`) and `0x72656420` (`"red "`). **So it is not a shared-VALUE
+problem, it is a shared-VALIDITY problem: ONE UNVALIDATED RECORD, TWO CANON FLOORS.** That statement is
+stronger and needs no coupling argument at all.
+
+**⇒ THE FALSIFIER CHANGES.** specs proposed *"corrupt the shared source, confirm exactly ONE floor
+moves"* — that asserts an independence canon does not require. **Replaced: CORRUPT THE RECORD, CONFIRM
+NEITHER FLOOR IS ADOPTED** (both fall to a known-safe default), **with a vacuity guard that a VALID
+record IS adopted** — otherwise refusing everything satisfies the test.
+
+**A CONSTRAINT ON THE FIX, SENT TO core.** Validity is a property of the **whole record**, but
+**advance is per-floor and must stay at different times** (`:1258`: an immediate floor-commit at
+activate **BRICKS** a device on a bad boot, stranding the still-bootable previous image below the
+advanced floor). **A repair that validates them together and then WRITES them together satisfies hive
+and violates `:1492`.** core asked to say plainly if **one record is the wrong container for two
+independently-advancing quantities** — that is a design finding worth more than a magic byte.
+
+**Decision-Log: this entry.**
