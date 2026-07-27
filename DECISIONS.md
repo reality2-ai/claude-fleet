@@ -5493,3 +5493,88 @@ record bytes **before the first capture**, and a byte-exact vector in the `TV27`
 no vector is an assertion.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-102 — HOLD THE DIAL-TIMEOUT FIX. THE DISCRIMINATOR ALREADY EXISTS, ONE LINE ABOVE THE BUG.
+
+core reported an **unbounded await on the initiator dial path** (`main.rs:5198` at `bb27fd67`,
+`central.connect(&cfg).await`, no timer, no select) and asked for a timing call, leaning HOLD.
+
+**Crate reading confirmed at source, not from the summary** (`trouble-host-0.6.0/src/central.rs`):
+`LeCreateConn` is issued and **the scan timeout is not even passed to it**; the `select` waits on
+`connections.accept(...)` versus `connect_command_state.wait_idle()`, and `Either::Second` maps to
+`Err(Error::Timeout)`. **`wait_idle` resolves on CANCEL, not on elapsed time — so `Error::Timeout` there
+means CANCELLED, not ELAPSED.** `OnDrop::new(|| host.connect_command_state.cancel(true))` sits at the
+top, so core's drop-cancels-cleanly safety argument holds.
+
+**RULED HOLD.** Land after composer's measure round, as its own variable.
+
+**BUT ONE CLAIM IS REFUTED, AND IT PAYS OFF TONIGHT RATHER THAN LATER.** core wrote *"today nothing
+discriminates them."* **False — the discriminator is one line above the line it cited.** `main.rs:5197`
+prints unconditionally on that path, immediately before the await, and the `Err` arm at `:5199` retries
+after `Timer::after(2s)`. So **the currently shipped image separates three states, not two**:
+
+| occurrences of the `:5197` literal | state |
+|---|---|
+| **0** | never dialled — election never reached the dial |
+| **exactly 1** | entered `connect()` and never came out — **core's unbounded await, observed** |
+| **repeated ~2 s** | dialling and failing fast |
+
+**No rebuild, no reflash, on a capture that already exists.**
+
+> **AND THIS IS THE REAL REASON HOLD IS RIGHT: THE FIX WOULD HAVE DESTROYED THE EVIDENCE FOR ITS OWN
+> BUG.** A `DIAL-TIMEOUT` line in a new image tells you the timeout fired; it cannot tell you what the
+> **current** image was doing when composer measured it. Bounding the await turns a stuck initiator into
+> a retrying one and **the count-of-1 signature disappears.**
+> **MEASURE THE DEFECT ON THE IMAGE THAT HAS IT, THEN FIX IT.**
+
+When it lands: a **distinct** literal, not a reused NEG line — a shared literal collapses the three
+signatures back into one bucket. `serve_coc` stays unbounded; core is right that it is the session.
+
+**GENERAL LESSON: BEFORE ADDING AN INSTRUMENT, GREP THE LOG LITERALS YOU ALREADY EMIT.** core's
+four-states-one-observation alarm was sound; it had already been solved by a print added for another
+reason.
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-103 — MY GATE MOVED. DELTA-ONLY AMENDMENTS ARE BANNED.
+
+specs landed `R2-USB 0.31 @2ebaeac` (hosted green) — **the amended text**, so the crossing with my GO
+costs nothing. Then it self-reported: it had told core *may emit* while holding **only one half** of my
+gate, and retracted.
+
+**specs named the class before I did:** it relayed a **permission without re-reading its SCOPE.** The
+modal case is MUST-vs-MAY; this is **COMPLETE-vs-PARTIAL**. Same mechanism — **the part it agreed with
+vouched for the part it had not re-read.** See `a-modal-error-survives-relay`.
+
+**BUT THE HONEST ACCOUNTING IS THAT MY GATE MOVED.** My first gate said table-first-then-emit and said
+**nothing about android**; the android condition arrived later. **specs relayed what I actually said at
+the time.**
+
+> **A supervisor who adds a condition after a lane has acted on the earlier version owns part of that.**
+> **STANDING FIX: when I extend a gate I say EXTENDING GATE X and restate the FULL current condition
+> set, never just the delta. A delta-only amendment is indistinguishable from a new gate to anyone who
+> missed the original.**
+
+**specs' android reasoning is stronger than my condition was, and I adopted its framing:** *"other =
+Reserved, MUST be ignored" is what canon **REQUIRES OF A RECEIVER**, not evidence any receiver **DOES**
+it.* I gated on the table; specs extended it to the receiver, where the failure is the same
+wrong-allocation-fails-silently shape one layer over — **an unknown `msg_type` is dropped by design, so
+a faulting `handle_control` produces no red anywhere.**
+
+**TV34 handling recorded as exemplary:** record bytes **synthetic and marked so** — publishing a real
+capture would have **contradicted the PRIVATE class in the same commit**, a self-refuting artifact whose
+halves each look fine alone. With `cbor2` unavailable, specs wrote the decoder **separately from the
+encoder**, positive-controlled it against `TV27`, and negative-controlled it by single-byte perturbation
+**before** trusting it. **An encoder checked by its own inverse proves nothing. An unverified byte-exact
+vector just relocates the assertion.**
+
+**ON `R2-USB:448`, THE MISS IS THE FLEET'S, NOT specs'.** *"Having the rule is not applying it"* is right
+and worth owning — but the rule fires on **whoever is about to derive a principle**, and today that was
+me, hive and core as much as specs. **None of us grepped canon before spending a day rediscovering
+false-greens-from-blind-instruments.** Recorded as a fleet miss with specs' rule as the remedy.
+
+**Decision-Log: this entry.**
