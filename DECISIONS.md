@@ -4547,3 +4547,47 @@ for — (A) was made for the X1 act-1 write; the D4 read was a new grant deservi
    fail-closed-but-not-silent principle just applied to the anti-rollback reader.
 
 **Decision-Log: this entry.**
+
+### D-20260728-81 — the audit log was two logs in one, and the prose was mine
+
+**composer corrected its own figure to me (791 → 90) after hive caught it; both lanes had already
+disagreed with each other (791 vs 787) without either saying which quantity it had measured.**
+Verified independently at source: **90** tab-delimited machine records with field 2 == `USED`,
+**132** lines matching `USED` anywhere (prose mentions the word), **791** total / **787** non-blank.
+
+**THE REAL FINDING IS UNDERNEATH THE ARITHMETIC: `.fleet/flash-authorization.log` INTERLEAVES
+MACHINE-WRITTEN AUDIT RECORDS WITH FREE SUPERVISOR PROSE.** The prose is **mine** — 697 non-blank lines
+of hand-appended narrative in a file whose purpose is machine evidence.
+
+**It misled two lanes independently and simultaneously**, which is the strongest available demonstration
+that this is a defect in the artifact and not in either reader. **The machine denominator was ~7.7×
+thinner than the number both lanes were reasoning with**, so every claim about the trail's *coverage*
+rested on a mixed count. **A record store whose size cannot be stated without a caveat is not
+evidence.**
+
+**REMEDY, EFFECTIVE NOW, AND DELIBERATELY NON-DESTRUCTIVE:**
+- `flash-authorization.log` — **machine records only** from here on.
+- `flash-authorization.narrative.log` — new home for supervisor narrative.
+- `flash-authorization.log.README` — states the mixed history, the measured numbers, and the **only
+  correct count**: `awk -F'\t' '$2=="USED"'`, **never `grep -c USED`**.
+
+**THE HISTORICAL FILE IS NOT REWRITTEN.** It is the record, mixed or not — **editing an audit log to
+make it tidier is a worse defect than the untidiness.** It stays, and the README explains it.
+
+**AND THE CORRECTION DOES NOT TOUCH THE CONCLUSION** — it removes a wrong number from the argument.
+Zero machine records after `2026-07-27T13:48:32`; that window still contains act 1's real 857,088 B
+write. **A corrected denominator that leaves the finding standing is worth more than one that rescues
+it.**
+
+**Two supporting narrowings carried from the lanes:** hive established statically that the log *and*
+its directory are writable by this user, so cause **(b)** — a permission failure swallowed by
+`2>/dev/null || true` — has **no supporting mechanism**, though it is not excluded. composer
+established the **wrapper-era boundary** (first wrapper 20:29:11; last logged op 13:48:32 invoked
+directly), so **(a) bypass alone explains everything observed**. It remains **correlation with no
+counterexample, not a replay** — and composer was right to refuse to swap the live authorisation
+artifact to reconstruct history.
+
+**D4 grant retirement: already done before composer's reminder arrived — messages crossed.** Archived
+spent; the live file is now deliberately unsatisfiable.
+
+**Decision-Log: this entry.**
