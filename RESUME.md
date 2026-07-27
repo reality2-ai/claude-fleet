@@ -1,128 +1,100 @@
 # RESUME — claude-fleet (supervisor)
 
-**Updated 2026-07-27, ~02:00.** Takeover snapshot. Rewritten whole earlier tonight, then
-**updated in place after the metal result** — and re-read end to end afterwards specifically
-hunting paragraphs the update had left stale. That sweep found one and it is fixed: this file
-said *"waiting on a rebuild"* after the rebuild had happened and been confirmed on metal.
-**Same file is not same sweep** — the rule that cost me a grant-file record tonight, applied
-here on purpose.
+**Rewritten whole 2026-07-27 evening.** Not patched — the previous snapshot was ~20 hours old and
+described the OTA blocker as *"the identity write, gated on two partition questions."* **Both
+questions are answered and the blocker has moved somewhere else entirely.** Every figure below is
+re-derived at write time rather than carried forward.
 
-## Where the OTA work actually stands
+## Where the work actually stands
 
-**The round-trip is NOT done — and the blocker has MOVED.** The stale-header-version block is
-**fixed, rebuilt, and confirmed behaviourally on metal.** What remains is the **identity
-write**, which is Roy-gated on two questions. So the night ended one gate further forward than
-it started, with the failure now at the signer gate rather than the version gate.
+**The OTA round-trip is still not done, and the blocker is no longer what it was this morning.**
 
-**Proven on metal tonight**, each independently:
+It was: *provision X1, then push image B.* It is now: **the persona must live in a declared region
+before anything is provisioned** — because Roy ruled the raw-offset write non-conformant, which
+made *provision-or-hold* the wrong question. Provisioning at the raw offset would mean
+**provisioning twice**, and the second write lands on a board that already holds a valid identity
+— the exact case our own rules say **stop and escalate** on.
 
-- **Button-free download-mode entry AND exit** on X1 — the BOOT/RESET buttons are buried under
-  the LoRa piggyback, so this was the load-bearing unknown. Exit was proven by an *inverted*
-  test: a no-reset connect **failed** on app console data, and a board stuck in download mode
-  **would have connected**.
-- **Image A written app-only** — no erase, table explicit, NVS at 0x9000 preserved, running
-  from `ota_0`.
-- **The persona state read cleanly** through a PTY monitor (a plain `cat` open silences this
-  chip). Result: an **affirmative absent** — unprovisioned, no NVS persona.
-- **BLE channel connect, L2CAP accept, and a signed header framed and answered.** First time
-  on this hardware.
-- **Fail-closed rejection, twice** — once malformed, once **well-formed but unauthorised**. Both
-  times the board refused, wrote nothing, sent zero image chunks, **and did not reboot at all**.
-- **The re-vendor confirmed behaviourally on metal:** the refusal moved from the **version** gate
-  (`reason=1`) to the **signer** gate (`reason=4`). The v3 header parses. And composer's
-  source-level refutation of my *transport-needs-no-persona* claim became an **observation**.
+**What that turned into:** a lockstep change across **six raw fixed-offset firmware reads**, a
+partition table that **freezes at deployment** (a table cannot go over the air — confirmed from the
+tooling, not assumed), and a shipping gate: **every bench-reachable board gets the final table plus
+named-lookup firmware before it deploys.**
 
-**Still untested:** the image-chunk stream. Every historical failure on this hardware was a
-chunk-1/2 stall, and **that code was never reached tonight.** Connect and header delivery are
-proven; the chunk stream is not.
+**Ratified geometry:** 14 sectors, `0x12000`–`0x20000`, **four in-place anchors, one moving part**,
+**byte-identical across both carriers.** Persona stays at `0x12000` because **relocating a
+provisioned persona is a membership break, not a flash operation.**
 
-## What blocked it last night — now FIXED and confirmed, kept for the sequence
+**And a live defect found on the way, worse than the one we were fixing:** the persona **write path
+is not atomic** — in-place write plus read-back verify, so a power loss mid-write is a **torn
+persona**, on every board today, independent of the migration. **An unclaimed region is a hazard; a
+torn persona is a loss.** The fix already exists unused in the tree.
 
-The reject was **not** the signer gate and **not** a stall. It was **`BadHeader`**: the two
-vendored copies of the update crate disagreed on the package version — pusher v3/137, firmware
-v2/123. **So no OTA this firmware accepts could be pushed at all**, regardless of signing or
-provisioning.
+## Board state
 
-**Canon settled it and the board was right.** v3/137 is canonical; the firmware copy was
-**seventeen spec revisions stale**; and strict single-version cutover specifies that a receiver
-accepts *only* the current version, **checked before the signature** — so the rejection order
-was exactly as written. **This is g22 landing on metal**: not interop lag from a deliberate
-pin, a **hard functional block**.
+- **X1** — image A in `ota_0`, **untouched**, NVS preserved, unprovisioned. Not in any live grant.
+- **Two DFR1195s** — newly on the bench. **Table-read grant written and dispatched**: read-only,
+  offset `0x8000`, **length exactly `0x1000`**.
+- **RAK** — frozen (#d003). Roy reaffirmed: *"an exception, not the rule."*
 
-**Fixed:** core replaced the stale copy wholesale with the canonical one (byte-identical,
-after proving it a clean stale ancestor rather than a fork), on its branch. Signed-byte
-coverage is **parametric over the header length**, so the new fields are covered **by
-construction**.
+**The read exists because `flash-board.sh` changed mid-session.** A board flashed before that fix
+has its persona in an unclaimed gap; one flashed after does not. **Neither the repo nor the commit
+history can say which a given board carries.**
 
-## Immediate next action — and it is Roy's, not a lane's
+## Standing bars that have not moved
 
-**Everything a lane can do without a provisioned board is done.** The single thing standing
-between here and a round-trip is **the identity write**, and it is gated on two questions that
-must be answered from code and from the device:
+- **No identity write** until the region is declared and `read_persona` resolves by name.
+- **Hard-fault on absent region, no raw fallback** — and the fix for the field is to **refuse the
+  image before applying it**, not to soften the fault.
+- **Table first, firmware second.** Reverse it and the boot bricks.
+- **No NVS dump.** The table read's length is the safety property: `0x8000 + 0x1000 = 0x9000`,
+  which is exactly where NVS begins. **One sector of overrun reads key material.**
+- **Two identical DFRs**: efuse MAC per board, never the value. *Reading one board twice is
+  indistinguishable from reading two boards once.*
 
-1. **Which path does this build actually read the persona from** — NVS, or the raw offset the
-   board's console names?
-2. **Is that offset inside a region no partition claims?**
+## Open for Roy
 
-**They are gated because the board's own console recommends the operation that BRICKED D4** —
-fourth resurfacing of that hazard, and the first time the *artifact itself* is the source. A
-minted dev-TG persona is ready and unused; the mint touched no board.
+**g24** (synthetic AP — ruled, pending review) · **g21** (dedup key — canon already ruled it; one
+premise survives) · **g8** (client isolation — three fixes, two minutes) · **name the complex-Hive
+Xiao**, which is in no lane's records.
 
-**Once provisioned:** push B and the chunk stream finally gets exercised — that is where the
-historical chunk-1/2 stall lives, and it has never been reached on this board. The
-LoRa-on-core1 pair is pre-built for that branch, and a pass on it is **"core-0 load relief as a
-class", not coex-relief.**
+**Three architectural, none blocking:** ring-signature vs no-global-roster · maintainer-machine key
+concentration · whether field units should be remotely readable at all.
 
-Read any result against **four** outcomes: B running · software-reset fault (recovers) ·
-watchdog stall (**empty capture is a fault the instrument cannot record**) · **clean protocol
-reject with no reset.** That fourth leg was missing from my tree until hive caught it.
+**Closed today:** g23, g26, g27.
 
-**If anything panics on the board as it stands, decode the location against the running build,
-not the branch tip** — comment line-shifts moved the panic-location bytes.
+## What did NOT advance, said plainly
 
-## Standing bars
+**The overnight directive — five capabilities as ensembles, and the OTA round-trip — is roughly
+where it was this morning.** Nine of ten scores still fail the grammar validator. The gate is
+**core's five-item schema change**, which sits behind the torn-persona fix.
 
-- **No identity write until two questions are answered** from code and from the device: which
-  path this build reads the persona from, and whether the offset the board *suggests* lies in
-  a region no partition claims. **The board's own console recommends the operation that
-  bricked D4** — fourth resurfacing of that hazard, first time the artifact itself is the
-  source.
-- **Provision only on an affirmative absent, or affirmative invalid with no valid identity.**
-  Silence means STOP (the check fails closed *silently*). A valid persona in a different trust
-  group means **stop and escalate** — never overwrite.
-- **Image B is air-delivered only.** No tool writes it to any partition; A stays as the only
-  known-good image.
-- **No NVS dump** — secret key material must not leave the protected boundary in plaintext.
-- **Any WiFi OTA must use the authenticated path.** The default wire is un-authenticated and
-  #d003 names WiFi as *the* ESP32-S3 OTA path, so it would have shipped.
-- The WiFi connect fix is **possible, not proven** — no station has associated on metal.
+**That ordering is a choice I made**: a defect that can lose a provisioned identity, ahead of the
+thing that was asked for. Worth re-examining rather than inheriting.
 
-## Open Roy gates
+## The pattern of the day, because it will recur
 
-**g25** (does the pre-release premise still hold, now that two divergent copies exist on real
-hardware — a deployment judgement, not a canon read) · **g23** · **g24 ruled by me pending
-review** · **g21** · **g8**. Plus: the **LED visibility check** under the piggyback (if hidden,
-a discrete LED stops being optional), the **two MAX485 hardware-history facts**, and whether
-to spend a build cycle on **attribution** rather than capability.
+**Eight gates that could not see their subject, across six lanes, every one of them green:** a
+schema catch-all absorbing what it should reject · a symbol matcher with no false-present guard · a
+build-feature block never parsed · a test asserting its own copy · a hygiene scanner whose paths
+excluded the ledger · a boolean that destroyed a distinction upstream · **a hardfail gate nothing
+invoked at push time** · and a header gate that **proved a row existed and never proved it was in
+the changelog.**
 
-## Method earned tonight — each paid for
+**Only one of those was fixed by a mechanism rather than another check**, and that is the one worth
+copying.
 
-1. **A complete pre-registration has four parts**: the prediction, what each outcome means,
-   **the instrument that will read it**, and **that instrument's blind classes.** You can
-   predict correctly and still misread the result, and nobody notices because the prediction
-   "held."
-2. **A pre-committed decision tree needs a leg for "rejected outside the hypothesis space"**,
-   or it converts a novel outcome into a familiar one — worse than no tree, because the tree
-   lends it authority.
-3. **Assert the rejection REASON, never merely the rejection.** We believed we were testing a
-   signer gate and were hitting a version check that fires first.
-4. **A permissive default is safe when DECLARED, never when INFERRED from absent data** — and
-   **canon permitting a value is not canon endorsing it for your artifact**; you need the
-   artifact-side fact too.
-5. **Presence AND absence at symbol level** for any placement or gating claim — show the
-   symbol that must be **gone**, not just the one that must be there.
-6. **Subtractive isolation without a forward control** finds a *sufficient* change, not the
-   cause. And **a proposed fix must be tested against the guard's purpose, not the symptom**:
-   I nearly deleted a security-gate guard on an untested diagnosis.
-7. **Same file is not same sweep.** Flipping a grant field silently removed the only record of
-   what the prior stage wrote.
+**The question to ask of any gate: what weaker question could this be answering while still
+returning green?**
+
+## My own errors, kept because the pattern is the finding
+
+I asserted a canon divergence that did not exist and broadcast it to three lanes · attributed a
+scanner defect to the wrong lane and could not pin it when challenged · called a finding fleet-wide
+when it was carrier-split and then time-split · **used *membership* as the criterion for *internal*
+three times after being corrected explicitly** · relayed a commit hash as a verification target
+without opening it · and **audited this repo for addresses and credentials while never checking the
+host-name class that turned out to be in the ledger, the gate index, and a filename.**
+
+**Every one was caught because a lane went and looked instead of taking the relay.** Two lanes also
+**refused an over-broad self-blame from me**, which is the harder direction and left the real defect
+visible.
