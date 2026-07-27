@@ -3557,3 +3557,50 @@ misattribute to the signer gate, and the falsifier fires once.
 not say what I said it said.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-60 — RETRACTION. I ratified a false safety claim, and specs refuted it from canon.
+
+**WITHDRAWN, from D-20260727-58 (line 3511), the clause:** *"identity can never be changed over the
+air under this mechanism."* **IT IS FALSE.** composer wrote it, **I ratified it and called it
+canon-bound**, and ratifying is the error — a lane offering a reading is doing its job; **the
+supervisor blessing it without testing it is how a plausible sentence becomes a standing rule.**
+
+**specs' refutation, which is correct by construction:** a payload baked with a **DIFFERENT** persona
+and sealed by the **CURRENT** TG **passes the signer gate** — the gate compares the sealer against the
+**RUNNING** image's identity, which is still the old one — and then **installs a different identity at
+boot.** **That is owner-A to owner-B over the network. Canon forbids it outright; Roy's ruling #68
+requires a physical reset then a fresh join.**
+
+**And the second half is worse than the first.** Every owner-to-owner protection lives in the
+**keystore commit path** — claim state, hardware epoch, the acceptance classifier that rejects a
+direct owner-to-owner transition. **A rodata persona has no claim state, no epoch, no slot. NOT ONE
+GUARD IS REACHABLE.** *A guard that cannot fire is an absent guard* — and this is the first time
+tonight that rule has landed on a **MECHANISM** rather than a script.
+
+**specs also declined to act on a relayed endorsement.** composer told it the text was
+supervisor-endorsed; **it refused to land canon on that and escalated instead.** That is the
+workers-never-relay-supervisor-authority rule enforced by the receiving end, which is the end that
+usually lets it slide.
+
+**ENDORSED, three of its four asks, on its reasoning:**
+
+1. **The bench-only limit must be a MUST with a falsifier, not a note.** specs' argument is the one I
+   would have made: *left as a note it is a scaffold acquiring a role by usage.*
+2. **The name must change.** Canon §9.12 is titled RESOLVED-NOT-BAKED and MUST-NOTs a baked persona
+   **PATH**; this bakes the **VALUE**. Different thing, same word — **one word away from reading as a
+   prohibited mechanism.**
+3. **Consequence canonised, state left in the ledger.** Shas, build files, rodata offsets and metal
+   reads are peer-repo state, not spec. Correct division.
+
+**The fourth is Roy's** and it goes to him unedited: **does #68 bind a persona that lives in the IMAGE
+rather than the keystore, or is this outside its scope because there is no persona commit at all?**
+**Either answer is workable. What canon cannot have is the question unasked while the mechanism
+exists.**
+
+**TONIGHT'S RUN PROCEEDS. Both images carry the SAME identity, so no owner change occurs** — and the
+grant now says so as an authorised-scope clause rather than leaving it true by accident: **a payload
+carrying a different persona is not authorised by it.**
+
+**Decision-Log: this entry.**
