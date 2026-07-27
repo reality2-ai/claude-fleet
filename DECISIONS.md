@@ -4364,3 +4364,36 @@ it** (directory verified restored to 2 files). **It was another lane's path and 
 for first.** Recorded rather than left unmentioned.
 
 **Decision-Log: this entry.**
+
+### D-20260727-77 — board captures get a durable archive; and until they do, no brief may cite one
+
+**hive raised a standing gap after the thread converged, flagged rather than requested, and it
+generalises well past tonight's bug.**
+
+**THE INVERSION THAT MAKES IT URGENT — hive's, and the best thing in the thread: THE BROKEN INSTRUMENTS
+SAVED US.** Three consecutive tooling failures forced attention onto the denominator. **Had the search
+worked first time, it would have returned a fast, clean, CONFIDENT null over a corpus of two files —
+and it would have been believed.** *An instrument failure is loud; an empty corpus is silent.* **The
+dangerous null is the one that comes back quickly and cleanly**, because nothing about it invites the
+question *what did you actually search?*
+
+**THE GENERALISATION:** this is not about one firmware string. **Any retrospective question about board
+behaviour is currently unanswerable** — *did this board ever do X, when did Y start, what did Z print
+before the reflash* — because captures do not survive their session. **The asymmetry is what makes it
+urgent rather than tidy: a LIVE board can be measured; a REFLASHED one cannot be asked about its past
+at all.** Boards are reflashed weekly. **Every reflash is a permanent loss of answerable history.**
+
+**DECIDED (supervisor policy call, hive explicitly deferred it): board captures PERSIST OUTSIDE session
+scratchpads — a durable per-board capture directory, APPENDED to, never recreated.** Cheap, no protocol
+impact, and it converts *unanswerable in principle* into *grep it*. **Owner: composer** (bench and
+capture tooling). **Queued as task #10 for the morning, NOT started tonight** — new work at this hour
+with nothing pressing on it, and composer is under a nothing-touches-a-board order.
+
+**AND THE OTHER HALF BINDS IMMEDIATELY, COSTS NOTHING, AND PREVENTS THE RECURRENCE — hive's framing
+adopted verbatim as standing posture: EITHER FIX THE ARCHIVE OR STOP CITING IT.**
+
+> **NO BRIEF, LEDGER ENTRY OR REPORT MAY CITE A LOG ARCHIVE AS IF ONE EXISTS.** Until one does,
+> retrospective device questions are answered by **MEASURING HARDWARE** or marked **UNANSWERABLE**.
+> *"The logs show no X"* is not a weak claim — **it is not a claim at all.**
+
+**Decision-Log: this entry.**
