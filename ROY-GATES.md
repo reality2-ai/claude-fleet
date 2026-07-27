@@ -12,7 +12,7 @@ it into claude.ai.
 syntax is at the bottom of every brief.
 
 ---
-**4 open.** Ordered by what is blocked, not by number. Each links to a brief with the
+**3 open.** Ordered by what is blocked, not by number. Each links to a brief with the
 argument, the options and the ruling syntax.
 
 ### Blocking a lane right now
@@ -31,11 +31,15 @@ argument, the options and the ruling syntax.
    harm in showing the decisions made and why."* The defect was never publication — it was that
    **operational values rode along with the reasoning.** Scrub landed in both lane trees and in this one;
    the coverage that scans the ledger paths is now **enforcing by default** rather than remembered.
-4. ~~Force-push authorisation.~~ **Not needed — you ruled forward-only.** History keeps what was published.
-   **Which leaves exactly one thing in g23 that no lane can close: rotate the bench network credentials.**
-   The name and passphrase were on a public ref for months; **deleting them changed nothing, changing them
-   makes every published copy worthless.** Everything else in the scrub did real work; this is the item
-   where the remedy is on the network, not in a repo.
+4. ~~Force-push authorisation.~~ **Not needed — you ruled forward-only.**
+
+**g23 IS CLOSED.** *"The bench wifi can be rotated. It's only a temporary thing anyway."* — the credentials
+are rotatable and the network is short-lived, so the disclosure has a natural end. Everything structural
+landed: **three trees scrubbed** (both lane repos and this one), **one self-announcing token convention**
+fleet-wide, **coverage enforcing by default** rather than remembered, **exemptions declared by name** with
+their reasons, and the last value-dependent check moving to where the values actually live.
+*Residual, stated at true size: a forward-only scrub does not un-publish, so anything already cloned
+persists — bounded here by the network being temporary, not by the scrub.*
 
 **Three architectural items open, none blocking a lane:** the **ring-signature vs no-global-roster
 conflict** (two canon documents disagree; specs reported rather than picked, because the obvious weakening
