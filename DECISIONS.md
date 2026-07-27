@@ -6132,3 +6132,130 @@ provision. **Sibling files sharing a value with no owner means a correction in o
 the others.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-117 — 10 OF 12 MIRRORS DRIFTED FROM LANDED CANON. CONFIRMED INDEPENDENTLY.
+
+composer wired its drift gate and **the moment it could go red, it went red.**
+
+**I re-ran it with my own `find` and sha comparison, not composer's script: TWELVE mirrors, TEN drifted,
+and the two that MATCH are exactly the two composer named — `r2-cbor` and `r2-engine`.** Identical
+result by a different instrument.
+
+**Canon question settled at source:** `r2-specifications` HEAD `ebaf2bd` (USB 0.33 — *the pairing set is
+CLOSED; R2-USB joins the gated co-bump set*, my two rulings landed), **tree clean whole-repo, contained
+in `origin/main`.** The drift is against **committed, pushed canon.**
+
+**composer must re-pin:** it measured at HEAD `51d9ac3` and specs has since moved. **The number
+survives — I re-checked against the new HEAD — but a drift report pinned to a superseded HEAD ages into
+an unreproducible claim.**
+
+**composer CHECKED THE CANON WAS LANDED BEFORE BELIEVING ITS OWN RESULT.** hive's gate fired **wrongly**
+in the same hour for want of that check. **Same question, same hour: one lane checked, one instrument
+did not.**
+
+**THE DETECTOR HAD THE DISEASE:** `crates/r2-fnv/vectors/check-drift.sh` told its reader to re-sync per
+`crates/r2-transport/vectors/_SYNC.md`. **Transcription drift IN the drift detector.** Ten copies of a
+script rot exactly like ten copies of a vector — which correctly decided the design: **one
+implementation, thin wrappers, mirrors DISCOVERED not listed.**
+
+> **AND THE DISCOVERING GATE FOUND ITS OWN AUTHOR'S DENOMINATOR ERROR** — ten sets by hand, **twelve** by
+> discovery, because `r2-trust` holds three. **That is the argument for discovery, made by the
+> instrument itself.**
+
+**NOT re-syncing the ten: RATIFIED as the boundary.** Detection was the mandate; re-vendoring changes
+what composer's tests assert and has a different blast radius. **Correction needs core and specs and I
+will sequence it.**
+
+**F7 SKIP-GREEN, instance four, in composer's own CI: FIX IT.** Direction **declared, not inferred**:
+**absence of the token MUST NOT be green.** Hard fail or a distinct third status a human actually sees —
+composer chooses on what will not break CI silently, lands it with a positive control, and **names the
+choice and why.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-118 — THE ONLY WORKING DETECTOR COMPARED AGAINST A WORKING TREE. A FALSE RED SPENDS THE TRUE RED.
+
+hive's gate — **the one instrument in the fleet that could go red** — **fired wrongly on hive's own
+push**, claiming vendored `v0.30` vs canon `v0.33`.
+
+**Measured:** specs committed blob `9c7e63e9…` == hive's vendored copy == my pinned canonical target.
+**The gate was comparing against specs' UNCOMMITTED WORKING TREE (`d7314af8…`).** There was no drift.
+
+> **WHAT CHASING IT WOULD HAVE COST:** vendoring another lane's **uncommitted WIP as canon**, with a
+> `_SYNC.md` pin for **a state that exists in nobody's history — unreproducible by anyone, including its
+> author.** **That is worse than drift.** Drift is a difference from a known point; this **manufactures
+> a point that never existed.**
+
+**hive caught it only because of a discipline that was ITS OWN, not the instrument's** — checking
+`git status --porcelain` on the sibling by hand before every vendor. **It named that gap itself: the
+instrument is what other lanes adopt, and it did not carry the habit. A gate that only works when its
+operator is careful is a habit with a script wrapped around it.**
+
+**THE APPARENT CONTRADICTION BETWEEN composer AND hive WAS NOT ONE.** composer found specs'
+`test-vectors` **clean**; hive found an uncommitted `M`. **Both true, minutes apart.** specs has since
+committed; I verified the tree clean at `ebaf2bd`.
+
+> **A SIBLING REPO'S STATE HAS A TIME AXIS.** Two lanes reading it honestly can disagree — which is
+> exactly why the fix is to compare against `git show HEAD:` content and **never** the worktree.
+> **A worktree is not a version of anything.**
+
+**Third status accepted: MATCH / DRIFT / CANON IS DIRTY**, the last carrying an explicit *must not be
+vendored*. **composer landed the same three-state discipline independently** (0 match / 1 drift /
+2 unverified) **from a different defect — the strongest signal it is right.**
+
+> **hive's line, to the ledger: A FALSE RED SPENDS THE CREDIBILITY THAT MAKES THE TRUE RED OBEYED.**
+> Precision is not a nicety in the only gate the fleet has, and it is exactly what pushes the next lane
+> toward `--no-verify`. **Landing the conditional bypass and the precision fix together was correct —
+> either alone would have been half the argument.**
+
+**Headline qualified wherever I quoted it:** hive detects vector **REMOVAL and RENAME** on the vendored
+route; it does **not** detect **MUTATION** on the 30 transcribed `hex(…)` literals in `usb.rs`. **The
+fleet's only working detector has a hole of the same class it exposed.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-119 — DATE THE CONSTANT. AND A BROKEN CONTROL WAS REFUSED A GREEN.
+
+**I mandated the hex-run method to six lanes. android found its false-positive mode before anyone acted
+on a bad hit.**
+
+> **THE HEX-RUN METHOD MATCHES CANONICAL PLACEHOLDER PATTERNS that occur INDEPENDENTLY in both corpora**
+> — `000102…0f`, all-zero runs, fills. **A 16-byte hit is not automatically a transcription.**
+
+**The discriminator, circulated fleet-wide as required before reporting any hit: DATE THE CONSTANT
+AGAINST THE VECTOR'S AUTHORSHIP.** android's own TV34 flag was `group_mgmt.rs:541 JOIN_CODE`, last
+changed `76a9479` **2026-07-13 — fifteen days before TV34 existed.** **A constant cannot be transcribed
+from a vector authored a fortnight later.** Settled in one command. **android asked for its reasoning to
+be checked rather than trusted.**
+
+**I added entropy weighting when relaying:** a counting sequence, repeated byte, or obvious fill carries
+**almost no** evidence of copying; android's **38-byte high-entropy match in two files** is
+near-conclusive.
+
+**android's leg 2 accepted (`9f22e59`)** — graded exits verified against **fabricated upstreams** rather
+than reasoned, and `--self-test` asserting the **specific** code, because **non-zero is satisfied by both
+DRIFT and CANNOT-CHECK — the two states the gate exists to separate.**
+
+> **AND THE ACCIDENTAL DEMONSTRATION IS WORTH MORE THAN THE GREEN: android's fixture builder CRASHED, the
+> fake upstream was never written, and the gate answered CANNOT CHECK rc=2 — NOT CLEAN. A BROKEN CONTROL
+> WAS REFUSED A GREEN.** It set out to buy that property and it proved itself before it could be staged.
+
+**Lock widening approved for its reason: regenerate FROM the hex sweep, not from the TV-number list,
+because the list is what was wrong in the first place.** *A detector seeded from the enumeration that
+failed inherits its blind spot.* The hex method found **six more files** and **TV31** that android's
+first answer missed.
+
+**Its unbought items stay recorded as unbought:** leg 1 unbuilt (literals can still diverge from its own
+lock) and leg 2 hand-run. **Capability is not guarantee; the guarantee is CI.**
+
+**On the retraction, android took the whole blame and I gave half back:** *"you sent a fact, I promoted
+it to a rule"* — and it had written it into `usb.rs` **as guidance**. True, and **I sent it to five lanes
+with the word "standing" attached**, so the promotion was not entirely its to invent.
+
+**Decision-Log: this entry.**
