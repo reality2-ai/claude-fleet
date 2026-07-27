@@ -3835,3 +3835,42 @@ editing a live grant to fix a citation's wording risks more than it repairs.** R
 rather than left as an omission. **Wording corrected in the morning.**
 
 **Decision-Log: this entry.**
+
+### D-20260727-65 — the #68 exposure statement, and why the blend is not a control
+
+**specs' actor-enumeration is the finding, and it outranks all three options.** Asked whether a blend
+of (A) and (B) survives, it tested each layer by **WHICH ACTOR IT STOPS** rather than by what it checks:
+
+- **No TG key** — gate 4 already rejects. Both layers irrelevant.
+- **Honest release path shipping the wrong artefact by mistake** — both layers stop it.
+- **Holder of the TG signing key, hostile** — **(B) is bypassed (they never touch the release path);
+  (A) is defeated in one step.**
+
+**ONE PAYLOAD DEFEATS BOTH: a single image that changes the persona AND replaces the applier.** (B)
+never sees it; (A) is removed by the same operation it exists to stop. **The two holes are not
+complementary — THEY ARE THE SAME HOLE FROM TWO ENDS.** Layers whose holes coincide are not defence in
+depth; the stack has the strength of one.
+
+**⇒ (C), THE BLEND, IS DEFENCE AGAINST ERROR — NOT A CONTROL AGAINST A KEY HOLDER.** Worth having:
+most real incidents are mistakes, and it catches the wrong-artefact case twice. **It MUST NOT be
+recorded as closing the #68 exposure.** specs' words, adopted verbatim as policy: *"labelling a
+mitigation as security is how it becomes a believed control."* **A believed control stops anyone
+looking for the real one.**
+
+**SPECS RETRACTED ITS OWN COST WARNING, AGAINST ITSELF AND IN THE SUPERVISOR'S FAVOUR.** Its earlier
+*"a blend inherits (A)'s cost"* overstates: **R2-WIRE §9.12.1 owes the region descriptor
+INDEPENDENTLY of any of this**, so (A)'s marginal cost is only the comparison logic. **The blend is
+cheaper than specs said — it is its SECURITY VALUE that is small, not its price.** The earlier
+do-not-blend line does not stand unqualified: **right about the holes, wrong about the cost.**
+
+**WHAT GOES TO ROY, AND IN WHAT SHAPE.** (A) and (B) are judgeable now. **(C) is explicitly HELD** —
+it is the only option whose value turns on a fact still outstanding. **If an immutable stage exists on
+ESP32-S3**, (A) stops being one-generation, becomes a real control against a key holder, and (C) is
+strictly strongest. **If none exists**, (A) is one-generation *as a matter of fact on this silicon*,
+(C) stays error-defence, **(B) alone is nearly as good for less**, and the honest record is
+**"exposure open, mitigated against error."**
+
+**core's feasibility question stays ranked BELOW the three radio defects and was NOT re-ranked.**
+Tonight's blocker is the transfer, not the ruling.
+
+**Decision-Log: this entry.**
