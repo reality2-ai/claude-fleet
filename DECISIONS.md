@@ -4182,3 +4182,47 @@ regression as canon.** Standing question for any retroactive validator: **what d
 written correctly before it existed?**
 
 **Decision-Log: this entry.**
+
+### D-20260727-73 — hive argues against its own leg; the supervisor fails to establish the negative
+
+**hive verified both comment citations at `4b4a71e5` and sharpened the finding:** `RBK1` guards the
+**rollback DIAGNOSTIC** at `0x1E000`, while the **security floor** two sectors away is bare. **The
+guarded neighbour is the less critical record.**
+
+**AND IT ARGUED AGAINST ITS OWN DESIGN.** Tracing the writer: `ANTI_ROLLBACK_OFFSET` occurs exactly 3×
+(const `:8074`, read `:8080`, write `:8097`) — **one reader, one writer**, and `write_anti_rollback`
+has a single call site (`:4171`) reachable only through `New/PendingVerify → ota_health_check() →
+set_current_ota_state(Valid) → read_ota_pending()==Some`. **⇒ a legitimate legacy record can exist only
+on a board that COMPLETED a confirmed OTA.** hive therefore recommended **dropping its own legacy leg**
+— *"the best answer to 'a permissive default must be declared and argued' is to not need one"* — and
+conceded specs' point that its `0xFF`-tail test is **a shape heuristic, not authentication**, subject
+to exactly the criticism that condemned the reader.
+
+**SUPERVISOR RULING: drop the leg — but on the AUTHENTICATION concession, not on a global negative.**
+Tag-only is correct **even if legacy records exist**. A design must not rest on a negative nobody has
+established.
+
+**AND THE SUPERVISOR FAILED THE QUESTION IT TOOK.** hive correctly refused to assert a global negative
+from its own lane. The supervisor accepted it and **could not answer it — three instrument errors in a
+row, each returning EMPTY, and empty was the answer that would have justified removing a guard:**
+1. `grep … | head` with `$?` read as grep's — **it is `head`'s**; the rule banked an hour earlier.
+2. `timeout … command grep` — **`timeout` cannot exec a shell builtin**; `rc=127`, **the search never
+   ran** and printed nothing.
+3. Rerun with the real binary — **`rc=124`, timed out**, incomplete.
+
+**AND THE CORPUS WAS SELF-POLLUTING:** of 167 hits before the timeout, essentially all were **our own
+agent transcripts, paste-caches and file-history** — the search was finding the investigation, not the
+phenomenon.
+
+**⇒ THE PROXY WAS WRONG, NOT MERELY BROKEN.** *"Does the confirm string appear in logs?"* was never the
+question. **The question is whether any board's `0x18000` holds a valid record, and that is answerable
+directly: read D4's sector, same bounded shape as act 1b.** One measurement beats an unbounded grep
+over a polluted corpus. **Queued for morning; it needs a grant and Roy is asleep.**
+
+**Honest statement standing until then, and NOT to be upgraded: no legacy record has been observed
+anywhere, and no exhaustive search has succeeded.**
+
+**Net position: the DESIGN is settled (tag-only, on authentication grounds); the RESIDUAL RISK of a
+downgrade window is NOT settled and waits on D4's sector. Two separable questions, one answered.**
+
+**Decision-Log: this entry.**
