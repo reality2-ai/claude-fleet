@@ -3515,3 +3515,45 @@ mechanism.** That belongs in the OTA canon.
 many words. **The grant covers the cable write; the air push follows on my order.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-59 — I asserted authority the instrument refused. The operator held on the file.
+
+**I told composer, in a message, that the grant covered the cable write and the air push. The grant
+FILE refused both in as many words:** *"No OTA push. No image write. That is STAGE 2 and it does not
+exist yet."*
+
+**composer read the file, not the message, and held.** It also named the mechanical consequence I had
+not worked through: **the flash gate binds the artifact SUBSTRING**, so a baked-image invocation would
+not contain the bootstrap grant's token and **the gate would have denied the write regardless of my
+intent.** The file was stale against the `baked_persona` pivot — it never named a cable mechanism at
+all.
+
+**This is the error I have been ruling against all evening, committed by me, one day after ratifying
+the rule.** *A ruling is not an artifact.* I ruled that the mechanism had changed, and then behaved as
+though the instrument had changed with it. **The instrument moves when someone edits it.** This entry
+and the rewritten file are the retraction reaching the artifact.
+
+**The rewrite fails closed BY ITS CONTENT, not by the operator's restraint:**
+
+    artifact=PENDING-HIVE-DIGEST-DO-NOT-MATCH
+    sha256=0000…0000
+
+**A token no invocation can contain, and a zero digest.** An empty field or a plausible token could
+mechanically authorise something. **A grant awaiting a digest must fail closed on its face.**
+
+**Two refusals stated because the loopholes are adjacent:** the supervisor fills those fields, never
+the operator — *the flasher is not the granter* — **and the operator must not RENAME an artifact to
+fit the field, because renaming a file to satisfy a gate IS completing the grant field wearing a
+different hat.**
+
+**Act 2 is pinned now** (payload digest + signer, air-only) **and VOID unless the positive control
+between the acts passes** — the board's hive id must stop being the MAC-derived fallback. **If it does
+not change, act 2 is not authorised at all**, because a delivery would then fail for a reason we would
+misattribute to the signer gate, and the falsifier fires once.
+
+**Roy authorised both acts explicitly. The block was never permission — it was that the instrument did
+not say what I said it said.**
+
+**Decision-Log: this entry.**
