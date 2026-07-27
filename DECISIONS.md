@@ -3662,3 +3662,65 @@ can override; **the finding is on the table BEFORE the irreversible write, which
 flagged it for.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-62 — THE SINGLE-VARIABLE PROOF LANDED. reason=4 was a board that did not know who it was.
+
+**Same payload bytes. Same signer. Same bearer. Same tool. The rejection moved from reason 4
+(UnauthorizedSigner) to reason 6 (StaleSeq).** The only difference between those two attempts is the
+identity baked into the running image.
+
+**So the weeks-long rejection was never a protocol mystery.** The receiver compares the sealer against
+the RUNNING image's trust group; the board's was zeros. **No non-zero signer could ever have matched.**
+
+**And reason=6 is a better result than a pass would have been at this stage** — it proves the receiver
+enforces **in order**: signer first, then anti-rollback. **A receiver that accepted a stale sequence
+would itself have been the finding.**
+
+**What is now proven end to end:** a persona compiled into an image → written over USB → **appearing on
+the board as the EXACT expected value, not merely a changed one** → that identity carrying a signed
+delivery **past the gate that had refused everything.**
+
+**What is NOT proven, and must not be reported as if it were: NOTHING HAS TRANSFERRED A BYTE.** Every
+attempt has been refused at the header. **The chunk stream has still never run.** The board is
+untouched throughout — rejection happens before the target slot is opened.
+
+### The sequence probe, and why it stopped
+
+**The board hides its own anti-rollback value** — verified across every surface rather than one:
+console health carries a different sequence; a device report that emits it **has no call site**; the
+reject path reads it and never prints it; there is no query verb; the boot print fires only after an
+apply. **That is what earns the word HIDDEN.**
+
+**So composer probed: ascend one at a time, the first acceptance is current+1 by construction.** I
+verified the claim that made it safe rather than accepting it — **`write_anti_rollback` has exactly
+one call site in the file**, inside the confirmed-boot path, unreachable from a rejected header.
+
+**I added the constraint that the search must be LINEAR, and the reason generalises: an ACCEPT IS NOT
+A PROBE RESULT YOU CAN DISCARD — IT STARTS THE TRANSFER.** A binary or exponential search that
+overshoots and is accepted delivers at an inflated sequence, which becomes the permanent floor.
+**Linear ascending is the only search whose first acceptance is the value you wanted.**
+
+**It ran to 39 and then the cost model changed: ~40 rapid connect/disconnect cycles left the board NOT
+ADVERTISING.** The probe was zero-risk while its only cost was time; **once it began degrading the
+transport the transfer needs, the same procedure became a bad trade.** I overrode my own stop-at-60
+threshold early — **not because the ladder was wrong when chosen, but because its price changed.**
+
+**Replaced with ONE bounded read of the floor's single sector, length chosen so it stops exactly at the
+next reserved region.** It also **restores advertising as a side effect**, because the read enters and
+exits through the tool's own reset. **One operation, two blockers.**
+
+### Findings banked on the way
+
+- **The beacon identifier rotates on a clock the board does not have.** A clockless board cannot be
+  discovered by a wall-clock pusher — **ever.** Escalates to core/specs; tonight is bypassed by
+  addressing the board directly, and **a bypass is not a fix.**
+- **The idle watchdog did not restore advertising within nearly twice its own interval**, confirmed by
+  two independent signals (absent from a scan AND from the console), so it is not a missing log line.
+- **A device-report emitter that would have answered the whole question exists and is never called.**
+  *An unreachable emitter is the same class as an unreachable guard.*
+- **A recorded floor-commit line exists in the archive and belongs to a different board.** Right shape,
+  wrong subject. **Said plainly rather than pressed into service.**
+
+**Decision-Log: this entry.**
