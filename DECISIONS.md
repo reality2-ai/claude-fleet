@@ -4900,3 +4900,54 @@ artifact; the check has to be RUN, on each artifact, deliberately.** composer ra
 unprompted, which is how this one was found.
 
 **Decision-Log: this entry.**
+
+### D-20260728-88 — the diagnostic never ran; census landed with a denominator
+
+**core delivered, did not reopen the design, and found the reason nobody ever saw this defect.**
+`core edf5cc61` + `firmware 669e9bbe`, pushed, ahead=0.
+
+**THE DIAGNOSTIC WAS NOT LAST ON THE LIST — IT DID NOT RUN AT ALL.** Every `read_anti_rollback` call
+site is **conditional**: the confirmed-boot handler (only on `ota_state` New/PendingVerify), the
+otaengine apply, and two OST handlers. **A board that never receives an OTA never read the sector.**
+
+> **Silence meant ERASED or UNAFFECTED or NEVER-OTA'd or NEVER-READ. Four states, one observation, no
+> denominator.** The same shape as an unreachable emitter, and the reason the population question was
+> unanswerable rather than merely unanswered.
+
+**`anti_rollback_census()` — UNCONDITIONAL, one line per boot, every class, placed ABOVE the
+field-inert loop** (which never returns) **so never-provisioned boards are counted too. The denominator
+is boots observed.** Read-only.
+
+```
+r2-dfr1195: ARB-CENSUS class=AUTH|ERASED|FOREIGN|READFAIL off=0x18000 raw=<32 hex> seq=<n> floor=<n>
+```
+
+**`raw=` IS THE POINT, AND IT BREAKS THE ONE SHARED MODE THAT CAN BE BROKEN FROM SOURCE.** Emitting the
+16 record bytes lets a later reader **re-classify without this firmware** — retiring the classifier as
+a common mode across every board we have read. **core explicitly does NOT claim this breaks
+operator / tool / bounds, and states "I claim no independent point."** That restraint is why the claim
+is usable.
+
+**`class=` comes from a shared `RecordClass::census_token()` pinned by
+`census_tokens_are_stable_field_identifiers`** — because **a drifted token would read as a zero count,
+which is exactly the answer the census exists to distrust.**
+
+**AND THE WITHDRAWN PHRASE WAS LIVE IN SHIPPED SOURCE, not only in ledgers.** `anti_rollback.rs`'s
+module doc said *"two independent points."* **Corrected in place at `edf5cc61`, not merely superseded.**
+*A retraction reaching code comments is the one nobody sweeps* — three artifacts carried this phrase
+(composer's public write-up, this ledger, and shipped source) and each was found by a different party
+running the same check on their own work.
+
+**SCOPE STATED WITH THE NULL, correctly: the census CANNOT show the population is non-empty. It makes
+non-empty REPORTABLE for the first time.** `FOREIGN` also covers a torn write; `READFAIL` is its own
+class and is **never** folded into `ERASED`.
+
+**Verification: `r2-update` 104/104 host; firmware compile-clean on xtensa across four feature sets
+(fakesensor, fakesensor+otal2cap, field+fakesensor, field) with NO dead-code warning in any** — which
+is the control that proves the call is **live in each**, not merely present. **No board touched; no
+census line has been seen on metal.**
+
+**⇒ THE NEXT CABLE WRITE TO X1 NOW CARRIES THREE THINGS:** the record-validity fix, the first census
+line, and (if Roy takes the firmware route) the `SECURE_BOOT_EN` print. **One flash, three results.**
+
+**Decision-Log: this entry.**
