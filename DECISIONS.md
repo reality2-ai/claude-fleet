@@ -4397,3 +4397,38 @@ adopted verbatim as standing posture: EITHER FIX THE ARCHIVE OR STOP CITING IT.*
 > *"The logs show no X"* is not a weak claim — **it is not a claim at all.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-78 — D4 sector read granted; X1 grant archived rather than appended
+
+**Roy authorised the D4 read this morning.** Grant written, `.fleet/flash-authorization` **replaced**,
+not appended.
+
+**WHY REPLACED — A MECHANICAL HAZARD IN THE GATE ITSELF.** `_hs_authorized()`
+(hooks/auto-approve.sh:671) parses the **whole file** with a `while read` loop, so **the LAST
+`target=` wins.** A D4 clause appended below the X1 header would not have *added* a target — it would
+have **silently retargeted the X1 grant.** Two targets cannot coexist in this file, and that is worth
+knowing before anyone tries. X1's grant archived **byte-identical** (verified: a single sha256 across
+both files before the rewrite).
+
+**Act 2B is SUSPENDED, NOT REVOKED** — a live decision to be re-issued once core's fix lands. Act 2R
+was conditional on an applied image; none was applied, so it is moot. **Nothing was spent under the X1
+grant except acts 1 and 1b.**
+
+**NO `sha256` FIELD, and the reason is stated in the grant: a read cannot pin the digest of its own
+output.** The artifact does not exist until the operation runs. The gate treats the field as optional
+and logs `unrecorded`. **Pinning a digest nobody can know would be decorative — the exact defect this
+file already carries two lessons about.** Digest is reported after, never asserted before.
+
+**PREDICTIONS RECORDED BEFORE THE READ, all three informative:** (a) foreign/app data as on X1 ⇒ the
+defect is systemic; (b) entirely `0xFF` ⇒ never written; (c) **eight non-`0xFF` bytes then `0xFF` to the
+end ⇒ A LEGITIMATE LEGACY RECORD EXISTS**, the downgrade window is real, and a migration provision
+becomes mandatory. **(c) changes the fix, and it differs from (b) by exactly eight bytes** — composer
+instructed to count, and to say so plainly if the shape is a fourth one rather than force it into the
+nearest class.
+
+**THE CAPTURE LANDS IN A DURABLE PER-BOARD DIRECTORY — first application of D-20260727-77.** And that
+path is what lets the handle appear in the command **honestly**: the gate requires the invocation to
+name both artifact and target, and a per-board capture directory supplies `D4` without inventing a
+token to satisfy the matcher.
+
+**Decision-Log: this entry.**
