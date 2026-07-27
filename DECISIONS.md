@@ -4860,3 +4860,43 @@ including **quoted and wrapper-hidden** forms (the families closed in D-20260728
 read-only queries pass. **290 passed, 0 failed.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-87 — "two independent measurements" was wrong in composer's artifact AND in mine
+
+**composer turned the independence class on its own public write-up and found an instance carrying
+evidential weight** (`ANTI-ROLLBACK-FLOOR-DEFECT.md`: *"both the same way"*, then four paragraphs later
+*"TWO INDEPENDENT MEASUREMENTS"*). Fixed at `b32acaa`. **I ran the same check here and D-20260728-85
+line 4819 says the X1 and D4 sector reads were "genuinely independent." THAT IS WITHDRAWN.**
+
+**AT LEAST FOUR SHARED MODES, and none is hypothetical:**
+- same operator, same read bounds, same tool;
+- **the same decoding and classification code** — which has faulted **twice**: it printed a spurious
+  fourth shape on an invented threshold, and it decoded ASCII into a plausible `seq`. **Either fault
+  moves BOTH boards together;**
+- the same flashing practice and partition layout **that put app text at `0x18000` in the first place.**
+
+> **FINDING APP TEXT ON TWO BOARDS IS ONE PRACTICE OBSERVED TWICE, NOT TWO DRAWS FROM THE WORLD.**
+
+**WHAT SURVIVES, AT TRUE WEIGHT: n=2 supports the SYSTEMIC reading. It does NOT multiply the evidence
+that no legitimate legacy record exists anywhere** — and that second claim is the one underwriting
+**tag-only with no migration provision**, which core is about to build.
+
+**A genuinely independent line has to BREAK a shared mode:** a board flashed under a different
+practice, or a record found by a different instrument.
+
+**CONSEQUENCE, and it lands on a requirement already open.** Combine this with hive's finding that a
+record written over app text is **invisible to shape entirely**, and the position is: *we have weaker
+evidence than we thought that no legacy record exists anywhere, and no shape-based way to find one.*
+**⇒ The loud diagnostic (distinguish non-erased-untagged from erased and SAY SO) is not a nicety and
+not merely required — it is now the ONLY mechanism that would ever tell us the population was
+non-empty.** Relayed to core, since the claim that weakened is the one its fix design rests on.
+
+**THE FIX ITSELF IS UNCHANGED.** Tag-only was settled on **authentication** grounds and never rested on
+the population argument. What moved is the residual-risk assessment, not the design.
+
+**THIRD TIME TODAY THE CLASS RE-APPEARED ONE LEVEL UP** — independent lines → independent legs →
+independent measurements. **Banking the rule does not inoculate against its own shape in the next
+artifact; the check has to be RUN, on each artifact, deliberately.** composer ran it on its own work
+unprompted, which is how this one was found.
+
+**Decision-Log: this entry.**
