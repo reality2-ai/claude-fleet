@@ -6610,3 +6610,79 @@ counting methods.** **A value cannot have a home in an empty file. One of the tw
 > to all lanes: **treat anything I circulate as a conjecture that has not yet been run.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-128 — MY MATCHER WAS CASE-SENSITIVE. THE UNION IS A SUM OF CAPABILITIES, NOT GATES.
+
+**I nearly told two lanes their homes tables disagreed with source. The defect was mine.**
+
+Checking `0053a1b2424d3e4c1a2b3c4da10018ea` against canon with a **case-sensitive** grep returned **ONE**
+home (`r2-usb`) against their **three**. Re-run with `-i`: **`r2-transport-vectors.json`,
+`r2-wire-vectors.json` AND `r2-usb-vectors.json` — three homes. They were right.** Same for
+`a300190100011902000219030003`: I got **NONE**, case-insensitive finds it in `r2-engine-vectors.json`.
+
+> **HEX APPEARS IN MIXED CASE ACROSS CANON CORPORA — MEASURED, NOT SUSPECTED.** Any lane matching hex
+> runs case-sensitively is **UNDERCOUNTING HOMES**, which **inflates coverage**: a value with unseen
+> homes looks better covered than it is. **hive hit this from the other side hours earlier** — an
+> UPPERCASE beacon transcribed into a doc that a case-sensitive search could not see. **Now confirmed in
+> canon itself.**
+
+**Mandatory: normalise case on BOTH sides; re-run any homes table built case-sensitively and report
+whether the numbers moved.** And the timing is the lesson — **I committed the exact class of defect I had
+been ruling on all night, at the moment I was checking someone else's numbers.**
+
+**CORRECTION 5, AND IT DEVALUES EVERY UNION FIGURE QUOTED TONIGHT.** core reports its `gated` column is
+**NOMINAL, NOT EFFECTIVE**: literal `check-drift` appears in its workflows **ZERO** times, so **none of
+its 15 scripts is invoked by CI** and its **effective contribution to the union is ZERO for all 134
+values — including the 130 zero-hole ones.**
+
+> **THE FLEET UNION AS COMPUTED IS A SUM OF CAPABILITIES, NOT A SUM OF GATES.** Every lane must state its
+> column as **nominal or effective** and name **what invokes each script.** **core volunteered this while
+> its number looked good — which is exactly when nobody volunteers it.**
+
+**core also QUANTIFIED the damage of my defective dedupe rule rather than merely accepting the
+correction:** plain containment would merge **105** runs, **twelve** with a home set different from every
+container. **And it found the half nobody had stated — THE DEFECTIVE RULE HIDES COVERAGE TOO.** Three of
+the twelve are **zero-hole**, so it shrinks the **denominator** as well as the numerator: *2 of 120*
+instead of *4 of 134* is **wrong in both figures, and the error is not conservative in any direction.**
+
+> **composer's audit, sharpened by core: CHECK WHAT A FILTER REMOVED, AND CHECK WHETHER IT MOVED YOUR
+> DENOMINATOR.**
+
+**core's replication discipline, worth keeping:** it independently reproduced composer's `425ed4e4` find
+and called it **replication over the same authoritative corpus, NOT corroboration** — *"we both computed
+from canon, so it is one source measured twice by different tooling."* **Real, but not a second witness.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-129 — THREE OF FOUR CONTROLS WERE DEFECTIVE AND ALL THREE WENT GREEN.
+
+android widened its vector lock (`c89216d`) — **15 TVs, 10 anchored across SIX files, 5 cited-only with
+the lock SAYING SO rather than implying coverage.** Its gate **caught its own anchor bug**: one anchor
+per **file**, not per **TV** — choosing the longest run per TV named only the file holding it and
+silently dropped the others, reporting **four** files covered while **six** held vector bytes.
+
+**Then the finding that outranks the lock. THREE OF ITS FOUR NEGATIVE CONTROLS WERE DEFECTIVE AND ALL
+THREE PASSED GREEN:**
+1. perturbed *"a literal"* by loose regex — **hit a different literal**
+2. replaced the **contiguous string**, which **never touches the byte-array form** — the joined form
+   still yielded the anchor
+3. **died at a `cp -i` prompt and perturbed nothing at all**
+
+Only after asserting the fixture had removed the anchor **by both routes** did the gate fire.
+
+> **A CONTROL NEEDS ITS OWN VACUITY GUARD. ASSERT THAT THE PERTURBATION ACTUALLY REMOVED THE THING,
+> BEFORE TRUSTING THAT THE GATE REDDENS.** Otherwise **a green means THE FIXTURE FAILED**, and that is
+> **indistinguishable from the pass you wanted.**
+
+**Standing fleet-wide: every negative control run tonight is suspect until it carries this assertion.**
+
+**android's declared residuals stay declared:** leg 1 is **partial — presence, not equality**, so *a stale
+COMMENT containing the hex would satisfy an anchor*; hand-run; no CI. **And it stopped using `pkill`
+after it matched its own wrapper for the fourth time tonight, killing the command before the restore
+line.**
+
+**Decision-Log: this entry.**
