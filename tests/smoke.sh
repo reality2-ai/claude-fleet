@@ -750,6 +750,109 @@ printf '\n### D-20260721-99 — test record\n' >> "$DECREPO/DECISIONS.md"
 git -C "$DECREPO" add DECISIONS.md; git -C "$DECREPO" commit -qm decision
 assert "a commit containing a decision record can publish" git -C "$DECREPO" push -q origin HEAD:refs/heads/master
 
+# --- 11b. pre-push GATE CONTROLS — error must not read as clean --------------
+# Each case FORCES a failure and asserts the gate reports ERROR, not PASS. A clean run over
+# a corpus proves nothing on its own: an errored scan produces no matches and therefore
+# looks exactly like a pass.
+#
+# INVOKES THE HOOK AS A SUBPROCESS with crafted stdin — CALLS PRODUCTION, never reimplements
+# it. A control that reimplements the rule tests its own copy: it stays green while the real
+# gate is broken, which is the same false-green it exists to catch.
+#
+# EACH CASE PERTURBS THE INPUT THE GATE ACTUALLY READS, and asserts the SPECIFIC refusal.
+# Measured while writing these: asserting only a NON-ZERO EXIT let the blob case pass while
+# the obj_type guard was disabled — the blob fell through to the enumerator guard and was
+# refused for a different reason. A control that cannot tell WHICH guard fired tests neither.
+section "11b. pre-push gate controls (forced failures)"
+GATEREPO="$TMP/gaterepo"; GATEREMOTE="$TMP/gateremote.git"
+git init -q --bare "$GATEREMOTE"; git init -q "$GATEREPO"
+git -C "$GATEREPO" config user.email t@t; git -C "$GATEREPO" config user.name t
+install -m 755 "$PPHOOK" "$GATEREPO/.git/hooks/pre-push"
+git -C "$GATEREPO" remote add origin "$GATEREMOTE"
+cp "$ROOT/templates/repo/DECISIONS.md" "$GATEREPO/DECISIONS.md"
+printf 'base\n' > "$GATEREPO/g.txt"
+git -C "$GATEREPO" add DECISIONS.md g.txt
+git -C "$GATEREPO" commit -qm $'base\n\nDecision-Log: none'
+_ZERO=0000000000000000000000000000000000000000
+
+# Drive the hook directly: stdin is `<local_ref> <local_sha> <remote_ref> <remote_sha>`.
+# MUST RUN WITH cwd INSIDE THE REPO. The hook calls bare `git`, so invoked from elsewhere
+# every sha is unresolvable and the obj_type guard fires for the WRONG REASON — measured while
+# writing this: case 1 refused, but as "points at a unknown object" rather than as a dead
+# enumerator. A control that lands on the wrong guard still goes green if it only checks the
+# exit code, which is why each case below asserts the SPECIFIC refusal.
+gate_run() {  # gate_run <local_sha> <remote_sha> -> sets _g_out/_g_rc
+  _g_rc=0
+  _g_out="$(cd "$GATEREPO" && printf 'refs/heads/master %s refs/heads/master %s\n' "$1" "$2" \
+    | .git/hooks/pre-push origin "$GATEREMOTE" 2>&1)" || _g_rc=$?
+}
+
+# 1) DEAD ENUMERATOR — perturbs the RANGE, which is what `git diff` reads to build the scan
+#    input. An unresolvable remote sha makes every enumerator fatal; before v7 that returned
+#    an EMPTY added-set and the push reported CLEAN.
+gate_run "$(git -C "$GATEREPO" rev-parse HEAD)" deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+if (( _g_rc != 0 )); then ok "gate refuses an unscannable range (dead enumerator)"; else no "gate refuses an unscannable range (dead enumerator)"; fi
+case "$_g_out" in *"could not enumerate"*) ok "refusal names the enumerator, not a generic failure";; *) no "refusal names the enumerator, not a generic failure";; esac
+
+# 2) NON-COMMIT REF — perturbs $local_sha, read by the obj_type guard. `git diff <blob>`
+#    exits 129, the error is swallowed, and the added-set comes back empty. refs/keep/* pins
+#    point at blobs, which is why this is reachable rather than theoretical.
+_g_blob="$(printf 'gate-control' | git -C "$GATEREPO" hash-object -w --stdin)"
+gate_run "$_g_blob" "$_ZERO"
+if (( _g_rc != 0 )); then ok "gate refuses a ref pointing at a blob"; else no "gate refuses a ref pointing at a blob"; fi
+case "$_g_out" in *"not a commit"*) ok "blob refusal comes from the obj_type guard specifically";; *) no "blob refusal comes from the obj_type guard specifically";; esac
+
+# 3) NEGATIVE CONTROL — the gate must actually REDDEN on a real finding. Cases 1-2 only prove
+#    it refuses; without this, nothing proves it CATCHES anything.
+# ASSEMBLED AT RUNTIME, NEVER WRITTEN AS A LITERAL. A positive-control fixture is by
+# construction the thing the gate blocks, so spelling it out here makes THIS FILE unpushable —
+# measured: the push refused on exactly this line. The fix is assembly, NOT a weakened pattern
+# and NOT a self-exemption for the test directory, either of which would blind the real gate.
+_g_kw='api'; _g_v1='ZmFrZVNtb2tl'; _g_v2='Q29udHJvbDEyMzQ1Njc4OTAxMg'
+printf '%s_key = "%s%s"\n' "$_g_kw" "$_g_v1" "$_g_v2" > "$GATEREPO/leak.txt"
+git -C "$GATEREPO" add leak.txt
+git -C "$GATEREPO" commit -qm $'leak\n\nDecision-Log: none'
+_gate_leak_rc=0
+git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || _gate_leak_rc=$?
+if (( _gate_leak_rc != 0 )); then ok "gate blocks a hardcoded secret assignment"; else no "gate blocks a hardcoded secret assignment"; fi
+git -C "$GATEREPO" reset -q --hard HEAD~1
+
+# 4) DENOMINATOR ON THE PASS PATH — a clean scan and an empty-range scan were visually
+#    identical before v7: exit 0, no output. The count must state its own EXCLUSIONS too, or
+#    a FILTERED scan reads as a COMPLETE one (the sample-reported-as-clean defect the range
+#    cap was rewritten to prevent).
+printf 'ordinary\n' >> "$GATEREPO/g.txt"
+git -C "$GATEREPO" add g.txt
+git -C "$GATEREPO" commit -qm $'ordinary\n\nDecision-Log: none'
+_gate_pass_out="$TMP/gate-pass.out"; _gate_pass_rc=0
+git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >"$_gate_pass_out" 2>&1 || _gate_pass_rc=$?
+if (( _gate_pass_rc == 0 )); then ok "an ordinary commit still publishes (gate not over-tightened)"; else no "an ordinary commit still publishes (gate not over-tightened)"; fi
+has "clean scan states its denominator"  "$_gate_pass_out" "secret scan:"
+has "denominator names its exclusions"   "$_gate_pass_out" "excluded as vendored KAT vectors"
+
+# 5) THE DENOMINATOR IS ACCURATE, not merely present — a known number of added lines must be
+#    counted exactly. Worth having on its own: "prints a number" and "prints the RIGHT number"
+#    are different claims, and only the second makes the count usable for comparing runs.
+#
+#    ⚠ STATED LIMIT — THIS IS **NOT** A CONTROL FOR THE STDERR-CAPTURE FIX, and it must not be
+#    read as one. Measured: it passes identically against the pre-fix hook, because nothing in
+#    this scenario makes git write to stderr on success, so it cannot discriminate. The fix
+#    (capturing stderr separately) therefore ships REASONED BUT UNCONTROLLED — direction-safe,
+#    since a stray line can only cause a false BLOCK, never a false pass. Two approaches were
+#    tried and rejected rather than fudged: sourcing the hook to call enumerate_into directly
+#    (the hook exits early, which ends the sourcing shell), and forcing a git warning (only
+#    reachable via environment-specific config, and a fragile control is worse than a stated
+#    gap). If someone finds a portable way to make an enumerator warn on success, this is the
+#    case to extend.
+printf 'l1\nl2\nl3\n' > "$GATEREPO/count.txt"
+git -C "$GATEREPO" add count.txt
+git -C "$GATEREPO" commit -qm $'count\n\nDecision-Log: none'
+_gate_cnt_out="$TMP/gate-count.out"; _gate_cnt_rc=0
+git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >"$_gate_cnt_out" 2>&1 || _gate_cnt_rc=$?
+if (( _gate_cnt_rc == 0 )); then ok "a known-size commit publishes"; else no "a known-size commit publishes"; fi
+_gate_lines="$(sed -n 's/.*secret scan: [0-9]* files, \([0-9]*\) added lines.*/\1/p' "$_gate_cnt_out" | tail -1)"
+if [ "${_gate_lines:-x}" = "3" ]; then ok "denominator counts exactly the added lines (3)"; else no "denominator inaccurate (expected 3, got '${_gate_lines:-none}')"; fi
+
 # --- 12. git-hook installer + drift check ------------------------------------
 # The hooks drifted for weeks because NOTHING installed or checked them. These cover the
 # installer (idempotent, preserves foreign hooks as chained *.local files) and the drift

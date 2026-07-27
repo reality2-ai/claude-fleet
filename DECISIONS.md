@@ -3724,3 +3724,66 @@ exits through the tool's own reset. **One operation, two blockers.**
   wrong subject. **Said plainly rather than pressed into service.**
 
 **Decision-Log: this entry.**
+
+### D-20260727-63 — baked-B produced, the delta accounted for, act 2B granted
+
+**Roy produced `x1-otav3-B-baked-app.bin` himself** (857104 B, sha256 `965419ba…ac5d`) after the
+firmware gate refused the supervisor's `save-image` call. **The gate was NOT worked around.** Wrapping
+the call in a script would have hidden the subprocess from the hook — the exact bypass filed earlier
+tonight — so it was escalated in the form the gate demands (artifact, target, authority, reason) and a
+human ran it. **Third manifestation of the over-match defect: a pure offline file conversion, no board,
+no port, no write, and the gate cannot tell.**
+
+**The ELF→bin recipe was already solved and nobody knew.** Roy pointed at `r2-workshop`;
+`tools/build-firmware.sh:203` has carried the invocation, and `docs/esp32-firmware-build-reference.md:50`
+both espflash-version gotchas, for some time. **Cost of not grepping a sibling repo first.** Verified
+by arithmetic that neither gotcha bites this table (`0x3E0000` fits the 4 MB default; `0x1E0000` slot
+against an ~857 KB image), so `--flash-size` was unnecessary — **checked rather than copied.**
+
+**THE GRANT WAS HELD ON AN UNEXPLAINED NUMBER, AND THAT WAS RIGHT.** `cmp -l` gave 121599 differing
+bytes (14%) and +16 B against a supposedly comment-only delta. **Neither "a handful" nor "~99%".**
+hive accounted for it in full: +16 B seg0 growth shifting the file, plus wholesale **relocation** of
+unchanged `.rodata`. Segment-aligned: 63251. **2511 differing `.text` words, ALL pointers, ZERO
+instruction words.** String sets identical bar compile time and build id; 118 line-number `u32`s
+shifted with mode `+8`, matching the commit's net `+8` lines.
+
+**Banked as a rule: A TWO-HYPOTHESIS TEST CAN EXCLUDE THE TRUTH.** "Neither A nor B" is a statement
+about the hypothesis LIST, not the world. Correct default is *"I am missing a hypothesis"*, not
+*"something is wrong."* **The hold was right; the framing overreached.**
+
+**What actually settled it was a direct measurement, not the argument.** The 336-byte persona window
+was extracted from **both** files by the supervisor and hashed: `243ab040…426e` in each (A `0xa904`,
+B `0xa950`, delta = relocation). **A byte-count argument could never have closed that question in
+either direction.** Also verified independently: B's `app_elf_sha256` at file `0xB0` equals the
+attested ELF exactly, binding payload to ELF with no assumed link.
+
+**hive's binding claim was TRUE at an address it cited WRONG** — it quoted `0x90`, the struct-relative
+offset; `0x90` absolute is `version[32]` = "0.0.0". Checking at the stated address briefly looked like
+a refutation of a true claim. **Verify the claim; when the address fails, locate the field before
+concluding.**
+
+**⇒ IDENTITY IS PRESERVED, SO THIS IS A FIRMWARE RELOAD, NOT A RE-PERSONA.** R2-DEVICE-LIFECYCLE §6.2
+permits it. **Had the window hashes differed by one byte, §6.2 would forbid the delivery and no grant
+could authorise it** — which is why the check ran before the grant was written.
+
+**GRANTED:** act 2B (air delivery of baked-B, one dial at `current_seq + 1`, one transport retry, a
+second gate rejection is a finding not a reason to try another number). **Act 2's unbaked payload
+`70619b6d…4012` RETIRED UNSPENT** — it would have left the board identity-less and therefore
+un-OTA-able, forcing a cable recovery; still a legitimate future experiment under a fresh grant.
+
+**ALSO GRANTED: act 2R, conditional recovery**, so an unattended board is not stranded overnight.
+Single condition — image applied, board reset, **no HEALTH within 180 s**. Not a gate rejection, not a
+failed transfer. **And wait the full 180 s first: B installs to `ota_1`, A remains in `ota_0`, an
+unconfirmed boot should roll back by itself, and flashing over a self-recovered board destroys the
+evidence that rollback works.**
+
+**#68 READING, RECOMMENDED TO ROY, NOT YET RULED.** R2-DEVICE-LIFECYCLE §6.2 states preservation as an
+**invariant of firmware reload**. `baked_persona` makes the reload carry the persona, so a reload can
+now change it — a re-persona by network command from OWNER with no physical reset, which §6.2 forbids.
+**It is in scope; the "no persona commit at all" escape does not hold, because §6.2 forbids the
+TRANSITION, not a storage mechanism.** The real defect is that **nothing enforces it**: gate 4 checks
+the signer, never the payload's baked persona. Recommendation: conformant only where the blob is
+byte-identical to the installed one, with an apply-time refusal unless `claim_state == OPEN`. **Until
+that check exists the restriction lives only in the grant's scope clause — procedure, not mechanism.**
+
+**Decision-Log: this entry.**
