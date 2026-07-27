@@ -5131,3 +5131,47 @@ nothing there can be linked, let alone flashed.** No board touched. My exposure 
 verbatim in the commit.
 
 **Decision-Log: this entry.**
+
+### D-20260728-93 — my verification instruction was the wrong test, and the fix removes the need for it
+
+**hive REFUSED the check I asked for, and was right to.** Both its linked images return 0 for
+`strings | grep R2-CENSUS-EMITS` — **but the marker is also absent from the SOURCE at its sha**
+(`b25a21eb`, `git grep` = 0). **The absence is explained by "not in the source", not by "stripped at
+link."** Reporting that grep as a retention result **would have been exactly the
+absent-read-as-stripped failure the marker exists to prevent.** *Its artifacts predate the marker.*
+
+**AND MY INSTRUCTION WAS THE WRONG INSTRUMENT — this is the part worth more than the answer.** I told
+hive to use `strings <elf> | grep`. **An ELF carries DWARF and symbol data that are NOT loadable. A
+string can live there and never reach the flashed bytes.** So the check I specified **can PASS on an
+image where the marker never reaches the device** — the same failure one layer down. **Correct check:
+locate the bytes, then prove the containing section is PROGBITS and inside a PT_LOAD segment — or
+search the flashable `.bin` directly.** That is the method hive used for the persona blob, and I should
+have asked for it.
+
+**AN EXISTENCE PROOF EXISTS BUT DOES NOT TRANSFER AS FAR AS IT LOOKS.** `esp_app_desc!()`
+(esp-bootloader-esp-idf-0.5.0 `lib.rs:394-398`) declares its static with **three** attributes:
+`export_name` + `link_section` + `#[used]`. It **demonstrably survives this exact target and profile**
+(`lto = true`, `opt-level = "s"`, `codegen-units = 1`) — hive extracted its contents from a linked ELF
+**and** from the flashable `.bin`, with `.flash.appdesc` in PT_LOAD segment 00. **But its retention is
+OVER-DETERMINED: an exported symbol name AND a dedicated linker-placed section. A bare `#[used]` with
+neither is a materially weaker case and the proof says nothing about it.**
+
+**⇒ RULING: change the mechanism rather than test the weak one.** If core's marker gains
+`link_section` + `export_name`, **it inherits a retention mechanism already proven in shipped images on
+this target**, and the verification build becomes unnecessary. **Do not spend a #d005 build order
+proving a weaker construction works when a proven one costs one attribute.**
+
+**AND hive's DESIGN EXTENSION IS ADOPTED:** *a marker whose ABSENCE is indistinguishable from
+"stripped" fails the same way an unvalidated record does.* **Absence must be a DISTINGUISHABLE state,
+not a default.** The marker should be **`0 | 1 | missing` by construction** — a KEEP-ed section, or an
+exported symbol **whose absence is itself a BUILD-TIME failure** — never a string hoped to survive.
+**That closes the recursion: the census's silence problem, then the marker's silence problem, now
+solved by making silence impossible to produce accidentally.**
+
+**Honest limit carried from hive: `--gc-sections` appears nowhere in the dfr1195 build config, but hive
+has NOT determined whether the toolchain passes it by default for this target — so section-GC is not
+claimed to be off, only not turned on by this repo.**
+
+**No build order issued. #d005 untouched.**
+
+**Decision-Log: this entry.**
