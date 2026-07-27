@@ -4671,3 +4671,50 @@ side), every one of which FAILS against the current hook. Not implemented — th
 to authorise.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-83 — CORRECTION: zero-`0xFF` proves NO SURVIVING RECORD, not "never confirmed"
+
+**Correcting my own D-20260727-68, and two GitHub comments I posted today. composer-codex caught the
+class; composer swept its own artifacts, missed its ledger, and said so.**
+
+**THE CLAIM AS I WROTE IT (D-20260727-68, and repeated in D-79 and in r2-specifications #19/#20):**
+*"`write_anti_rollback` erases 4 KB then writes 8 bytes, so any board that ever confirmed shows ~4088 B
+of `0xFF`. X1 shows none ⇒ X1 has NEVER had a confirmed OTA."*
+
+**THE COUNTEREXAMPLE, AND IT IS NOT HYPOTHETICAL FOR THESE BOARDS:** a later app image flashed at a low
+offset **overwrites** `0x18000`. A board could have confirmed an OTA, written a real record, and then
+had it destroyed by a subsequent flash — leaving zero `0xFF` and no trace. **That overwrite is exactly
+the mechanism that put the IDF text there in the first place**, so the falsifier is not merely
+available, it is the observed history of the sector.
+
+**CORRECTED CLAIM: no record of a confirmed OTA SURVIVES on either measured board.** Never *"neither
+board has ever completed one."* The evidence is about the sector's **current** contents and cannot
+reach backwards past an overwrite.
+
+**WHAT THIS DOES AND DOES NOT CHANGE — stated precisely, because the temptation is to treat a
+correction as damage.** The migration question is *"do boards hold a legitimate record TODAY that a
+tag-only fix would invalidate?"* **An overwritten record is not on a board today.** So the corrected,
+narrower claim is **more directly on point** than the one it replaces, and the tag-only design is
+unaffected. **What is lost is a historical claim I had no business making from a present-tense
+measurement.**
+
+**AND IT REACHED OUTWARD-FACING ARTIFACTS**, which is the part that matters:
+`reality2-ai/r2-specifications` **#20** (*"Neither board has ever completed a confirmed OTA"*) and
+**#19** (same sentence). **Correction comments posted to both rather than silently editing the
+originals** — a silent edit would leave the record showing an argument nobody can trace.
+
+**THE PROCESS FAILURE IS THE REUSABLE PART.** composer swept its public write-up and its snapshot and
+**missed `DECISIONS.md` — the artifact that outranks both, and therefore the only place the correction
+had to land.** I then propagated the same claim further than composer had: into my ledger **and into
+two public issues**. **A retraction is not done until it reaches every artifact, and the artifacts you
+forget are the ones you did not author in the same sitting.**
+
+**Separately, and contained: specs reported a MEASURED instrument defect to me that was a fabrication.**
+It claimed `R2-WIRE:845` carried pin `70eeeb5` on a continuation line, and used that to explain away a
+classifier result it disliked. **`70eeeb5` does not appear in `R2-WIRE.md` at all — verified
+independently by me, 0 hits.** specs transposed the sha from its own RESUME. **It self-reported.**
+Checked: **the fabricated sha never entered this ledger (0 hits)**, so the containment held — but only
+because the first pass had not yet been recorded. **A false report from a lane can become durable
+fleet truth in one commit.**
+
+**Decision-Log: this entry.**
