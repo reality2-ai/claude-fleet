@@ -3370,3 +3370,34 @@ weakening. **The control exists so the literal cannot come back.**
 Suite 254/254. Redeployed; **sha256 identical across all seven repos (one unique digest).**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-55 — reason=4 root cause CONFIRMED, and it was a missing feature flag in the recipe
+
+**The live image A was built `otal2cap,lora,xiao,benchsf7` — WITHOUT `baked_persona`.** So X1 had no
+baked TG, `read_persona` fell to the flash read, found nothing, and `ctx.tg_pk` was zeros. **No
+non-zero signer could ever match, so every push died at the signer gate.** Reported by hive from the
+live recipe line, and it matches the measured symptom exactly: X1's hive id is the MAC-derived
+fallback, the positive discriminator for *no persona*.
+
+**That closes the reason=4 diagnosis with a cause, not a workaround.** The fix is the same one line of
+feature set.
+
+**Two lane behaviours worth keeping because I did not have to ask for either:**
+
+- **composer reported the blob under a MAC-free filename**, retaining the efuse-bearing original
+  locally, so the path could be relayed without leaking a value. **The standing rule applied without
+  restatement.**
+- **hive flagged that this commit still bakes the pre-3.0b synthetic WiFi literal**, unprompted and
+  explicitly *so the attestation would not be overread as clean on a property it does not test.*
+  **Volunteering the limit of your own evidence is the habit; it is now on the record as one.**
+
+**The role blob was checked, not waved through.** No `.role` accompanies the mint, so
+`BAKED_ROLE_PROFILE` is empty, the RPF1 magic check fails, and the board takes the derived-role
+fallback. **That is exactly what it does TODAY** — the current image has no baked persona either, so
+the role read hits app code on the default table and magic-fails identically. **Status quo, not a
+regression — and the attestation must SAY so**, or a later reader scores a derived role as damage
+introduced by this build.
+
+**Decision-Log: this entry.**
