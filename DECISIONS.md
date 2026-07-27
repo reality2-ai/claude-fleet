@@ -3874,3 +3874,42 @@ strictly strongest. **If none exists**, (A) is one-generation *as a matter of fa
 Tonight's blocker is the transfer, not the ruling.
 
 **Decision-Log: this entry.**
+
+### D-20260727-66 — the act-2R rollback claim was withdrawn before the operator acted on it
+
+**The supervisor wrote a safety claim into a grant without checking it, then caught it while composer's
+message was still undelivered.** Act 2R had said *"an unconfirmed boot should roll back by itself."*
+**Withdrawn.**
+
+**`platforms/dfr1195/src/main.rs:4077`** justifies the backstop with *"(CONFIG_BOOTLOADER_APP_ROLLBACK_
+ENABLE=y, esp32/sdkconfig.defaults) — that is minimum 1's backstop."* **`platforms/dfr1195` HAS NO
+`sdkconfig.defaults`.** `find` over the tree returns exactly one — `platforms/esp32/sdkconfig.defaults`,
+**a DIFFERENT PLATFORM.** dfr1195's `.cargo/config.toml` never references it. **Denominator: 8 platform
+directories, 1 has the file.**
+
+**The citation is true, current, and names its source honestly. It is about another board.** New axis
+for the wrong-instrument class: not wrong UNIT, not wrong FAILURE MODE, not wrong AUTHORITY — **wrong
+SUBJECT.**
+
+**Compounding:** `:4154` puts the requirement in the **STAGED BOOTLOADER**, and every write in this
+campaign has been **app-only**. So even a correctly-cited config would describe a binary nobody has
+flashed. **We do not know what X1's on-flash bootloader does on a failed boot.**
+
+**What survives:** `:4188` is a SOFTWARE revert on §5 health FAIL, which needs B to **boot and run its
+health check**. It covers "boots but unhealthy" and **cannot cover "does not boot at all"** — exactly
+the case act 2R exists for.
+
+**REVISED ACT 2R:** still wait the full 180 s (the software revert may fire, and flashing over a
+self-recovered board destroys the evidence that it worked); **do NOT extend the wait expecting
+bootloader rollback**; report which of three occurred — B booted healthy, the §5.1 revert fired, or
+**silence — and silence is now an EXPECTED outcome, not a surprise.** Only silence triggers the cable
+write.
+
+**FILED WITH core as a firmware defect independent of tonight**, ranked with the radio defects and
+above the immutable-stage question. **The rationale comment does active damage: the next reader takes a
+cited backstop as verified and stops looking.** Same mechanism as *"post-init = safe."*
+
+**The operator changed nothing. A grant that quietly improves is a grant nobody can audit**, so the
+correction is appended to the grant in place rather than edited over the original text.
+
+**Decision-Log: this entry.**
