@@ -3098,3 +3098,237 @@ image, and then the published credential opens it. **The binding defeated by a r
 slower, not harder.**
 
 Decision-Log: D-20260727-48
+
+## D-20260727-49 — The campaign my ledger never recorded, and the ratified result it may contradict
+
+**Recorded retrospectively.** A RAK-relay / LoRa bench-mesh campaign ran on 2026-07-27 under my own
+orders and **left no trace in this ledger and none in git** — the artifacts are scp-only and
+gitignored. It surfaced only because hive flagged an inbox it could not reconcile with its own
+snapshot, and its own session transcript carried the image sha **52 times**. **The work existed in
+two compacted contexts and nowhere else, which is not a record.**
+
+### What was built
+
+- **RAK4630 compact-relay hex** `858bc638…`, ELF `d1aeefdc…`, from core `rak4630-fw` HEAD `70f442b9`.
+  **Staged, never flashed.** Packaged by composer as an nRF UF2 (no partition table, `@0x26000`),
+  `image_digest e5c7073e`, **reproduced three ways — objcopy-from-ELF, hex, zip-extract, all
+  identical**, so the packager roundtrip is proven rather than asserted. Superseded a stale
+  decode-only image after a **filename-reuse collision on the flash host** was caught and resolved.
+- **D4 benchsf7 image** `cbd6bf67…` against a **differential control** `a23c21ea…` (non-benchsf7).
+
+### Rulings made inside it
+
+- **All-SF7 for the bench mesh**, grounded in the LoRa bench profile and airtime: 29 B at SF12 is
+  ~1647 ms time-on-air, ~16× too slow for a 1/s apiary; SF7 at ~67 ms meets it. **PHY-only.**
+- **The bench TG persona is canonical, do not re-mint** — confirmed by an authoritative
+  `parse_persona`, **not by a rodata scan**, because the hash is *derived, not stored* and a scan is
+  therefore **structurally blind** to it. Stale criteria named a different provisioning.
+- **`route_len=2` proves RELAY, not persona** — same-TG members relay regardless, so
+  persona-correctness rests on the ratification and the parser. Clean separation, kept.
+
+### What is NOT proven, and the contradiction that matters
+
+**The mesh is not forming. No on-air relay observed — no `route_len` anywhere, not even the direct
+one-hop case.** Root cause offered: an SF split, D4 running SF12 while the RAK runs SF7.
+
+**#d001 is RATIFIED PASS (2026-07-22)**: multi-hop proven end-to-end, `route_len=2` vanishing
+RAK-off and returning RAK-on, positive control confirming the decoder could see it, and
+**`route_len=1` present throughout.** The campaign reports the relay leg was **masked by a
+`CrossCarrier` default** so `relay_on==0` and `route_len` stuck at 1.
+
+> **Those cannot both be true of the same image.** Either the default was introduced **after** the
+> proof — a regression, and #d001 stands — or it was there **before**, and a ratified proof is in
+> question. **Opposite outcomes; only `git blame` against the 07-22 image settles it.** Asked, not
+> inferred.
+
+**Until answered, this campaign is a bench-mesh REGRESSION INVESTIGATION, not "the #d001 relay
+proof."** A closed proof reopened by loose naming is the stale-gate defect aimed at a ratified result.
+
+### Two corrections issued
+
+- **A control's scope**: the differential proves `cbd6bf67 != a23c21ea` — **a property of the
+  ARTIFACT.** D4 is reportedly executing SF12 because the feature *did not take* on that board. The
+  control says nothing about what the board runs, and the board fact is the one the failure depends on.
+- **Mine**: the flash grant I was drafting had **`target` set to a host, not an opaque device
+  handle.** Void if it exists anywhere. **No `cbd6bf67` grant exists**; the only live grant is the
+  read-only D5 table read.
+
+**Flash state: no flash taken, no grant consumed, #d005 intact throughout.**
+
+**Decision-Log: this entry.**
+
+## D-20260727-50 — #d001's subject is unidentified, and the audit trail that would have named it does not survive
+
+**Interim ruling, and a defect of mine.** hive established from git — lineage-authoritative, treating
+dates as unreliable because cherry-picks carry old ones — that the relay-egress **override** was
+**absent on the current branch** until this session, and present only on a lineage that never flowed
+into it. So the 2026-07-22 proof either ran on that other lineage (**#d001 stands**, and the current
+branch carries a re-vendor regression) or on the current-branch head of the day (**the proof is in
+question**). **One fact separates them: what was flashed.**
+
+**I cannot supply it.**
+
+- **This ledger recorded the VERDICT and not the ARTIFACT** — the observation, the counterfactual, the
+  positive control, and **no build sha anywhere.**
+- **The flash grant that would have carried it does not survive.** Grants are sha-pinned *by rule*,
+  but the grant file **is not versioned**: `.fleet` is not a git repository and **each grant
+  overwrites the last in place.** So the pin exists only while the grant is live. **The audit trail of
+  what was flashed does not outlive the next grant.**
+
+**Same class hive hit today from the other side:** git is a false denominator for anything never
+committed. Here it is worse — the pin was *deliberately* recorded, into a file with no history.
+
+### Ruling
+
+**#d001 STANDS as a historical PASS. It is not retracted and nothing tonight refutes it.** But **its
+subject is unidentified, so its warrant cannot be checked** — and **a ratified verdict whose subject is
+unknown cannot be cited as proof about any particular image.** #d001 **must not** be cited as evidence
+that the current lineage relays.
+
+**Path is RE-PROOF, not archaeology**: unify the spreading factor, obtain the direct one-hop case on
+the current branch, then the two-hop case with the RAK-off counterfactual. That settles
+regression-versus-retraction empirically and beats reconstructing a July build. composer has been asked
+for a flash record first — **digest or nothing**, no reconstruction from dates or filenames, given the
+filename-reuse collision this campaign already produced.
+
+### Process changes this forces on me
+
+1. **Every ratified metal proof records the artifact digest in the ledger**, not only the verdict. A
+   verdict without its subject is an opinion with a date.
+2. **Grants must become append-only or versioned.** A sha pin written into an overwritten file is a
+   pin for the duration of the operation and **no record at all afterwards.**
+
+**Decision-Log: this entry.**
+
+## D-20260727-51 — #d001 confirmed by rebuild-and-compare; the cause is a silent re-vendor regression
+
+**Supersedes the interim ruling in D-20260727-50.** That entry said #d001's subject was unidentified
+and its warrant uncheckable. **It is now identified and the warrant is confirmed — by measurement, not
+by adoption.**
+
+**How it was settled, and the order of operations is the point:**
+
+1. **Determinism established FIRST.** The candidate sha built **twice**, clean detached checkout each
+   time, target removed between: **byte-identical, 118624 bytes.** Only then was any comparison
+   treated as evidence. A digest comparison over a non-reproducible build proves nothing, and that
+   check would have voided the whole exercise had it failed.
+2. **The override-bearing commit reproduces the flashed image exactly** — digest match on prefix,
+   suffix and size against the record composer holds.
+3. **The pre-fix commit does NOT match — and reproduces the STALE decode-only image instead.** That is
+   a *corroborating negative*, not a bare non-match: it accounts for where the other lineage went
+   rather than leaving it unexplained.
+4. **The grant tag was treated as a LABEL throughout; the digest is the evidence.** Four builds, both
+   candidates, no stopping at the first agreement.
+
+### Ruling
+
+**#d001 STANDS, confirmed by measurement.** It may now be cited — **for that image digest
+specifically, and for nothing else.** The current lineage does **not** carry the override: the mesh
+failure is a **re-vendor lineage regression**, which was hive's earlier *lean*, now measured rather
+than adopted.
+
+### The order that matters more than the fix
+
+**A re-vendor silently dropped a commit. One lost commit is rarely alone.** An audit is ordered of
+everything present on the override lineage and absent from the current branch — **read and diff, no
+build** — classifying each as behavioural or cosmetic, and **naming the mechanism** (cherry-pick set,
+squash, tree copy, re-export), because **the mechanism predicts the class of what else it loses.**
+
+> **The override was found only because it broke a proof we happened to be re-running. Anything else
+> that re-vendor dropped is sitting there with nothing to trip over it.**
+
+**Same shape as the whole night's sweep, one layer out: a vendoring step that loses a commit is an
+instrument reporting success while examining less than it claims. Nothing failed. No test went red.
+The vendored tree compiled and passed.**
+
+**Decision-Log: this entry.**
+
+## D-20260727-52 — #d003's X1 roster label is CONTESTED by two independent artifacts. Marked, not amended.
+
+**#d003 is Roy-ratified and only Roy moves it. This entry MARKS a contest; it does not resolve one.**
+
+**The label:** #d003 records X1 as the bridge — *"WiFi/cloud uplink."*
+
+**Contested by two artifacts that did not know about each other:**
+
+1. **core, reading source tonight:** X1 builds the bridge feature set, which enables **neither** of the
+   features the WiFi station/AP path is gated behind — so **that path is not compiled into X1 at all.**
+   Its uplink is **USB**: LoRa receive, out over the USB pairing link to the phone.
+   *Caveat stated by core and preserved: no shell in its context, so this is an **unpinned source
+   read**, not a ref-pinned check.*
+2. **specs' own canon, since 2026-07-10:** records X1 as that same LoRa-plus-USB build — **17 days
+   before tonight**, written by a lane that had never seen core's reading.
+
+**Independent arrival beats either statement alone, and it substantially repairs the unpinned-read
+weakness in (1).**
+
+### What this changes
+
+**The question to Roy sharpens.** Not *"is the label right"* but: **which is wrong — the label, or is
+the physical board running something other than what canon and source both describe?** Those have
+different remedies: one is a ledger correction, the other is a board nobody has identified.
+
+**And it collapsed a claim I had already relayed.** specs first read a canon board-class bar as hitting
+the whole ESP32-S3 bench trio; **core's source read refuted the X1 third**, and specs retracted the
+width *before it reached Roy*. Confirmed width today: **one board.** Two unknown pending the sensor
+builds' feature sets. **The exception-list reframe and the two-independent-reasons point both survive
+intact — only the count moved.**
+
+> **The discrepancy PREDATES tonight by 17 days. This is not drift introduced by tonight's work — the
+> roster label and canon have disagreed since 2026-07-10 and nobody read them side by side.** That
+> makes it a **missing cross-check**, and the missing cross-check is mine: the ledger is my artifact.
+
+**Custody facts requested from hive and composer — per-board flashed digest or UNKNOWN, and whether
+the sensor builds enable the WiFi features. The escalation to Roy is HELD until those land**, because
+otherwise he would be ruling on whether a board may do something its firmware cannot do.
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260727-53 — The OTA persona goes IN THE IMAGE. The non-conformance Roy was about to be asked to accept is MOOT.
+
+**Ruling: image A for X1 is rebuilt with `baked_persona`, pointed at a dev-TG persona blob. No raw
+write to 0x12000. No bootstrap acceptor needed. No region migration. Nothing waived.**
+
+**The mechanism was already on the bench and nobody proposed it.** D4 and X4 both carry
+`baked_persona` in their feature sets *and* report real personas — so the provisioned bench boards
+were provisioned **BY THE IMAGE**, not by a bootstrap and not by a raw write. That fact sat in two
+lanes' feature reports all evening while three of us costed a write to an undeclared region.
+
+**Confirmed independently at the pinned sha before acting, not taken on the lane's word:**
+`r2-core@4b4a71e5` — `platforms/dfr1195/build.rs:76` reads `DFR_PERSONA_PATH`, `:89` emits the const;
+`src/main.rs:3309` includes it, `:3346` parses it. **`PERSONA_OFFSET` appears in exactly one read
+(`:3358`, under `cfg(not(baked_persona))`) and in NO write anywhere in the crate.** The firmware never
+wrote that region; an external tool did.
+
+**And the check the answering lane did not run.** It answered for the DFR platform. **The target is a
+XIAO.** `platforms/` has no xiao crate — the XIAO builds from `platforms/dfr1195`, confirmed by grep at
+the same sha. Had that been false the whole ruling would have been sound and inapplicable. *A sound
+instrument can answer a different question* — this time it was the same answer, but that was measured,
+not assumed.
+
+**Not a new mechanism and not a new permission: `baked_persona` is Roy ruling B, 2026-07-14.** Thirteen
+days old, already ratified, sitting in a Cargo.toml comment. **The choice I was preparing to put to Roy
+— a knowingly non-conformant bench write, or repair the missing acceptor — was a false pair.** There
+was a third door, already open, already his.
+
+**It also fixes reason=4 directly rather than routing around it.** Gate 4 accepts iff
+`B.issuer_pk == ctx.tg_pk`; `ctx.tg_pk` comes from `read_persona`, which under this feature is the
+compiled-in const. Bake the TG that seals B and the gate passes on its own terms — **TG-direct, no
+delegation cert, no epoch floor, no window.** Past gate 4 is the chunk stream: the part never reached.
+
+**And it IS the objective, not a detour around it.** Roy's words were *"A over USB, B over the air."*
+An image written over USB carrying the persona **is the first half, literally.**
+
+**Standing constraints carried into the order:** the artifact carries a credential — **gitignored,
+never committed, never published, digest-only in comms.** hive builds under #d005 (drained inbox,
+explicit order, pinned sha, clean detached checkout) and **attests by reading the ARTIFACT — objdump
+for the baked `tg_pk`, not the source.** hive does not write to a board; **the grant comes from me,
+after attestation, pinned to its digest.** The flasher is still not the granter.
+
+**Open, and asked rather than assumed:** whether the persona blob carries secret material. If it does,
+the built image inherits it and the image is secret-class. That question went to composer with the
+production order rather than being answered by me from the format comment.
+
+**Decision-Log: this entry.**

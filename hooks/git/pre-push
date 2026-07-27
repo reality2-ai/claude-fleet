@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
-# PREPUSH_VERSION: 6  (2026-07-21) — decision-log accountability at publish boundary.
+# PREPUSH_VERSION: 10 (2026-07-27) — the flag guard matches ONE dash too; -h no longer exits 0 silent.
+# BUMPED BECAUSE BEHAVIOUR CHANGED. A behaviour change without a version bump leaves two
+# gates live and indistinguishable — the skew android measured across six repos, where the
+# only discriminator was a sha256 of an untracked file. Redistribute after any change here.
 # Cite this line when reporting which guard a lane runs. An unversioned gate
 # cannot be audited or skew-detected: android measured TWO versions live across
 # six repos, distinguishable only by sha256 of an untracked file.
@@ -8,8 +11,51 @@
 # public repo can never carry a token/key/.env out, because the push is refused
 # here at the git layer regardless of who (human or fleet agent) initiated it.
 #
-# Never auto-FAILS open: on any internal error it lets the push proceed only if
-# it found nothing; a real match always blocks (exit 1).
+# FAIL-CLOSED IS THE POLICY. A real match always blocks (exit 1), AND AN INTERNAL
+# ERROR MUST ALSO BLOCK — a scan that could not run is NOT a scan that found nothing.
+#
+# The previous wording here read: "Never auto-FAILS open: on any internal error it
+# lets the push proceed only if it found nothing." That sentence OPENS WITH THE
+# INVARIANT AND THEN DESCRIBES ITS VIOLATION — an errored scan yields no matches, so
+# "proceed if it found nothing" IS the fail-open path, stated as a feature. Two lanes
+# flagged it independently on 2026-07-27. A comment that authorises the defect is worse
+# than the defect: it tells the next editor the behaviour is intended.
+#
+# STATE OF THE CODE, honestly, because the comment must not run ahead of it. Updated
+# 2026-07-27 IN THE SAME EDIT that landed the change — a status comment written before
+# the work and left behind afterwards is the stale-instruction defect this file already
+# demonstrates once:
+#   · non-commit ref: refused outright. Measured in two repos 2026-07-20.
+#   · root commit: found and closed 2026-07-19.
+#   · ENUMERATORS NOW FAIL CLOSED — the six reachable `2>/dev/null || true` sites that
+#     produce the scan input or the decision-gate input go through `enumerate_into`,
+#     which blocks on any non-zero rc. Verified by forcing an unscannable range: the
+#     unpatched hook exited 0, the patched one exits 1.
+#   · DENOMINATOR PRINTS ON THE PASS PATH, naming its own exclusions.
+#   · REMAINING, deliberately left and reasoned: four here-string greps (fixed patterns,
+#     no file input — not reachable); `git cat-file -t` (already fail-closed by its
+#     consumer: an empty result is not a commit, so it blocks); `diff-tree` and `log` in
+#     the decision check (fail toward the STRICTER branch — an empty message has no
+#     trailer, so it blocks). Each is safe BY DIRECTION, which is a reason, not an excuse.
+#   · STDERR CAPTURED SEPARATELY (v8). Was OPEN in v7: `2>&1` folded a success-path git
+#     warning into the scan input. Safe by direction, but it CORRUPTED THE DENOMINATOR —
+#     and a denominator that counts warnings as scanned lines defeats the print that
+#     exists to make the number trustworthy.
+#   · SELF-TEST COMMITTED (v8): `FLEET_HOOK_SELFTEST=1`, four cases, each asserting the
+#     SPECIFIC refusal rather than a bare non-zero exit. Meta-controlled: breaking guard
+#     N fails case N only, each for its own reason.
+#   · OPEN: the four here-string greps are safe BY REACHABILITY, NOT BY DIRECTION — and
+#     that is a weaker guarantee than the line above claims. If one of them ever errors
+#     (a resource limit, an engine limit, an input shape nobody anticipated) `|| true`
+#     yields empty, the finding vanishes, and THE SCAN REPORTS CLEAN. Contrast cat-file,
+#     diff-tree and log, which fail toward the STRICTER branch: those are safe whatever
+#     happens; these are safe only while nothing happens. They need an rc check that
+#     treats 0 and 1 as legitimate and >1 as fatal — a matcher guard, not the enumerator
+#     guard, because for a matcher rc 1 is a real answer.
+#     Found by a lane AFTER I wrote "OPEN: nothing known" here. I had accepted a
+#     not-reachable classification as equivalent to safe, and they are different claims.
+# Do not restore the old sentence. If you are editing here, the invariant above is the
+# requirement; anything short of it is a known gap, not a design.
 #
 # FLEET_SKIP_SECRET_SCAN=1 disables this scan entirely, before any check, with no
 # trace in the output. It exists for a human operator with a reason. FLEET AGENTS
@@ -24,6 +70,127 @@ set -uo pipefail
 
 [[ "${FLEET_SKIP_SECRET_SCAN:-0}" == "1" ]] && exit 0
 
+# ── ENUMERATORS FAIL CLOSED ──────────────────────────────────────────────────────
+# An ENUMERATOR is a command whose output IS the scan's denominator. When one fatals,
+# `2>/dev/null || true` converts the error into an EMPTY SET, and every later line
+# reads that as "nothing to find" — so the scan reports CLEAN having examined nothing.
+# Two causes are already fixed individually below (a ref pointing at a blob; a root
+# commit), found one at a time, in different repos, weeks apart — which is the
+# argument for guarding the MECHANISM rather than the next symptom.
+#
+# ASSIGNS THROUGH A NAMEREF INSTEAD OF RETURNING OUTPUT, and that is load-bearing:
+# called as `x="$(enumerate ...)"` this would run in a COMMAND-SUBSTITUTION SUBSHELL,
+# where `exit 1` ends the subshell and the parent sails on to `exit 0` — printing a
+# refusal and passing anyway. (Measured: the first draft of this patch did exactly
+# that. The defect the guard exists to prevent, inside the guard.)
+enumerate_into() {
+  local __var="$1" __what="$2"; shift 2
+  local __out __rc __errf
+  # STDERR CAPTURED SEPARATELY, not folded in with 2>&1. On SUCCESS a git warning would
+  # otherwise become a line of scan INPUT: harmless by direction (a stray line can only
+  # cause a false BLOCK, never a false pass) but it corrupts the denominator, and a
+  # denominator that counts warnings as scanned lines is the thing this print exists to
+  # make trustworthy. Closes the OPEN item in the header invariant.
+  __errf="$(mktemp)"
+  __out="$("$@" 2>"$__errf")"; __rc=$?
+  if (( __rc != 0 )); then
+    printf '\n\033[1;31m✗ PUSH BLOCKED — the secret scan could not enumerate %s.\033[0m\n' "$__what" >&2
+    printf '  exited %s: %s\n' "$__rc" "$(tr '\n' ' ' <"$__errf" | cut -c1-200)" >&2
+    printf 'An empty result from a failed command is NOT a clean scan. Refusing.\n\n' >&2
+    rm -f "$__errf"
+    exit 1
+  fi
+  rm -f "$__errf"
+  printf -v "$__var" '%s' "$__out"
+}
+
+# ── SELF-TEST ────────────────────────────────────────────────────────────────────
+# `FLEET_HOOK_SELFTEST=1 <hook>` forces each failure and asserts the gate reports ERROR
+# rather than PASS. COMMITTED, not hand-run: a control that is not in the suite is a
+# control that existed for one afternoon.
+#
+# DISPATCHED ON AN ENV VAR, NOT argv: git calls this hook with $1=remote $2=url, so a
+# `--self-test` flag could collide with a remote of that name; and a dispatch placed
+# after the final `exit 0` is UNREACHABLE — a gate that cannot fire, the same class this
+# file is hardened against. Both were tried; the unreachable one reviewed as correct.
+#
+# EACH CASE PERTURBS THE INPUT THE GATE ACTUALLY READS and asserts the SPECIFIC refusal.
+# Measured: with case 2 checking only the exit code, neutering the obj_type guard left it
+# GREEN — the blob fell through to the enumerator guard and was refused for a different
+# reason. A control that cannot tell WHICH guard fired does not test either of them.
+# A FLAG-LIKE $1 IS REFUSED LOUDLY, NEVER TREATED AS A REMOTE NAME.
+#
+# git calls this hook with $1=remote $2=url, so `--self-test` lands in $1, the ref list
+# arrives from a terminal instead of git, the loop reads nothing, and THE HOOK EXITS 0
+# WITH NO OUTPUT. A lane ran exactly that on a deployed copy and NEARLY REPORTED IT GREEN.
+#
+# That is the argv hazard actually manifesting — and NOT in the form I predicted when I
+# ruled for env-var dispatch. I argued a remote could be *named* `--self-test`, which is
+# far-fetched. THE REAL FAILURE IS AN OPERATOR TYPING THE INTUITIVE FLAG AND BEING
+# ANSWERED WITH SILENCE. Env dispatch avoided the collision and did nothing about this.
+#
+# So: silence is the one response this must never give. Exit 2 — neither 0 (pass) nor
+# 1 (blocked), because it is neither.
+#
+# v9 MATCHED `--*` AND LEFT `-h` EXITING 0 SILENT — the single most intuitive flag an
+# operator types was the one still answered with silence. The reasoning ("silence is the
+# one forbidden answer") does not distinguish one dash from two; ONLY THE PATTERN DOES.
+# A guard can UNDER-IMPLEMENT the rule it was written from, and the rule still reads as
+# satisfied. A git remote name cannot usefully begin with `-`, so single-dash is safe.
+# Negative control, both versions: `origin file:///dev/null` -> rc 0, no refusal.
+if [[ "${1:-}" == -* ]]; then
+  printf '\n\033[1;31m✗ REFUSED — "%s" is not a remote name.\033[0m\n' "$1" >&2
+  printf 'This hook takes $1=remote $2=url from git and reads refs on stdin.\n' >&2
+  printf 'To run the controls:  FLEET_HOOK_SELFTEST=1 bash %s\n' "$0" >&2
+  printf 'Exiting 2. A silent exit 0 here would read as a clean self-test.\n\n' >&2
+  exit 2
+fi
+
+if [[ "${FLEET_HOOK_SELFTEST:-0}" == "1" ]]; then
+  zero="${zero:-0000000000000000000000000000000000000000}"
+  st_fail=0
+  st_ok()  { printf '  ok   %s\n' "$1"; }
+  st_bad() { printf '  FAIL %s\n' "$1"; st_fail=1; }
+
+  # 1) DEAD ENUMERATOR — perturbs the range, which is what `git diff` reads to build the
+  #    scan input. Explicit subshell: the guard's whole point is that it EXITS.
+  ( enumerate_into st_out "self-test" git rev-list "definitely-not-a-ref" ) >/dev/null 2>&1
+  (( $? != 0 )) && st_ok "dead enumerator exits non-zero" || st_bad "dead enumerator returned success"
+
+  # 2) NON-COMMIT REF — perturbs $local_sha, read by the obj_type guard. Recurses with the
+  #    flag CLEARED so the child takes the real path.
+  st_blob="$(printf 'self-test' | git hash-object -w --stdin 2>/dev/null)"
+  if [[ -n "$st_blob" ]]; then
+    # INVOKED VIA `bash "$0"`, NOT `"$0"`. The SOURCE file is mode 644 — only the DEPLOYED
+    # copy gets +x from the installer — so recursing through the exec bit made this case
+    # fail with "Permission denied" while the guard it tests was working perfectly.
+    # A CONTROL THAT FAILS FOR AN ENVIRONMENTAL REASON IS INDISTINGUISHABLE FROM A REAL
+    # FAILURE, and would have been "fixed" by weakening the guard. Caught on first run.
+    st_out2="$(FLEET_HOOK_SELFTEST=0 bash "$0" origin file:///dev/null <<<"refs/heads/x $st_blob refs/heads/x $zero" 2>&1)"
+    grep -q 'not a commit' <<<"$st_out2" \
+      && st_ok "a blob ref is refused BY THE obj_type GUARD" \
+      || st_bad "blob ref not refused by the obj_type guard (got: $(tr '\n' ' ' <<<"$st_out2" | cut -c1-90))"
+  else
+    st_bad "could not create a test blob (not in a repo?)"
+  fi
+
+  # 3) NEGATIVE CONTROL — the gate must actually REDDEN on a known-bad line. Cases 1-2 only
+  #    prove it refuses; without this nothing proves it CATCHES anything.
+  grep -qiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_-]{16,}' \
+    <<<'+api_key = "ZmFrZVNlbGZUZXN0VmFsdWUxMjM0NTY3ODkw"' \
+    && st_ok "the secret-value pattern matches a known-bad line" \
+    || st_bad "the secret-value pattern did NOT match a known-bad line"
+
+  # 4) STDERR IS NOT SCAN INPUT — a command that succeeds while writing to stderr must not
+  #    contaminate the enumerated value (the OPEN item this version closes).
+  enumerate_into st_out3 "self-test stderr" bash -c 'printf "data\n"; printf "a warning\n" >&2'
+  [[ "$st_out3" == "data" ]] \
+    && st_ok "stderr is not folded into the scan input" \
+    || st_bad "stderr contaminated the scan input (got: $st_out3)"
+
+  (( st_fail == 0 )) && { printf 'CONTROLS PASS\n'; exit 0; } || { printf 'CONTROLS FAILED\n'; exit 1; }
+fi
+
 zero='0000000000000000000000000000000000000000'
 findings=""
 decision_findings=""
@@ -34,9 +201,9 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
 
   if [[ "$remote" == "$zero" ]]; then
     # New remote branch: only commits absent from every remote are newly published.
-    commits="$(git rev-list --reverse "$local_sha" --not --remotes 2>/dev/null || true)"
+    enumerate_into commits "commits for the decision-accountability check" git rev-list --reverse "$local_sha" --not --remotes
   else
-    commits="$(git rev-list --reverse "${remote}..${local_sha}" 2>/dev/null || true)"
+    enumerate_into commits "commits for the decision-accountability check" git rev-list --reverse "${remote}..${local_sha}"
   fi
   [[ -n "$commits" ]] || return 0
 
@@ -86,14 +253,15 @@ scan_range() {  # $1 = git rev range or single sha
   # The cap's real purpose was to stop a huge push hanging the hook. That intent
   # is preserved by COUNTING first and REFUSING, so the operator gets an explicit
   # decision instead of a silent partial scan.
-  total="$(git diff "$range" 2>/dev/null | grep -c '^+' || true)"
+  enumerate_into __diff "the diff for $range" git diff "$range"
+  total="$(printf '%s' "$__diff" | grep -c '^+' || true)"
   if [[ "${total:-0}" -gt "${FLEET_SCAN_MAX_LINES:-50000}" ]]; then
     printf '\n\033[1;31m✗ PUSH BLOCKED — range too large to scan safely: %s added lines\033[0m\n' "$total" >&2
     printf 'The secret scan refuses to SAMPLE. Push in smaller ranges, or set\n' >&2
     printf 'FLEET_SCAN_MAX_LINES=<n> deliberately after checking what is in the diff.\n\n' >&2
     exit 1
   fi
-  added_all="$(git diff "$range" 2>/dev/null | grep '^+' | grep -v '^+++' || true)"
+  added_all="$(printf '%s' "$__diff" | grep '^+' | grep -v '^+++' || true)"
   # The same, MINUS the vendored synthetic KAT vectors. Those carry test-only 0xAA
   # "secrets" (device_master_secret etc.) that trip the token/secret VALUE patterns on
   # every drift-sync — they are drift-checked test data, not real secrets.
@@ -103,8 +271,20 @@ scan_range() {  # $1 = git rev range or single sha
   #   · the FILENAME scan (1) reads $names — never excluded, so a real .env/.key/.pem
   #     added under a vectors/ dir still blocks.
   #   · the MAC scan (3) reads $added_all — never excluded; see the note there for why.
-  added="$(git diff "$range" -- . ':(exclude,glob)**/vectors/**.json' ':(exclude,glob)testing/test-vectors/**.json' 2>/dev/null | grep '^+' | grep -v '^+++' || true)"
-  names="$(git diff --name-only --diff-filter=AM "$range" 2>/dev/null || true)"
+  enumerate_into __diff_scannable "scannable added lines for $range" git diff "$range" -- . ':(exclude,glob)**/vectors/**.json' ':(exclude,glob)testing/test-vectors/**.json'
+  added="$(printf '%s' "$__diff_scannable" | grep '^+' | grep -v '^+++' || true)"
+  enumerate_into names "changed paths for $range" git diff --name-only --diff-filter=AM "$range"
+
+  # DENOMINATOR — printed on the PASS path, where it was previously computed and discarded.
+  # NAMES ITS OWN EXCLUSIONS deliberately: the secret-VALUE scan reads $added, which excludes
+  # the vendored KAT vectors, so a bare "N lines scanned" would make a FILTERED scan look
+  # COMPLETE — the sample-reported-as-clean defect the range cap above was rewritten to
+  # prevent. State both numbers or neither.
+  scan_files="$(printf '%s' "$names" | grep -c . || true)"
+  scan_lines="$(printf '%s' "$added_all" | grep -c . || true)"
+  scan_value="$(printf '%s' "$added" | grep -c . || true)"
+  printf 'secret scan: %s files, %s added lines; %s scanned for secret VALUES (%s excluded as vendored KAT vectors)\n' \
+    "${scan_files:-0}" "${scan_lines:-0}" "${scan_value:-0}" "$(( ${scan_lines:-0} - ${scan_value:-0} ))" >&2
 
   # 1) secret-bearing filenames being added/modified
   # NB: the "secret" token requires a secret-DATA extension (not a bare .*secret.*).

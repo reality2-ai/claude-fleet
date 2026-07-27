@@ -119,7 +119,16 @@ update path on metal instead of a red test.** The drift was not the defect; the 
 drift-detection test** was.
 
 
-**[g24 — which WiFi does the OTA proof join?](gates/g24-ota-bench-ap-credentials.md)** · **RULED overnight, pending your review**
+**[g24 — which WiFi does the OTA proof join?](gates/g24-ota-bench-ap-credentials.md)** · **OPEN — a
+RECOMMENDATION AWAITING YOUR REVIEW, NOT A CLOSURE**
+
+> **Classification, because two lanes independently read this row as closed on 2026-07-27 and that is
+> my defect, not theirs.** *"Ruled"* here means **I** ruled — it is a supervisor recommendation, and
+> it stays in the open set until Roy accepts or overturns it. Contrast the **"Not waiting on you"**
+> section below, where *ruled* means **Roy** ruled and the work is merely in flight. **Canon landing
+> a description of the situation does not close this either**: §3.0a says a green bench run proves
+> the fixed-infrastructure path rather than the target one, which is a *description* — and it makes
+> the question sharper, not settled.
 **Answer: synthetic AP.** <rig-host> has a spare, idle, route-free, AP-capable 2.4 GHz radio, so we use
 an SSID and passphrase **we choose** — synthetic by construction, no secret, no custody, and g23
 leaves this path entirely. **This reversed my own earlier ruling of real-creds-via-env**, which I
@@ -188,11 +197,22 @@ minutes. The capability cell stays honest either way.
 → `gate 8: ethernet` / `disable isolation` / `other ssid` / `leave it`
 
 ## Not waiting on you
-- **D4/X1 flash of the g18 rebuild** — built, attested, eligible. Held by supervisor until the
-  D5 debugger session closes; one grant at a time. No ruling needed from you.
+
+**Re-derived 2026-07-27 evening, not carried forward.** Two bullets here were stale, and I found
+them only because I caught a lane carrying stale gates and then checked my own file. **This section
+is the one that rots**, because a ruled-and-in-progress item and an open gate are *the same
+sentence* — nothing in the artifact prompts a re-check.
+
+- **One live grant, and it is read-only**: partition table read at offset `0x8000`, length exactly
+  `0x1000`, target **D5**. **Blocked on you putting D5 in manual download mode** — it does not enter
+  via auto-reset the way D4 does. No artifact produced or consumed.
+- **No flash grant is in flight.** The earlier bullet claiming a pre-granted D4 reflash and D5
+  sensor flash was **spent and superseded** by the read grant. **All identity writes remain barred**
+  until the persona region is declared and lookup resolves by name.
 - **g19 legs 2 and 3** (audit-log location, one-shot grant consumption) and **g17 state/metric
-  separation** — ruled by you, work in progress, not gates.
-- Blerole D4 reflash (iter 2, L3 fix) + D5 sensor flash — pre-granted, in flight.
+  separation** — **ruled by you, work in progress. These are not gates**, and a lane was listing
+  them as an open blocking set this evening. Ruled-in-progress must not read as waiting-on-Roy.
+- **g20** — origin-hunt grant **written and executed**. Not open, and not in the table above.
 - Multi-hive / multi-TG scale-out — gated on the below-TG substrate lock (the table
   is the gate-keeper, not a ruling).
 - Waveform-as-sentant implementation — core owns it under your layer ruling.
