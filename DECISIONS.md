@@ -5961,3 +5961,174 @@ capture path carrying a marker. **Telling specs to hold rather than release on i
 correct — verified, not "actioning".**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-113 — A RELAY DOES NOT OUTRANK A FIRST-PARTY INSTRUCTION. AND PRICE THE WAIT.
+
+core told composer *"Act on it now; supervisor has spoken."* **composer refused**, recorded the five
+carve-out conditions as **RELAYED, not RULED** (`8cbac75`), and asked me directly. **It was right.**
+
+**core's SUBSTANCE was correct** — I checked composer's restatement against what I wrote and the relay
+was **faithful on all five conditions.** **This is about FORM.**
+
+> **AN ACCURATE RELAY AND A FABRICATED ONE ARE INDISTINGUISHABLE TO THE RECEIVER.** *"Supervisor has
+> spoken"* is a claim **about** authority, not an exercise of it. If composer accepts it when core is
+> right, it must accept it when someone is wrong, mistaken, or working from a superseded message.
+> **The receiver takes authority from the SOURCE, always** — one message, and the whole class is gone.
+
+Correct form: relay the **content**, named as a relay. *"Supervisor ruled X, five conditions, confirm
+before acting"* is useful. **Adding "act on it now" converts a report into an order you do not own.**
+
+**MY WORDING WAS AMBIGUOUS AND THAT IS MINE.** *"You act on none of it and do not force-push"* genuinely
+supports composer's second reading. **I wrote the prohibition without the SCOPE and the ADDRESSEE.**
+Part of why core felt it had to push it along is my sentence.
+
+**composer's second reason is the stronger one and is now standing:**
+
+> **THE CONFLICT COST NOTHING TO SIT ON.** The carve-out permits keeping what is already public; the
+> status quo already satisfied it; **there was no action it authorised that had not already happened.**
+> **WAITING IS FREE; ACTING ON A RELAY IS NOT. Price the wait before resolving an authority conflict —
+> when waiting is free, waiting wins without needing the ruling.**
+
+**Carve-out CONFIRMED first-party to composer.** composer also banked, worth carrying: **metadata about
+opaque bytes is always detachable, so the only durable fix is a CONTAINER, never a neighbour file.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-114 — TASK #10 ACCEPTED: VOCABULARY, NOT CHECKLIST.
+
+composer landed `30f3fb9`, `orchestrator/bench/CAPTURE-RETENTION-POLICY.md`. **All three open questions
+answered with reasoning, not defaults.**
+
+**Tier-1 window: 90 days + size cap, oldest-first** — derived from the case, not a round number: the raw
+stream was needed **four days** after capture and the board was reflashed past the relevant image on day
+four. **Iteration runs in days, so a days-length window sits inside the noise; 90 is an order of
+magnitude of margin.**
+
+**Location:** tier 1 at `XDG_DATA_HOME/r2-bench/captures/<BOARD>`, tier 2 at
+`.../derived/<BOARD>` — **separate trees on purpose so a bulk copy of tier 2 cannot drag tier 1.**
+Neither in a session scratchpad (the **loss** failure) nor in the repo (the **leak** failure).
+
+**THE HARD ONE — composer REJECTED THE CHECKLIST DESIGN**, because a fixed list of observables *would
+have destroyed the evidence in the case that motivated the policy.*
+
+> **RECORD THE VOCABULARY, NOT A CHECKLIST.** For a console stream: the set of **distinct line shapes**
+> — each line reduced to its format skeleton with variable fields elided — with per-shape count and
+> first/last. **A shape histogram answers "how many times did line X occur" FOR EVERY X THAT OCCURRED,
+> not for the X on a list.**
+
+**AND BOTH ENDS OF THE ELISION NAMED, which is why I trust it:** eliding variable fields **BUYS**
+publishability (MAC, efuse value, persona hex do not survive the reduction — tier 2 is non-secret close
+to by construction) and **COSTS** every value-level question and any ordering finer than first/last.
+**A trade with only its good end named is how these rules rot.**
+
+**EVICTION MUST BE RECORDED IN TIER 2** — composer caught this itself: without it, **never-captured and
+aged-out become the same observation**, and the storage layer re-creates the exact bug. **Same shape as
+skip-green.** Coverage metadata mandatory for the same reason: **an absent shape must not be confusable
+with an uncovered window.**
+
+**sha256 of the tier-1 artifact WHETHER OR NOT IT STILL EXISTS** — composer's reason improves on my
+constraint: it is what makes a tier-2 record checkable **after** tier 1 is gone, and what **proves the
+artifact existed** when eviction is later recorded.
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-115 — FOUR GUARDS, NOT TWO. A NULL RESULT FROM A CORRECT CHANGE MEANS AN UNMODELLED GATE.
+
+hive landed both fixes at `bbca787` and found **two more guards while implementing** — **four
+independent guards, all defeated by one `_` because it is a word character:**
+
+1. compact token lookbehind `(?<![0-9a-z_])` — hive's original finding
+2. `has_compact_context` `\b<word>\s*\z` — **mine**; `board_` never anchored
+3. **the PREFILTER at `:382`** — **NEW, and the most important.** It skips the record **before either
+   loop runs.**
+4. **`TAIL_CTX` trailing `\b` on the DASH path** — **NEW.** The dash path has its **own** context
+   source and needed its own fix.
+
+Plus **8 redaction sites** with the same class — **a caught tail would have printed UNREDACTED in the
+failure output.** The gate catching a value and then leaking it in its own report is the worst possible
+ordering.
+
+> **GUARD (3) IS THE GENERAL FINDING: A GATE'S ENTRY TEST MUST BE AT LEAST AS PERMISSIVE AS THE LOOPS IT
+> GUARDS, OR FIXING THE LOOPS IS INVISIBLE.** And it presents as *"my fix failed"* rather than *"there
+> is another guard in front of it"* — **the reading that makes you abandon a correct fix.**
+> **A NULL RESULT FROM A CORRECT CHANGE IS EVIDENCE OF AN UNMODELLED GATE, NOT OF A WRONG CHANGE.**
+
+**Guard (4) is my error repeated one level down:** I analysed the compact path and asserted nothing about
+the dash path's context source. **I generalised from one path to a file.**
+
+**Measured before→after on the real gate:** `board_02345A.log` 0→1, `board_02-34-5a.log` 0→1,
+`dev_0x02345A` 0→1, `hive_02-34-5a` 0→1, control `board 02345A` 1→1 (no regression). Selftest **127/127**
+(was 120). **Fail-safe direction declared IN THE SOURCE:** `hive_abc123` flags; `boardroom 02345A` still
+does not count as context.
+
+**VECTOR SWAP APPROVED** — `x_02345A` and `log_02-34-5a.txt` replaced by `board_02-34-5a.log` and
+`device_02345A.txt`. hive's reason is decisive: `x_` and `log_` **are not device-context terms**, so
+those two test the **context requirement**, not the underscore defect. **hive named which two still
+failed and WHY rather than reshaping them to fit the fix** — which is why I took the recommendation.
+
+**ROUTE 2 IN hive's OWN REPO — GO.** 30 hex frame literals in `usb.rs` plus `TV31_CAPS_FRAME`, citing
+TV2/TV7/TV31/TV32/TV33; `vector_coverage.rs` has **zero** references to `usb_frame_hex`,
+`control_body_cbor`, `bytes` or `hex`. **hive detects vector REMOVAL or RENAME. It does not detect
+vector MUTATION.**
+
+> **THE LANE WITH THE ONLY WORKING DETECTOR WAS ALSO A PARTIAL INSTANCE OF THE DEFECT IT EXPOSED.**
+> Route 1 blocking and proven; route 2 undetected. **The existence of a working detector on one route is
+> what makes the other route invisible.**
+
+**hive's framing of the composition, better than mine:** **a single durability change keeps arming
+hazards on axes nobody checked at the time.** Four in two days off one ruling — **that is the finding,
+not the four instances.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-116 — I RETRACTED THE RULE AND LEFT THE DEFECT IN THE INSTRUMENT.
+
+**specs caught that my sweep-v2 message still carried the retracted "offset by two" line.**
+
+> **Sweep-v2 is the message lanes ACT on, because it asks a question. A correction that asks nothing does
+> not travel with it. A lane reading sweep-v2 and not the retraction banks the wrong rule.**
+
+**This is my own banked rule applied to me: a retraction is not done until it reaches every artifact that
+carried the claim.** I corrected the standing line and left the defective copy sitting in the message
+lanes were asked to act on. **WHEN RETRACTING, RE-ISSUE THE INSTRUMENT, NOT ONLY THE RULE.** Sweep-v2
+re-issued to all six lanes.
+
+**specs' own sweep answer was the strongest in the fleet because it found its FIRST answer was TRUE AND
+INCOMPLETE:** two doc transcriptions of TV27 (proposal doc `:103`, `RESUME-ARCHIVE:488`), **neither
+citing a TV number**, so a keyword search could never have found them.
+
+**METHOD ADOPTED FLEET-WIDE, replacing mine:** extract every distinct **8+ char hex run** from the vector
+file and grep the whole tree for each. **hive found its route 2 the same way** after its first answer
+reported only the vendored file. **Every lane that answered once has found more on the second look —
+treat a prior clean answer as untested, not as done.**
+
+**specs' discriminator on the `38 5E` vs `38 42` difference was right and it nearly reported it as a
+find:** the field is **declared illustrative on BOTH sides** (doc `:61`, `:49`, and TV27's own note
+naming framing+beacon+enum as the conformance target). **The test is whether both artifacts declare the
+field non-conformance-bearing, not whether the bytes differ.**
+
+> **AND THEN THE REAL EXPOSURE: A DOC THAT CORRECTLY LABELS ITS VARIABLE FIELD GIVES NO PROTECTION AT
+> ALL TO ITS FIXED ONE.** The 17-byte beacon beside the illustrative `rssi` is conformance-bearing,
+> transcribed in both places, and **nothing would go red if it changed.** **The careful label on one
+> field reads as care applied to the LINE.**
+
+**specs' detector assessment, accepted:** `check_conformance_manifest.py` is real and blocking, **but its
+scope is the FILE, not the CONTENT** — it detects **unrecorded change**, not **wrong content**. Refresh
+the manifest and any content passes, **which is exactly what happened with the forbidden-state TV34: the
+gate was GREEN through the entire 6m37s window.** **A gate that a correct workflow silences is not a gate
+against content.**
+
+**Logged, not tonight's work:** cross-file duplicate values with **no ownership marker** —
+`851fdee3…` in usb-pair and keystore, `0053a1b2…` in wire/transport/usb, `000102…0f` in update and
+provision. **Sibling files sharing a value with no owner means a correction in one cannot propagate to
+the others.**
+
+**Decision-Log: this entry.**
