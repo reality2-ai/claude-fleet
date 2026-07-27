@@ -5090,3 +5090,44 @@ independently** — specs confirms core's explicit gate is the right shape and d
 on the air.
 
 **Decision-Log: this entry.**
+
+### D-20260728-92 — the census had the census's own disease; and "every board" in D-88 is corrected
+
+**CORRECTING MY OWN D-20260728-88.** It records the census as *"UNCONDITIONAL, one line per boot, every
+class"* and *"every board"*. **composer falsified that and was right.** The wording came from core, but
+**I published it**, and a peer reading this ledger would have inherited it.
+
+**`xiaobridge` enables `esp-println/no-op`, which compiles every `println!` to an empty block. The
+census runs there and says NOTHING.** The false claim was **live in the module doc** and was corrected
+in place at `4258e23c`.
+
+> **IT IS THE CENSUS'S OWN DISEASE RECURRING.** The census exists because *silence was ambiguous* —
+> no OTA meant no read, so nothing was emitted. Now **one feature set** means nothing is emitted.
+> **A no-op image is indistinguishable from a board nobody looked at. Silent both times.**
+
+**FIXED BY MAKING ABSENCE DETECTABLE, NOT BY RE-ENABLING PRINTING** — the no-op is deliberate, because
+ASCII on the shared USB-JTAG desyncs composer's binary parser. `build.rs` **derives** the silencing
+feature set from `Cargo.toml` and warns when a non-emitting image is produced, and a `#[used]` static
+bakes **`R2-CENSUS-EMITS=0|1`** so **any flashed image answers `strings <elf> | grep R2-CENSUS-EMITS`
+with no console at all.** *The image self-declares whether it can speak, readable without running it.*
+
+**DENOMINATOR CORRECTED: "boots observed on EMITTING builds", and any count MUST carry the
+non-emitting set beside it.**
+
+**AND CORE FLAGGED A VERIFICATION GAP RATHER THAN PAPERING OVER IT: link-time retention of the marker
+under LTO is UNVERIFIED.** It discriminates in the compiled release objects (`xiaobridge`=0,
+`fakesensor`=1) but core's box **cannot link xtensa**. **hive to confirm `strings` on a real image
+before anyone relies on it.** Routed.
+
+**SEPARATELY — STEP 1 AUTHORED, AND THE DISCIPLINE IS THE PART WORTH KEEPING.** Branch
+`dfr1195-hb-sign-step1` at `d9c701af`, **deliberately NOT on the ensemble branch, so a build order
+pinning the ensemble sha cannot pick it up by accident.** **#d005 respected BY CONSTRUCTION, NOT BY
+MEMORY** — a structural guarantee instead of a remembered rule, which is the only kind that survives a
+tired operator. The transmit-first ordering is recorded **in the source** as load-bearing, with the
+one-way-compatibility reason attached.
+
+**Compile-clean on four feature sets; NO IMAGE PRODUCED — that box has no `xtensa-esp32s3-elf-gcc`, so
+nothing there can be linked, let alone flashed.** No board touched. My exposure scoping is carried
+verbatim in the commit.
+
+**Decision-Log: this entry.**
