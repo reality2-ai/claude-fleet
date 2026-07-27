@@ -3787,3 +3787,51 @@ byte-identical to the installed one, with an apply-time refusal unless `claim_st
 that check exists the restriction lives only in the grant's scope clause — procedure, not mechanism.**
 
 **Decision-Log: this entry.**
+
+### D-20260727-64 — the #68 ground was wrong; the conclusion stands on better ground
+
+**Correcting D-20260727-63 in this ledger, not only forward.** That entry recorded the supervisor's
+#68 reading as grounded on R2-DEVICE-LIFECYCLE §6.2's preservation invariant. **specs, asked to attack
+it, showed the ground fails.**
+
+**§6.2 is two sentences in two moods.** *"A firmware reload PRESERVES the owner-TG"* is **INDICATIVE —
+no MUST, no SHALL**, and the lifecycle table's OTA row is the same. **Those DESCRIBE.** So
+`baked_persona` does not *violate* that sentence — **it FALSIFIES ITS PREMISE.** The sentence was true
+*because* the persona lived in flash and the image did not carry it. **A finding built on a falsified
+descriptive premise needs re-grounding, not enforcement, and dies the moment anyone notices there is
+no MUST there.**
+
+**RE-GROUNDED on the normative half of the same clause:** *"only a full re-key is a re-persona,
+permitted ONLY from the open-TG … never a network command."* A differently-baked payload accepted from
+OWNER is a re-persona by network command. **In scope — on the other sentence.**
+
+**AND A STRONGER FORM THAN EITHER OF US HAD, now the primary:** every legitimate persona change in the
+model is `epoch++` (Claim → `OWNER@epoch++`; Recovery → `OPEN@epoch++` → `OWNER@epoch++`). A baked
+reload yields **`OWNER@G → OWNER@G` with identity changed and `hw_epoch` untouched — a state the
+lifecycle table HAS NO ROW FOR. Not unpermitted: UNREPRESENTABLE.** This survives clause-lawyering
+because there is no sentence to reinterpret. **The clause is now corroboration; the model shape is the
+argument.**
+
+**THE SUPERVISOR'S RECOMMENDATION IS DOWNGRADED, AND THIS IS THE PART THAT CHANGES ROY'S CHOICE.**
+Option (A) — apply-time refusal when the incoming blob differs — was recommended as durable. **specs
+found the structural hole: the check runs in the firmware the payload REPLACES, so the payload deletes
+the check in the same operation it is meant to be stopped by. Sound for ONE GENERATION** unless it
+lives in an immutable stage. core has been asked whether ESP32-S3 offers one at all; **a clean NO would
+make "one generation" a fact about the silicon rather than a design choice.**
+
+Option (B) — build-time gate excluding bench artefacts from OTA payloads — **forbids PRODUCTION and is
+silent on ACCEPTANCE**: nothing on the device looks, so anyone who can sign for the TG is unopposed.
+**specs warns explicitly that a blend inherits (A)'s cost and (B)'s hole. Drafted to be compared, not
+merged.**
+
+**TRUE UNDER BOTH, and belongs in canon whichever Roy picks:** gate 4 checks the SIGNER and never the
+payload persona; and **preserve-or-drop is an INCOMPLETE ENUMERATION — the third outcome is CHANGE.**
+
+**THE GRANT WAS DELIBERATELY NOT AMENDED.** `.fleet/flash-authorization` describes act 2B as permitted
+by §6.2. **Its operational clauses survive the re-grounding unchanged** — a byte-identical persona is
+not a re-persona under either reading, and *"had the window hashes differed by one byte the delivery
+would be forbidden"* is if anything **stronger** on the normative sentence. **composer may be mid-run;
+editing a live grant to fix a citation's wording risks more than it repairs.** Recorded as a judgement
+rather than left as an omission. **Wording corrected in the morning.**
+
+**Decision-Log: this entry.**
