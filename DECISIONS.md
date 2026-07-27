@@ -4997,3 +4997,48 @@ open.
 ruling.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-90 — the obvious one-line security fix would have broken the mesh
+
+**core reported #12 rather than silently fixing it, and then REFUTED ITS OWN PROPOSED FIX.**
+`firmware dc82046a` is comment-only; **no behaviour changed.**
+
+**THE VULNERABILITY STANDS.** `couple_ok` uses `verify_extended` under `multitg` and a **PLAINTEXT
+`target_group` compare otherwise.** `target_group` **rides in the clear**, so **any node that has heard
+one frame satisfies it.** The bench image (`fakesensor`) does **not** enable `multitg` — **the bench
+runs the unauthenticated arm.** Blast radius: DG-1 liveness + `keepalive_hwm`, the §12.6 duty-class
+record, route-engine `ingest_observation`, `lowest_heard`, PCO phase coupling. **An unauthenticated
+peer drives this node's sync and route confidence.**
+
+**AND THE FIX EVERYONE WOULD HAVE WRITTEN BREAKS EVERYTHING.** *"Call `verify_extended`
+unconditionally, delete the cfg split"* fails: **the heartbeat is only SIGNED under `cfg(multitg)`**, so
+on a default build `hmac_tag=None`, and `verify_extended` returns false for `None`
+(`r2-wire/src/hmac.rs:271-274`). **A receive-side-only flip makes every peer's pulse fail verification
+— no coupling, no liveness, no duty-class, no delivery.**
+
+> **THE ONE-SIDED SWEEP.** core's own words: *"the transmit-side comment already said 'an all-9
+> COORDINATED update'; the sweep read only the receive side."* **The warning was already written, on
+> the half nobody looked at.** A protocol has two ends and a sweep of one end is not a sweep.
+
+**STAGED CLOSURE, and the staging is the whole point:** (1) make **signing** unconditional first — a
+signed pulse still couples with a plaintext-compare receiver, so **step 1 is ONE-WAY COMPATIBLE, no
+flag day**; (2) once every board emits signed pulses, flip the receive side and delete the split.
+**core did NOT take step 1**: it changes heartbeat wire bytes on every board (composer's decoders), and
+hive artifact production is **#d005-gated**.
+
+**RULING: step 1 may be AUTHORED as source; it may not be BUILT or FLASHED without Roy. The wire
+decision is his.** Authoring costs nothing, is reviewable, and does not touch a board. Building does.
+
+**EXPOSURE SCOPED, because urgency and severity are different questions: the threat requires an
+unauthenticated peer in radio range, and there is NO FIELD DEPLOYMENT — the exposed boards are on a
+bench we control.** Severity is real; **urgency is not emergency**, and a wire change made in a hurry
+is how a flag day happens.
+
+**FOURTH COMMENT TODAY THAT ASSERTED A PROPERTY THE BUILD DOES NOT PROVIDE** — *"parse seq/dc from the
+AUTHENTICATED payload"*, true as a rule, false as an enforcement claim on the default build. **Fixed in
+place, not supplemented.** Source comments, spec prose, gate rationale, and now a security invariant.
+
+**Scope with the null, as core stated it: the vulnerability is UNCHANGED. Only its description is now
+accurate.**
+
+**Decision-Log: this entry.**
