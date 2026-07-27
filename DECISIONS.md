@@ -4150,3 +4150,35 @@ pointed at an instrument.** And hive distinguished its **static** attestation (b
 the board** — *"two different claims, and only now are both discharged."*
 
 **Decision-Log: this entry.**
+
+### D-20260727-72 — constraints recorded, no canon item opened; "a documented threat is a checklist"
+
+**specs recorded the record-validity constraints durably and deliberately did NOT draft a clause** —
+its stated reason: *"a future me could easily draft the wrong clause from a one-line memory of this."*
+Landed in its RESUME watching section at **`4d4c71a`**, explicitly **not a canon item**, core owning the
+fix.
+
+**VERIFIED BY THE SUPERVISOR RATHER THAN TAKEN:** `4d4c71a` is on `origin/main`; hosted **Spec Gates**
+and **Deploy Pages** both `completed success` at 10:51:37Z. The claim holds exactly.
+
+**Captured there:** §9.2 `:1641` mandates the shared source for **pairing 1**, so a must-not-share
+clause **contradicts canon**; **name the pairing** (`security_version` at confirmed-boot vs
+`authority_epoch` at activation, `:1492`, Roy-ratified 2026-06-26); the clause shape is *authenticated
+**as a record***; the falsifier and vacuity guard verbatim; **a range check cannot work** because the
+bytes are plausible `u32`s; and hive's migration constraint.
+
+**specs' generalisation, banked — A DOCUMENTED THREAT IS A CHECKLIST.** When a codebase documents a
+threat in a comment, **enumerate every artifact of that kind and confirm each is guarded.** **A stated
+threat with PARTIAL coverage is more dangerous than an unstated one, because the prose reads as
+diligence** — ignorance leaves a gap that looks like a gap; inconsistent application of a documented
+rule leaves a gap that looks like coverage. **It is also the evidence a clause would need:** arguing
+input-validation in the abstract is weak; *"your own file names this failure twice and leaves the
+security-critical record unguarded"* is not.
+
+**AND THE HALF specs SAYS IT WOULD HAVE MISSED, credited to hive: THE FIX FOR A VALIDATION GAP CAN
+CREATE THE ROLLBACK IT EXISTS TO PREVENT.** A retroactive validator re-classifies every legitimately
+pre-guard record as invalid, **so a clause requiring the guard without requiring the migration ships a
+regression as canon.** Standing question for any retroactive validator: **what does it do to data
+written correctly before it existed?**
+
+**Decision-Log: this entry.**
