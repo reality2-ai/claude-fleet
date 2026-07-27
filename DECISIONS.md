@@ -3401,3 +3401,41 @@ regression — and the attestation must SAY so**, or a later reader scores a der
 introduced by this build.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260727-56 — Baking the persona COUPLES IDENTITY TO THE IMAGE, and the first delivery is a falsifier
+
+**The consequence nobody stated when we adopted `baked_persona`, including me: the persona lives in
+rodata, so replacing the image REPLACES THE PERSONA.** Deliver an unbaked payload and the board
+forgets who it is on first boot. **That is a one-way trip, not a round trip** — and every later
+payload for that board must carry the same blob or the identity is gone again.
+
+**Fine on a bench. A real constraint anywhere else, and it is now named rather than discovered later.**
+
+**So both payloads get delivered, in a deliberate order, and the FIRST one earns its place twice:**
+
+1. **The existing unbaked B goes first.** composer's point stands and it is the sharpest evidence
+   available: **the payload is byte-identical to the one that was rejected**, so the signer gate
+   flipping is a **single-variable result** — nothing changed but who sealed it and who the receiver
+   thinks it is.
+2. **And it is a FALSIFIER FOR THE COMPILED-IN CLAIM ITSELF.** If the persona is truly rodata-only,
+   the board **MUST** come up unprovisioned after booting unbaked B, showing the MAC-derived hive id
+   again. **That outcome is PREDICTED IN WRITING BEFORE THE PUSH.** If the persona SURVIVES the image
+   swap, then something wrote it to flash, and hive's no-write finding — which I confirmed at source
+   myself — is refuted by the metal. **A source read says what the code does; only the swap says what
+   the board does.**
+3. **Then a baked B, same blob, re-sealed.** Identity survives the swap, so the board can take a
+   **third delivery over the air with no cable in between. That is the round trip.**
+
+**composer's pinning correction adopted verbatim:** the sealed stream embeds `created_at`, so its
+digest **varies per run** and pinning it would pin a value nobody can recheck. **Stage 2 pins the
+PAYLOAD digest and the SIGNER — both stable, both checkable.** It flagged this rather than letting me
+pin a number that would have failed verification for a reason unrelated to the artifact.
+
+**One lineage question raised before it can bite:** A-prime builds from `r2-core@4b4a71e5`, B was
+built from the `r2-hive` tree at `b25a21eb`. **Different sources.** hive is to state the relationship
+in the attestation, because if the boards behave differently after the swap there would otherwise be
+**two candidate causes and no way to tell them apart.**
+
+**Decision-Log: this entry.**
