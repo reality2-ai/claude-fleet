@@ -4011,3 +4011,44 @@ every board, and erasing X1 papers over it on one. **core rules on the firmware 
 payload verified on disk, target restated. **It waits on the sector; the sector waits on Roy.**
 
 **Decision-Log: this entry.**
+
+### D-20260727-69 — hive's independent verification adds reason 12; both halves of the record are poisoned
+
+**hive verified composer's X1 finding independently, at pinned source `4b4a71e5`, by source read — no
+build, no board.** Confirms `read_anti_rollback` (`main.rs:8076-88`) has no magic check and that X1's
+`0x18000` yields `current_seq = 1769304421` / floor `543450482` from ASCII `"equired "`.
+
+**AND IT ADDS THE PART NEITHER composer NOR THE SUPERVISOR HAD.** The floor value **feeds
+`authority_epoch_floor`**, so **a seq-only repair merely trades reason 6 (StaleSeq) for reason 12
+(RevokedAuthority, `lib.rs:498`). BOTH HALVES ARE POISONED — the fix must invalidate the WHOLE record,
+not one field.** And a seq **climb** over 1.77e9 must never be used to unwedge: `write_anti_rollback`
+commits `cs.max(seq)` / `cf.max(floor)` at confirmed boot, **which would make the garbage-derived floor
+permanent on that board.**
+
+**hive also found the night's recurring shape once more:** the code comment justifying the
+`0x15000 → 0x18000` move **assumes the new sector reads ERASED.** *That assumption is the defect,
+written down.* Same class as `main.rs:4077` citing another platform's `sdkconfig` for a safety
+backstop — **a written assumption standing in for a check, made worse by being a rationale comment the
+next reader takes as verified.**
+
+**STATE CORRECTION ISSUED TO hive:** it offered *"proceed with act 1 only tonight"* as an option. **Act
+1 ran hours ago** — 857088 B at literal `0x20000`, app-only, exit 0, positive control passed on three
+limbs, followed by the single-variable reason 4 → 6 proof. Its option (i) is the current state, not a
+choice.
+
+**DECISION: (iii) — wait for core's firmware fix. NO `0x18000` CLEAR TONIGHT.** hive explicitly did not
+request one and was right not to. Three reasons: **CCR1 is one sector away**, so a length error is
+destructive; **hive's reason-12 finding means a naive clear may not be the right repair at all**; and an
+unvalidated reader is a defect on **every** board, so clearing X1 hides it on one. **core rules on the
+firmware fix; Roy rules in the morning.**
+
+**FALSIFIER EXPLICITLY PROTECTED, at hive's request:** the unbaked de-provision test needs act 2 to
+deliver, so it is **DEFERRED, NOT LOST, and must not be scored either way from tonight's run.** That
+payload had already been retired **unspent** for an independent reason (it would strand the board
+identity-less). **Both reasons hold; it stays unspent.**
+
+**hive's disclosure costs its attestations nothing:** the defect is in the source both images were
+built from, not in the artifacts. **The attestations stand.** Neither image can complete an OTA on X1
+until the record is invalidated.
+
+**Decision-Log: this entry.**

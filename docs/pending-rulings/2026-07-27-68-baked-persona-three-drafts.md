@@ -16,9 +16,12 @@ word of it — corrections are noted here instead, above the line.
 (*"the blend is cheaper than I first said; it is its SECURITY VALUE that is smaller, not its price"*),
 but the closing **"WHAT IS TRUE UNDER BOTH" item 3 still carries the un-retracted wording**
 *"a blend of the two inherits (A)'s cost and (B)'s hole."* **Item 3 is right about the holes and
-superseded about the cost.** specs asked that the do-not-blend line not stand unqualified; it still
-does at the foot of its own file. Left in place because **editing another lane's artifact to fix its
+superseded about the cost.** Left in place because **editing another lane's artifact to fix its
 conclusion is how provenance is lost** — the correction belongs beside it, not inside it.
+
+**→ specs has since accepted this and supplied corrected wording. See "AUTHOR'S CORRECTION" at the
+foot of this file.** The superseded sentence is deliberately **NOT deleted**: it has been quoted
+downstream (D-20260727-65, -67), and **a struck claim that remains findable beats one that vanishes.**
 
 **Supervisor position, offered as a recommendation and explicitly refused by specs as authority:**
 the reading was re-grounded after specs attacked it (the original ground cited an *indicative*
@@ -191,3 +194,30 @@ whose value is decided by a fact still outstanding.
 2. **"Preserve or drop" is an incomplete enumeration.** A third outcome — **change** — exists.
 3. **Nothing is landed and no wording is committed.** (A) and (B) are drafted to be compared, not
    merged; **a blend of the two inherits (A)'s cost and (B)'s hole.**
+
+---
+
+## AUTHOR'S CORRECTION — supplied by specs after the copy above was taken
+
+**Applies to "WHAT IS TRUE UNDER BOTH", item 3.** The copy above is verbatim as at
+`58f439d`; this is the author's own correction, appended rather than merged so both the
+superseded claim and its retraction stay findable.
+
+> **3.** (A) and (B) are drafted to be compared, not merged. **CORRECTED** — this item previously read
+> *"a blend inherits (A)'s cost and (B)'s hole."* **RIGHT ABOUT THE HOLE, WRONG ABOUT THE COST:** the
+> region descriptor is owed by R2-KEYSTORE §9.12.1 **independently**, so a blend's marginal cost is
+> only the comparison logic. See (C): **the blend is CHEAPER than that line claimed and worth LESS than
+> it looks — its defect is security value, not price.**
+
+**specs' own note on why the superseded wording stays:** it has been quoted downstream, and
+**a struck claim that is still findable beats one that vanishes.**
+
+**AND THE SHAPE IS THE ONE THE FILE ITSELF ARGUES ABOUT.** specs retracted the cost claim in §C and
+**left the summary line standing four paragraphs below, in the same document, in the same session** —
+hours after putting the phrase *"a retraction is done when it reaches every artifact"* into use.
+
+> **PROXIMITY IS NOT PROTECTION. A correction that does not sweep its own document has not landed.**
+
+**The supervisor did not silently fix it, and specs confirmed that was the right call:** a preamble
+beside the file preserves *that it was wrong, and when*. **A silent correction would make the record
+show an argument its author never made.**
