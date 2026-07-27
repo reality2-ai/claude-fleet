@@ -4951,3 +4951,49 @@ census line has been seen on metal.**
 line, and (if Roy takes the firmware route) the `SECURE_BOOT_EN` print. **One flash, three results.**
 
 **Decision-Log: this entry.**
+
+### D-20260728-89 — a gate comment asserted the coverage the gate lacked; and bench boards declare prod on the air
+
+**core closed RC-D (`firmware 37d76f7c`, `core D-20260728-36`, pushed) and referred one decision up.**
+
+**THE FINDING IS THE DAY'S RECURRING SHAPE, NOW IN A BUILD GATE.** Its own comment claimed *"every
+dev-class feature implies `dev` in Cargo.toml, so ANY bench arm on a field build fails here."*
+**False — and that false SUFFICIENCY claim is precisely why nobody re-checked it.** A comment asserting
+a property nobody verified is what protects the defect; **the third artifact class today to do it**
+(source comments, spec prose, gate rationale).
+
+**Denominator stated: of the `[features]` entries lacking `dev`, 15 imply it and FOUR do not** —
+`otafail:165` (*"bench-only, MUST NOT ship"*), `benchsf7:274`, `carrier:335` (*"Roy-flash only"*),
+`radiofrontend:343` (*"never agent-flashed"*).
+
+**HAZARD VERIFIED, NOT ASSERTED:** the previous `main.rs` was restored via `git stash` and
+**`field,otafail` BUILT CLEANLY.** Controls now: `field` + each of the four **REFUSED**; `field` alone
+**builds**; `fakesensor`, `fakesensor+otafail`, `fakesensor+benchsf7` **build**.
+
+**RATIFIED — core fixed it by NAMING the four in the explicit gate, NOT by adding `dev` to their
+feature lists, and that was the right call.** `dev` is **not an inert marker**: it selects
+`BUILD_CLASS 0→2` and `BUILD_MODE_TAG prod→dev` (`main.rs:355-362`), **which are DECLARED ON THE
+BEACON**, and `ADVERTISED_CAP_COUNT 1→2` (`:373`). Adding it would have **changed what those images
+declare on the air** and made the **#d026 P3 pair differ in declared CLASS as well as in health**,
+weakening a positive control. **Do not solve an identity-declaration problem with a build-flag
+coupling.**
+
+**⚠ AND THE BROADER FACT core SURFACED IS NOT A BUILD QUESTION, SO I AM NOT DECIDING IT HERE. The base
+bench image `fakesensor` carries no `dev` either — so EVERY BENCH D4 / X1 DECLARES
+`build_class=prod` ON THE AIR TODAY.**
+
+**That is a misrepresentation to peers, not an internal labelling nit.** `build_class` is exactly the
+sort of field a peer would weigh in a trust or discovery decision, and a bench board asserting
+production class is asserting something false about itself. **It bears directly on the dev/prod
+biconditional question and on the device-class taxonomy, so it belongs to specs and to Roy — not to a
+feature-flag edit.** Escalated, not actioned.
+
+**SCOPE WITH THE NULL, as core stated it: the fix makes the four unbuildable with `field`. It does NOT
+make a bench image identifiable as bench once flashed.** That is the referred question and it remains
+open.
+
+**Also open, for Roy:** core CI is functional-GREEN at HEAD (run `30305528778`) with
+**public-content-hygiene RED on a pre-existing `negotiation.rs` finding, awaiting an allowlist
+ruling.**
+
+**Decision-Log: this entry.**
