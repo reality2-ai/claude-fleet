@@ -6969,3 +6969,40 @@ the original unless the repair changes the KIND of evidence.***
 4 since), adopted forward, not retro-fitted.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-137 — THE FRESH-CLONE GAP WAS ALREADY SOLVED. NOBODY CHECKED, INCLUDING ME.
+
+Four lanes reported the same defect — specs, composer (PUBLIC), android, and by implication core and
+claude-fleet: **`.git/hooks/pre-push` is an untracked host-local file, so a fresh clone gets no secret
+scan.** Each was preparing a per-repo mechanism.
+
+**MEASURED: `fleet install-git-hooks` already exists, is tracked, and covers every repo.** Source of
+truth `claude-fleet/hooks/git/`. **`fleet doctor` already reports per-repo `missing` and `drift`.**
+Dry-run: **all seven repos** — specs, core, hive, composer, android, hardware, claude-fleet — report
+`pre-push` **and** `commit-msg` **already current.**
+
+**And the artifact is shared, not copied:** android's deployed hook sha `96ccc7d61046` **is**
+`claude-fleet HEAD:hooks/git/pre-push`. **One artifact, all hosts.**
+
+> **THE CONTENT IS TRACKED CENTRALLY, NOT PER-REPO.** The fresh-clone answer is *clone `claude-fleet`,
+> run `fleet install-git-hooks`* — **one command, one artifact, seven repos.**
+
+**MY OWN CONTRIBUTION TO THE CONFUSION:** my first probe counted tracked paths as `hooks/pre-push` and
+scored claude-fleet **tracked=0**. The real path is **`hooks/git/pre-push`**, and the empty hash
+`e3b0c442` on the path I guessed should have told me the file did not exist rather than that the hook was
+untracked. **I asked about a path I had invented and read the answer as a fact about the repo** — the
+same shape hive hit with `git ls-files`, in the same hour, in the repo I own.
+
+**Item CLOSED, not sequenced.** It never needed the security work it was about to receive.
+
+> **AND THE OCCAM LESSON IS THE POINT: FIVE LANES INDEPENDENTLY CONFIRMED A DEFECT AND NONE OF US ASKED
+> WHETHER THE FLEET TOOL ALREADY HANDLED IT.** Confirmation across lanes felt like corroboration; it was
+> five readings of the same missing question. **Before designing a mechanism, check whether the tool you
+> run every day already has one.**
+
+**RESIDUAL, unowned and real: nothing MAKES a fresh clone run the installer.** That is the CI gap again —
+**the fifth time tonight it has been the answer to a different question.**
+
+**Decision-Log: this entry.**
