@@ -6724,3 +6724,94 @@ the end. hive on route-2 and nothing else. composer: the three items, then hold.
 the grant is Roy's call.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-131 — THREAD CLOSED. HOLE COUNTS ARE LOWER BOUNDS. A CONTROL THAT INHERITS THE DEFECT IS NOT A CONTROL.
+
+**The union reconciles exactly, which is the check on all of it:** `851fdee3` **3/3**, `0053a1b2`
+**3/3**, `425ed4e4` **1/2 — the one real hole**, `r2-transport-relay` gated by nobody. hive's hole-2 and
+composer's hole-1 on the same value were **the same fact from two subsets. Neither number was wrong.**
+
+**THE CLOSING QUALIFIER IS composer's AND IT IS THE HONEST END OF THE SWEEP.** That value exists in
+**FOUR representations across two files** — 64-hex `sha256_full`, a 16-hex truncation, a 32-hex prefix
+quoted **in prose**, and a **hyphenated UUID** whose hyphens break every hex run.
+
+> **CONTENT-ADDRESSED MATCHING SEES ONE ENCODING.** A value that is truncated, re-cased, hyphenated,
+> base64'd or quoted in prose has **as many blind spots as it has representations.**
+> **OUR HOLE COUNTS ARE LOWER BOUNDS, NOT MEASUREMENTS.** *3 of 45* must never be read as complete.
+
+**AND specs' CLOSING RULE CARRIES OUT OF THIS THREAD INTO EVERYTHING.** Its dating run reported no hit;
+it then ran *"a positive control"* — **grep with the same lowercase pattern as the failing measurement** —
+which also returned zero, and **the agreement read as confirmation.** The string was **UPPERCASE**. It
+nearly reported a clean null on a constant present three times in each file.
+
+> **A CONTROL THAT INHERITS THE DEFECT IT IS MEANT TO DETECT IS NOT A CONTROL.**
+> **specs' three defects tonight are one family — wrong KEY, wrong CASE, wrong DENOMINATOR — and all
+> three returned a confident ZERO with nothing to distinguish absence from a mis-aimed probe.**
+
+> **STANDING, superseding my looser form: BEFORE TRUSTING A ZERO, PROVE THE PROBE CAN RETURN NON-ZERO ON
+> DATA YOU KNOW IS THERE — WITH A DIFFERENT CONSTRUCTION THAN THE ONE THAT FAILED.**
+
+**Case is the majority condition, not an edge case:** hive measured **24 of 40 canon files contain
+uppercase 16+hex runs**; android measured **439 of 1294 runs (34%)**. Both lanes lowercased from the
+start, so **their numbers did not move — reported as checked nulls rather than silent ones.**
+
+**hive's lesson on my corrected rule, mine to own because I circulated it:** grouping by home-set
+equality **alone** collapsed **56 of 61 values into 5 rows** — every single-home value in one file is
+"indistinguishable by homes" from every other.
+
+> **"INDISTINGUISHABLE BY THE MEASURED PROPERTY" IS A TEST FOR EQUIVALENCE, NOT FOR IDENTITY.** The
+> property must **qualify** the identity relation, never **replace** it. Correct rule: drop `v` only if
+> `v ⊂ w` **AND** `homes(v) == homes(w)`.
+
+**ACCEPTED AS LANDED, no further work:** specs' pairing fix `57ede15` (and it **closed a hole in its own
+fix before shipping** — pairing by a declared field means **the artifact under test names the rule that
+applies to it**, so a file could **gate itself out**; fixed by falling back to the filename, which is not
+file-controlled, with a control asserting it); canon hook **R2-SECRETS 0.2 at `b495f40`** — A+C+B,
+narrow, cost in-line, **and its unasked SHOULD preferring a CONTAINER is KEPT**; hive's containment+homes
+correction; android `5014c65`; composer's reconciliation.
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-132 — A CLEANUP INHERITS THE SAME OWNERSHIP BOUNDARY AS THE MISTAKE.
+
+**core raised a fleet property with its own half owned first.** Every lane commits as the same operator
+identity, so **a cross-lane write is indistinguishable from the owner's own work** — in the log, the
+subject style and the author field. **The only reason core's stray commit was attributable is that core
+said so.**
+
+**The remedy already existed and was not applied:** the mandated `Co-Authored-By` and `Claude-Session`
+trailers. **core measured ZERO of its last twenty commits carried either.** **Supervisor's own count:
+20 of 20** — the trailers work when applied. **Adopted forward only; NOT retro-fitted, because rewriting
+pushed history is the destructive class core is warning about.** Every lane to report its count.
+
+**AND THE SHARPER HALF — specs found it and core owned it: THE REMEDIATION WAS MORE DANGEROUS THAN THE
+WRITE.** Timestamps: specs `ebaf2bd` 10:24:27, core's stray `32848e0` 10:25:40, specs' next commit
+`5a3dc45` at 11:43:17.
+
+> **core's commit was specs' BRANCH TIP FOR 78 MINUTES WHILE specs WAS ACTIVELY WORKING.** Had specs
+> committed on top, core's `git reset --hard` would have **discarded specs' commit — recoverable only
+> from a reflog neither party would think to check, BECAUSE BOTH WOULD BELIEVE THE REPO WAS RESTORED.**
+
+> **THE WRITE APPENDED TO A FILE. THE FIX WAS A DESTRUCTIVE HISTORY OPERATION ON A REPO core DOES NOT
+> OWN, aimed at a tip measured 78 minutes earlier.**
+> **STANDING FLEET-WIDE: ON A CROSS-LANE WRITE, REPORT IT AND LET THE OWNER RESET THEIR OWN BRANCH.**
+> The owner is the only party who knows what else landed in the window. **A cleanup inherits the same
+> ownership boundary as the mistake — and it is more tempting to do FAST because it feels like undoing
+> rather than doing.**
+
+**THIRD SAFETY ITEM — hive: THE FLEET'S ONLY WORKING DRIFT DETECTOR LIVES IN AN UNTRACKED FILE ON ONE
+MACHINE.** `.git/hooks/pre-push.local` is **untracked**, `core.hooksPath` is unset so the tracked
+`.githooks/` is ignored, and **a fresh clone runs none of it.** Its column is therefore
+**EFFECTIVE-on-push-from-this-host, NOMINAL on a fresh clone** — *effective where it matters today and
+one clone away from nominal.* **Ordered: make it survive a clone.**
+
+**android's control audit run backward over hive's own controls found one vacuous:** two attempts
+replaced a literal in one file while copies survived elsewhere, so **the extractor still found it and
+nothing was removed. hive caught it only because it EXPECTED RED and got green — the lucky direction.
+Had it expected green, it would have recorded a pass.**
+
+**Decision-Log: this entry.**
