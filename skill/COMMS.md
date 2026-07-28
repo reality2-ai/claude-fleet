@@ -1,4 +1,4 @@
-COMMS_VERSION: 20
+COMMS_VERSION: 21
 
 # Fleet peer communication
 
