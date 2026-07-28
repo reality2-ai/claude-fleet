@@ -7006,3 +7006,48 @@ same shape hive hit with `git ls-files`, in the same hour, in the repo I own.
 **the fifth time tonight it has been the answer to a different question.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-138 — CODEX FINDING CONFIRMED: `install-git-hooks` HAS NO FRESHNESS GUARD, AND `doctor` INHERITS THE SAME ROOT.
+
+**First codex finding of the session, and it is real.** composer relayed it correctly — **unverified, not
+acted on, under HOLD.** I verified at source rather than on the relay.
+
+**FIRST, DAMAGE CHECK.** A codex lane had run a dry-run of the *stale* installer. **All seven deployed
+hooks verified intact at `96ccc7d61046`** — claude-fleet, core, hive, specs, composer, android, hardware.
+**Nothing was overwritten.** `--dry-run` is honoured in the stale copy (`bin/fleet:882,915`), which is why
+the test was safe.
+
+**THEN THE CLAIM, verified by READING the stale script rather than executing it** — executing an old
+hook-manipulating script to find out whether it damages hooks is the shape this whole session has been
+about:
+
+- **Neither the stale NOR the live `install-git-hooks` has any freshness or canonical-root guard.** A
+  grep of the live `bin/fleet` and `lib/githooks.sh` for `canonical|freshness|ancestor|refuse` returns
+  only role-based refusals and a symlink-destination warning — **nothing about hook source version.**
+- **`TOOL_ROOT` derives from the invoked script path** (`bin/fleet:23`), and the source line prints
+  `%s/hooks/git/` from it (`:892`).
+
+> **SO AN OLDER CHECKOUT CAN INSTALL AN OLDER HOOK OVER A NEWER ONE — 81 secret/scan refs down to 47 —
+> AND `doctor`, INVOKED FROM THE SAME ROOT, COMPARES STALE-DEPLOYED AGAINST STALE-SOURCE AND REPORTS
+> CURRENT. THE DOWNGRADE CONFIRMS ITSELF.**
+
+**This is my own repo, and it is rules 1 and 2 of the Occam collapse in one defect:** an instrument that
+cannot detect its own staleness, and **a green that never names what it compared against.**
+
+**CONTAINMENT, measured:** `R2-codex/` carries `DECOMMISSIONED.md` (2026-07-21) — *"temporary proving
+copy… do not start a fleet here"*, manifest retained as a **disabled** artifact. **Nothing in `R2/` or
+`~/.claude` references that path.** `command -v fleet` resolves to the live repo. **The downgrade
+requires explicit invocation of a path inside a tree already labelled dead.**
+
+**NOT FIXING TONIGHT.** It touches the secret-scan distribution path at the end of a long session — the
+same restraint specs correctly exercised. **Logged with a falsifier: add a guard that refuses to install
+a hook whose source commit is not a descendant of the deployed one; it must refuse the `ee8d90c` source
+and accept the live one.**
+
+**Options for Roy, smallest first:** (a) nothing — decommissioned, unreferenced, PATH-safe; (b) `chmod -x`
+the stale `bin/fleet` — reversible, removes the only invocation path, and aligns with the tree's own
+stated intent; (c) add the freshness guard to live `install-git-hooks`.
+
+**Decision-Log: this entry.**
