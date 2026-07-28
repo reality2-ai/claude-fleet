@@ -1,4 +1,4 @@
-COMMS_VERSION: 21
+COMMS_VERSION: 22
 
 # Fleet peer communication
 
@@ -18,7 +18,13 @@ Optional dense form:
 - `~` non-binding information
 
 One claim per line. Never shorten code, SHAs, paths, errors, values, units, or the
-falsifier. Cite a commit when lines may move. Relayed requirements name their source.
+falsifier. Relayed requirements name their source.
+
+Every `path:line` citation names the **branch AND the sha** it was read at. A branch alone
+is not enough: line numbers are revision-scoped and move within a branch between reads. A
+path alone is worse — the same path is an 83-line file on one branch and 10k+ on another.
+Verifying one property of a revision (its length, its tip) does not validate another (its
+line numbers); measure the property you are about to claim.
 
 NEVER put a backtick or `$(...)` in a message passed through a shell tool. The shell
 executes it before the message is sent: your text arrives mangled, words vanish
