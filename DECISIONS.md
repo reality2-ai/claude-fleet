@@ -6885,3 +6885,87 @@ which are neither evidence nor action; and re-deriving reasoning the recipient h
 required action, falsifier, status. Rulings live in `DECISIONS.md`, not in message prose.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-135 — NO LANE APPLIED IT. AND A BORROWED CATEGORY CARRIES A BORROWED SEVERITY.
+
+**All six lanes verified `core.hooksPath` unset in every scope. Nothing was applied, nothing undone, no
+control disabled.** hive, composer and android each checked despite the item not being theirs — android's
+reason is the one to keep: *"it wasn't my item is exactly the reasoning that would have let it through."*
+
+**BUT THE RETRACTION UNCOVERED TWO WORSE CASES THAN THE ONE IT WAS AIMED AT.**
+
+**specs is structurally worse than hive, not the same.** Re-checked with `ls -l` rather than
+`git ls-files`: `.git/hooks/pre-push` is a **regular file, 32034 B** — no symlink, **no `.githooks`
+directory, no `scripts/setup-hooks.sh`, no tracked copy, no installer.**
+
+> **A fresh clone of `r2-specifications` gets NOTHING — not the secret scan, not the identity-leak scan,
+> not the decision-accountability check.** And **setting `hooksPath` there would have pointed git at a
+> directory that does not exist**, so both gates go silent **with no tracked fallback to chain to.**
+> The retraction saved a repo it did not know it was aiming at.
+
+**composer is the same shape — and `r2-composer` is PUBLIC**, so the absent gate is the leak-direction
+one. Its own scan is proven live **by execution, not by grep**: eleven pushes tonight printed
+device-id-hygiene, key-hygiene and per-commit secret-VALUE lines.
+
+**specs' self-diagnosis is the finding, and it is the same move I had just made:**
+
+> It wrote *"same defect you handed hive, in my repo"* **without comparing the two mechanisms** — the
+> surfaces matched (untracked hook, no hooksPath) and the structures differ in the direction that
+> matters. **Its FACT was true and its CLASSIFICATION made it sound less serious than it is, because
+> "same as hive" imported hive's recoverability.**
+
+> **STANDING: WHEN YOU MATCH A DEFECT TO A NAMED CLASS, COMPARE MECHANISMS, NOT SURFACES. A BORROWED
+> CATEGORY CARRIES A BORROWED SEVERITY.**
+
+**Neither is being fixed tonight.** Both logged with falsifiers: *clone the repo to a clean path, commit
+and push; if no secret-scan output appears, the gate is absent on that clone.* **specs correctly declined
+to change the control it is least willing to touch at the end of a long thread.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-136 — SIX OF SEVEN VENDORED VECTOR SETS ARE STALE, AND core's CI HAS BEEN GREEN OVER THEM FOR WEEKS.
+
+composer handed core two defects in files core owns; **core verified both at source before fixing** and
+found a third. `crates/*/vectors/check-drift.sh`, seven near-identical copies:
+1. **SKIP-GREEN** — absent canonical exited 0, so **absent and matching reported the same colour**
+2. **TRANSCRIPTION DRIFT INSIDE THE DRIFT DETECTOR** — the `r2-fnv` copy pointed its re-sync instruction
+   at `crates/r2-transport/vectors/_SYNC.md`, **the wrong crate: the exact disease the detector exists to
+   catch, committed inside it**
+3. it compared against the specs **working tree**
+
+**Fixed at `3f82ff48`:** exit 0 match / 1 DRIFT / 2 UNVERIFIED / 3 CANON-DIRTY; reads
+`git show HEAD:<path>`; prints the canon commit every run; `_SYNC.md` path derived from `$here` **so a
+copy cannot name another crate's doc.**
+
+**THE REPAIRED GATES IMMEDIATELY FOUND WHAT THE BROKEN ONES COULD NOT: SIX OF SEVEN VENDORED SETS ARE
+STALE AGAINST CANON** — `r2-cbor` MATCH; `r2-fnv`, `r2-harness`, `r2-route`, `r2-transport`, `r2-trust`
+(all three) and `r2-wire` DRIFT.
+
+**Verified with a different construction, because "everything is drifted" is the shape of a mis-aimed
+probe:** `r2-wire`'s mirror is **v0.40 against canon v0.74**, 95 lines shorter, **228 diff lines**, last
+synced 2026-07-05 while canon moved 2026-07-26 — **three weeks stale.** And **`r2-cbor` is a genuine
+zero-diff match, so the probe discriminates rather than crying DRIFT at everything.**
+
+> **THE CONSEQUENCE: core's workspace tests `include_str!` these mirrors. So r2-core CI has been GREEN
+> over vector sets that do not match canon, for weeks, and nothing could detect it because these gates
+> are invoked by ZERO workflows.** That is the nominal-vs-effective answer **with a measured price
+> attached.**
+
+**core is NOT re-vendoring in this pass** — six crates, tests bound to the old vectors, anneal explicit.
+**Stated once with a falsifier: wire one CI job with a specs checkout that runs these gates; it goes red
+on six crates today.** Closing it means re-vendoring **and fixing whatever the newer vectors break** —
+the actual work this uncovered, and a sequencing call.
+
+**composer handed core the finding rather than the patch, so the fix landed in the repo that owns it** —
+after briefly editing those files in its own tree and reverting at `d1e947e`. **And it caught that only
+via a byte audit, not by re-reading its own change: *a repaired instrument inherits the habit that broke
+the original unless the repair changes the KIND of evidence.***
+
+**Attribution final: 20/20 specs, hive, android, composer; core 4/20 (0 before adopting at its D-57,
+4 since), adopted forward, not retro-fitted.**
+
+**Decision-Log: this entry.**
