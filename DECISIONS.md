@@ -6815,3 +6815,73 @@ nothing was removed. hive caught it only because it EXPECTED RED and got green �
 Had it expected green, it would have recorded a pass.**
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260728-133 — RETRACTED: MY item-3 FIX WOULD HAVE DISABLED THE FLEET SECRET-SCAN.
+
+**D-20260728-132 ordered hive to "track it or set `core.hooksPath`". BOTH HALVES WERE WRONG, and the
+second was dangerous.** hive checked before acting.
+
+**Setting `core.hooksPath` makes git run the TRACKED hook INSTEAD of `.git/hooks/pre-push` — and
+`.git/hooks/pre-push` IS the fleet secret-scan: 81 secret-scan references there versus 3 in the tracked
+copy.** A one-line remediation for a *drift-gate wiring* issue would have **switched off the secret
+failsafe in every repo that applied it.** `scripts/setup-hooks.sh:8` already documents why it
+deliberately does not set `hooksPath`.
+
+**specs was the highest risk**, having just reported its identity-leak scan and secret scan running from
+an untracked `.git/hooks/pre-push` and named it *"the same defect you handed hive"* — **it is not, and my
+fix would have cost it its leak gate.** Retracted to all six lanes.
+
+**AND THE PREMISE WAS WRONG TOO:** `.git/hooks/pre-push.local` is a **SYMLINK to `.githooks/pre-push`,
+which IS tracked.** hive read *"untracked path"* off `git ls-files` and never ran `ls -l` — **it asked
+git about the PATH and git answered about the PATH.** I took that report and ruled on it without checking
+either. **Two of us, one probe, one blind spot.**
+
+**Proved by CLONING, not reasoning:** a fresh clone gets `.githooks/pre-push`,
+`ci/check-vendored-vectors.sh` and `scripts/setup-hooks.sh`. **Only the wiring is absent, and the
+installer chains at the extension point so BOTH gates run.**
+
+**CORRECTED STATUS:** hive's gate is **EFFECTIVE on any clone where `setup-hooks.sh` has been run** —
+content tracked, activation one documented command, zero CI invocations. **Git never auto-runs a tracked
+hook; that is a git security property, not a defect.** The remaining honest gap is CI, as it always was.
+
+> **I ISSUED A ONE-LINE REMEDIATION INTO SIX REPOS I DO NOT OWN, FOR A DEFECT I HAD NOT VERIFIED,
+> TOUCHING THE SECURITY CONTROL I CARE MOST ABOUT. THE FIX WAS MORE DANGEROUS THAN THE THING IT FIXED.**
+> Exactly the lesson core taught four hours earlier (D-132), with me as the worked example.
+
+**specs' rule explains both halves and is the thread's last word:**
+
+> **A REPAIRED INSTRUMENT INHERITS THE HABIT THAT BROKE THE ORIGINAL UNLESS THE REPAIR CHANGES THE KIND
+> OF EVIDENCE, NOT JUST THE KEY.** specs replaced a wrong-*key* counter with an id-walking counter and
+> got zero on a 5470-byte file — still convention-dependent, one level down. My repair for a wiring
+> defect was another wiring change. **Neither of us changed the kind of evidence.**
+
+**STANDING: BEFORE A REMEDIATION CROSSES A REPO BOUNDARY, PROVE THE DEFECT WITH A DIFFERENT CONSTRUCTION
+THAN THE ONE THAT REPORTED IT, AND NAME WHAT ELSE THE FIX TOUCHES.** hive did both; I did neither.
+
+**Also corrected:** specs withdraws *"two genuine zeros"* — neither `r2-fnv` nor `r2-transport-relay` is
+established as empty. `425ed4e4` is **closed**: composer's home stands, the file is 5470 bytes with
+`vectors` **nested** under `trust_group_hash`, and composer labels its own row **prefix-and-prose, not a
+value-to-value match.** **Attribution: 20/20 for specs, hive, android, composer; core was the sole
+outlier at 0/20 and has adopted forward.**
+
+**Decision-Log: this entry.**
+
+---
+
+## D-20260728-134 — COMMS DRIFT: I CAUSED IT, THE LANES MIRRORED IT.
+
+Roy flagged that fleet messages had become verbose again. **Correct, and the cause is mine.**
+`COMMS_VERSION 20` sets a routine target of **600 characters**; my messages had been running four to six
+times that, and **lanes mirror the supervisor's register.**
+
+**What inflated them:** using the dense markers (`!` `@` `=` `?` `#`) as **section headers for prose**
+rather than as compression; **restating each lane's own findings back to it**; attribution and praise,
+which are neither evidence nor action; and re-deriving reasoning the recipient had already produced.
+**The correction spiral in a second dimension.**
+
+**Reset issued: cut attribution, echo and praise; keep evidence (sha / path:line / value / error),
+required action, falsifier, status. Rulings live in `DECISIONS.md`, not in message prose.**
+
+**Decision-Log: this entry.**
