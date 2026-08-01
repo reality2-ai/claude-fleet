@@ -7051,3 +7051,49 @@ the stale `bin/fleet` — reversible, removes the only invocation path, and alig
 stated intent; (c) add the freshness guard to live `install-git-hooks`.
 
 **Decision-Log: this entry.**
+
+## D-20260801-139 — pair's liveness check read window PRESENCE, not agent REACHABILITY
+
+- **Decision-maker:** Roy (fix it), supervisor (mechanism)
+- **Authority basis:** Roy's direct instruction, "fix the pair liveness check so a dead
+  companion can restart"
+
+`_fleet_start_companion` skipped on `fleet_tmux_has_window`, which only proves a window
+object exists. Under `FLEET_TMUX_REMAIN_ON_EXIT=on` — our own "supervisor goes blind" fix,
+which deliberately keeps a crashed worker's window as a visible corpse — a dead companion
+leaves a window behind, so `pair` reported it *"already running"* indefinitely.
+
+**The lane then had no route back.** `fleet up` refuses companion ids (*"start its base or
+use fleet pair"*); `fleet reap` ignores non-manifest children; `pair` saw a window. Each
+declined for its own correct reason, and together they made a dead companion
+**unrevivable** without a manual `fleet down`.
+
+**This is the SECOND time this exact defect has shipped, and both times it hit codex
+companions.** `fleet_tmux_start_child` carried the identical bug for manifest children and
+was fixed 2026-07-19 with the recycle path in `lib/tmux.sh` — whose own comment records
+*"six codex refuters sat dead for ~an hour reporting 'already running'"*. **That fix was
+never applied to the companion call site.** A remedy landed at one call site is not a
+remedy for the class.
+
+**Measured 2026-08-01:** `core-codex` sat dead ~4 h reporting *"already running"* while its
+state read `stopped`; **seven queued supervisor messages never reached it**, and the whole
+Tranche A independent review silently never happened.
+
+**Fix:** mirror the established pattern — `has_window` → `window_alive` → recycle a stale
+window instead of reporting it up. Deliberately a copy of the repo's own remedy, not a new
+design.
+
+**Evidence — A/B on one identical corpse state, plus a regression control:**
+
+1. corpse created (`pane_dead=1`, window present); **old code** → *"already running"*,
+   `pane_dead` still 1. **Bug reproduced.**
+2. **new code, same corpse** → *"stale window (agent dead) — recycling"*, lane started;
+   `pane_dead=0`, `state: live`, codex transcript touched 0 s ago.
+3. **new code, live window** → *"already running"*, `pane_pid` unchanged before and after.
+   **A healthy lane is not recycled.**
+
+**Consequence:** a dead companion now self-heals on the next `pair`/`up --pairs`. **Not
+fixed here:** `lib/faculty-bg.sh:128` uses the same presence-only test and is a candidate
+for the same class — flagged, unmeasured, not changed.
+
+**Decision-Log: this entry.**

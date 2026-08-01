@@ -1527,9 +1527,24 @@ _fleet_start_companion() {
   cid="${companion_id:-$base-$target_provider}"
   fleet_require_member_id "$cid"
   [[ "$cid" != "$base" ]] || { warn "$base: companion id equals base id; skipping"; return 0; }
+  # Presence of a window is not reachability of an agent. Under remain-on-exit
+  # (FLEET_TMUX_REMAIN_ON_EXIT=on, the "supervisor goes blind" fix) a dead companion
+  # leaves a corpse window, and a bare has_window check then reports it "already
+  # running" forever — while `fleet up` refuses companion ids and `fleet reap` ignores
+  # non-manifest children, so the lane is unrevivable without a manual `fleet down`.
+  # Measured 2026-08-01: core-codex sat dead ~4h reporting "already running" while its
+  # own state read `stopped`, and seven queued messages never reached it.
+  # This is the SAME defect and the SAME remedy as the recycle path in
+  # fleet_tmux_start_child (lib/tmux.sh) — probe the pane and RECYCLE a dead one. That
+  # fix landed 2026-07-19 for manifest children and THIS CALL SITE WAS MISSED, which is
+  # why it bit the same population (codex companions) a second time.
   if fleet_tmux_has_window "$cid"; then
-    info "pair: '$cid' already running for '$base'"
-    return 0
+    if fleet_tmux_window_alive "$cid"; then
+      info "pair: '$cid' already running for '$base'"
+      return 0
+    fi
+    warn "pair: '$cid' stale window (agent dead) — recycling"
+    fleet_tmux kill-window -t "$FLEET_TMUX_SESSION:$cid" 2>/dev/null || true
   fi
   cwd="$(_fleet_id_cwd "$base")"
   [[ -d "$cwd" ]] || { warn "$base: cwd does not exist: $cwd"; return 0; }
