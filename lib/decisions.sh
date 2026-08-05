@@ -108,6 +108,7 @@ _fleet_decision_actor() { printf '%s\n' "${FLEET_CHILD_ID:-supervisor}"; }
 cmd_decision_add() {
   local waiting="" options="" raised_by="" authority="" context="" question=""
   local scope="" evidence="" falsifier="" supersedes="" scope_set=0 authority_set=0
+  local due_raw="" due_epoch="" due_iso=""
   while [[ $# -gt 0 ]]; do
     case "${1:-}" in
       --for|--waiting)    waiting="${2:?missing --for value}"; shift 2 ;;
@@ -119,7 +120,8 @@ cmd_decision_add() {
       --evidence)         evidence="${2:?missing --evidence value}"; shift 2 ;;
       --falsifier)        falsifier="${2:?missing --falsifier value}"; shift 2 ;;
       --supersedes)       supersedes="${2:?missing --supersedes value}"; shift 2 ;;
-      -h|--help) die "usage: fleet decision add \"<question>\" [--for <agent>] [--scope <scope>] [--options \"a|b\"] [--authority <who>] [--supersedes <id>]" ;;
+      --due|--by)         due_raw="${2:?missing --due value}"; shift 2 ;;
+      -h|--help) die "usage: fleet decision add \"<question>\" [--for <agent>] [--scope <scope>] [--options \"a|b\"] [--authority <who>] [--supersedes <id>] [--due <when>]" ;;
       *) [[ -z "$question" ]] && question="$1"; shift ;;
     esac
   done
@@ -139,6 +141,15 @@ cmd_decision_add() {
   [[ -n "$scope" ]] || scope="${waiting:-global}"
   [[ -n "$authority" ]] || authority="supervisor"
 
+  # A deadline that did not parse must REFUSE, never default. A --due nobody could read,
+  # silently dropped, produces a decision that looks undated and a human who believes it
+  # is dated — the failure is discovered by missing the date.
+  if [[ -n "$due_raw" ]]; then
+    due_epoch="$(fleet_due_parse "$due_raw")" \
+      || die "could not read --due '$due_raw' (try '2026-08-08', '2026-08-08 17:00', 'friday', '+2 days')"
+    due_iso="$(date -d "@$due_epoch" '+%Y-%m-%d %H:%M %Z')"
+  fi
+
   local id ts epoch dir opts_json record
   id="$(_fleet_decision_next_id)"
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; epoch="$(date +%s)"
@@ -153,7 +164,8 @@ cmd_decision_add() {
       --arg raised_by "$raised_by" --arg waiting "$waiting" --arg scope "$scope" \
       --arg authority "$authority" --arg context "$context" --arg question "$question" \
       --arg evidence "$evidence" --arg falsifier "$falsifier" \
-      --arg supersedes "$supersedes" --argjson options "$opts_json" '
+      --arg supersedes "$supersedes" --argjson options "$opts_json" \
+      --arg due_iso "$due_iso" --arg due_epoch "$due_epoch" '
     {id:$id, ts:$ts, epoch:$epoch, raised_by:$raised_by,
      waiting:(if $waiting=="" then null else $waiting end),
      scope:$scope, authority:$authority,
@@ -165,6 +177,8 @@ cmd_decision_add() {
      answer:null, answered_ts:null, ratified_by:null, ratified_ts:null,
      revoked_by:null, revoked_ts:null, revocation_reason:null,
      supersedes:(if $supersedes=="" then null else $supersedes end),
+     due:(if $due_iso=="" then null else $due_iso end),
+     due_epoch:(if $due_epoch=="" then null else ($due_epoch|tonumber) end),
      superseded_by:null, challenges:[]}' )" || die "failed to build decision record"
   printf '%s\n' "$record" | fleet_safe_write "$(fleet_decision_path "$id")" \
     || die "failed to persist decision '$id'"
@@ -209,12 +223,24 @@ _fleet_decisions_current_print() {
     printf '(no active decision latches or open gates)\n'
     return
   fi
-  printf '%s' "$current" | jq -r '
+  # `now` is passed in and the remaining time is RECOMPUTED on every print. This
+  # function runs on each primer injection, so a lane always reads a fresh figure.
+  # Storing "2 days left" would rot exactly like any other unrecomputed number, and
+  # an agent has no clock to notice it had (see fleet_now_local, lib/common.sh).
+  printf '%s' "$current" | jq -r --argjson now "$(date +%s)" '
     def state: (.state // .latch_state // (if .status=="answered" then "ratified" else (.status // "open") end));
+    def dur($s): ($s|fabs|floor) as $a
+      | ($a/86400|floor) as $d | (($a%86400)/3600|floor) as $h | (($a%3600)/60|floor) as $m
+      | if $d>0 then "\($d)d \($h)h" elif $h>0 then "\($h)h \($m)m" elif $m>0 then "\($m)m" else "\($a)s" end;
+    def duetag: if (.due_epoch // null) == null then ""
+      else (.due_epoch - $now) as $s
+        | if $s < 0 then "\n  ‼ DUE \(.due) — OVERDUE by \(dur($s))"
+          else "\n  DUE \(.due) — \(dur($s)) remaining" end
+      end;
     .[] | if state=="ratified" then
-      "#\(.id) [RATIFIED/\(.action // .operational_state // "go")] scope=\(.scope // .waiting // "global") authority=\(.authority // "supervisor")\n  \(.answer // "")"
+      "#\(.id) [RATIFIED/\(.action // .operational_state // "go")] scope=\(.scope // .waiting // "global") authority=\(.authority // "supervisor")\(duetag)\n  \(.answer // "")"
     else
-      "#\(.id) [OPEN/HOLD] scope=\(.scope // .waiting // "global") authority=\(.authority // "supervisor")\n  \(.question // "")"
+      "#\(.id) [OPEN/HOLD] scope=\(.scope // .waiting // "global") authority=\(.authority // "supervisor")\(duetag)\n  \(.question // "")"
     end'
   if (( omitted > 0 )); then
     printf '(WARNING: %s additional active decision(s) omitted by the context bound; absence here is not revocation. Run: fleet decisions --current --max %s)\n' \
@@ -315,15 +341,24 @@ _fleet_decision_route() {
 # fleet decide <id> "<answer>" [--action hold|go|done] [--evidence <text>]
 cmd_decide() {
   local id="${1:-}" answer="${2:-}" actor op="go" evidence=""
-  [[ -n "$id" && -n "$answer" ]] || die "usage: fleet decide <id> \"<answer>\" [--action hold|go|done]"
+  local due_raw="" due_epoch="" due_iso=""
+  [[ -n "$id" && -n "$answer" ]] || die "usage: fleet decide <id> \"<answer>\" [--action hold|go|done] [--due <when>]"
   shift 2
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --action|--state) op="${2:?missing --action value}"; shift 2 ;;
       --evidence) evidence="${2:?missing --evidence value}"; shift 2 ;;
+      --due|--by) due_raw="${2:?missing --due value}"; shift 2 ;;
       *) die "unknown decide option '$1'" ;;
     esac
   done
+  # Same refuse-don't-default contract as `decision add`: an unreadable deadline is
+  # an error, never a silent drop.
+  if [[ -n "$due_raw" ]]; then
+    due_epoch="$(fleet_due_parse "$due_raw")" \
+      || die "could not read --due '$due_raw' (try '2026-08-08', '2026-08-08 17:00', 'friday', '+2 days')"
+    due_iso="$(date -d "@$due_epoch" '+%Y-%m-%d %H:%M %Z')"
+  fi
   [[ "$op" =~ ^(hold|go|done)$ ]] || die "invalid operational action '$op' (use hold, go, or done)"
   _fleet_decision_require_id "$id"
   fleet_load_paths
@@ -363,12 +398,14 @@ cmd_decide() {
       || { fleet_safe_unlock; die "successor must keep predecessor authority and scope"; }
   fi
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  updated="$(printf '%s' "$raw" | jq --arg a "$answer" --arg ts "$ts" --arg actor "$actor" --arg op "$op" --arg evidence "$evidence" '
+  updated="$(printf '%s' "$raw" | jq --arg a "$answer" --arg ts "$ts" --arg actor "$actor" --arg op "$op" --arg evidence "$evidence" \
+      --arg due_iso "$due_iso" --arg due_epoch "$due_epoch" '
     .schema=2 | .state="ratified" | .answer=$a | .answered_ts=$ts
     | .ratified_ts=$ts | .ratified_by=$actor | .action=$op
     | .confidence="survived"
     | del(.status,.latch_state,.epistemic_state,.operational_state)
-    | if $evidence!="" then .evidence=$evidence else . end')" \
+    | if $evidence!="" then .evidence=$evidence else . end
+    | if $due_iso!="" then (.due=$due_iso | .due_epoch=($due_epoch|tonumber)) else . end')" \
     || { fleet_safe_unlock; die "failed to build ratified decision '$id'"; }
   if ! printf '%s\n' "$updated" | fleet_safe_write "$f"; then
     fleet_safe_unlock; die "failed to record decision '$id'"

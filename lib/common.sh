@@ -133,6 +133,46 @@ fleet_codex_transcript_path() {
   printf '%s\n' "${f:-$root/$sid.jsonl}"
 }
 
+# Wall clock for AGENT-FACING text: local time, named zone, unambiguous date.
+#
+# An agent has no running clock. It learns the time only at the instants something is
+# injected into its thread; its system prompt gives it a date at session start and
+# nothing after. Before this existed a lane could not tell a one-minute gap from an
+# overnight one, could not say how long it had been blocked, and could not act on
+# "finish by Friday" — A DEADLINE YOU CANNOT LOCATE YOURSELF AGAINST IS A WISH.
+#
+# Local time with a named zone, not UTC: the humans reading these same threads work in
+# it, and a lane reasoning about a deadline must reason in the zone the deadline was
+# set in. ISO-ordered date so it sorts and so the YEAR stays visible — "06 Aug" is
+# fine until the first January.
+fleet_now_local() { date '+%Y-%m-%d %H:%M %Z'; }
+
+# Parse a human-written deadline into an epoch. Accepts what someone actually types:
+# "2026-08-08", "2026-08-08 17:00", "friday", "+2 days", "tomorrow 09:00".
+# Prints the epoch on success; prints nothing and returns 1 on anything it cannot read.
+#
+# FAILS LOUD BY DESIGN. The caller must refuse rather than default: a deadline that
+# silently became "now" or "never" because the string did not parse is the fail-open
+# form of this feature, and it would be discovered by missing the date.
+fleet_due_parse() {
+  local s="${1:-}" e
+  [[ -n "$s" ]] || return 1
+  e="$(date -d "$s" +%s 2>/dev/null)" || return 1     # GNU date
+  [[ "$e" =~ ^-?[0-9]+$ ]] || return 1
+  printf '%s\n' "$e"
+}
+
+# Render a signed second-count as a short human duration: "2d 7h", "5h 12m", "45m", "30s".
+# Two units at most — a deadline is a decision aid, not a stopwatch.
+fleet_dur_short() {
+  local s="${1:-0}"; s="${s#-}"
+  local d=$(( s / 86400 )) h=$(( (s % 86400) / 3600 )) m=$(( (s % 3600) / 60 ))
+  if   (( d > 0 )); then printf '%dd %dh\n' "$d" "$h"
+  elif (( h > 0 )); then printf '%dh %dm\n' "$h" "$m"
+  elif (( m > 0 )); then printf '%dm\n' "$m"
+  else printf '%ds\n' "$s"; fi
+}
+
 # mtime (epoch secs) of a file, or 0 if missing. GNU stat then BSD stat.
 fleet_mtime() {
   [[ -f "$1" ]] || { echo 0; return; }

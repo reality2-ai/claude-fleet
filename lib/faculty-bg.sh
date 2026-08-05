@@ -50,7 +50,10 @@ fleet_bg_drain() {
     if [[ "$delivered" == "true" ]]; then printf '%s\n' "$line" >>"$f.tmp"; continue; fi
     from="$(jq -r '.from' <<<"$line")"; text="$(jq -r '.text' <<<"$line")"
     local _reply _ok=0
-    _reply="$(fleet_bg_deliver_turn "$sid" "$cwd" "[fleet msg from $from] $text")" && _ok=1   # claude-bg is claude-only
+    # Stamped to match the tmux path exactly (comms.sh:295 — an agent has no running
+    # clock and learns the time only on injection). The two paths agreeing is the
+    # property the hop-removal note relies on; keep them changing together.
+    _reply="$(fleet_bg_deliver_turn "$sid" "$cwd" "[fleet msg from $from · $(fleet_now_local)] $text")" && _ok=1   # claude-bg is claude-only
     if (( _ok == 1 )); then
       printf '  → [%s] %s\n  ← %s\n' "$from" "$text" "${_reply:0:400}"   # render the turn (visible in the controller window)
       printf '%s\n' "$(jq -c '.delivered=true' <<<"$line")" >>"$f.tmp"

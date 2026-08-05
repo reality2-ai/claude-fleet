@@ -125,10 +125,16 @@ fleet — supervise parallel coding-agent sessions (OTP-style)
   fleet inbox [id]              read a mailbox (full answers + audit trail)
 
   fleet decision add "<question>" [--for <agent>] [--options "a|b|c"] [--authority <who>]
+                                  [--due <when>]
                                   record a decision waiting on you; prints its id
+                                  --due takes "2026-08-08", "2026-08-08 17:00", "friday",
+                                  "+2 days"; an unreadable date is REFUSED, never dropped.
+                                  Lanes see "DUE <date> — <N> remaining" (or OVERDUE) in the
+                                  decision context they receive, RECOMPUTED on every read —
+                                  an agent has no clock and cannot notice a stale figure.
   fleet decision challenge <id> "<claim>"  wound confidence without changing the latch
   fleet decision revoke <id> "<reason>"    authority-only explicit invalidation
-  fleet decide <id> "<answer>"             ratify once; a different re-answer is refused
+  fleet decide <id> "<answer>" [--due <when>]  ratify once; a different re-answer is refused
   fleet decisions [--all|--current] [--for <scope>] [--max N] [--json] [--watch]
                                   list open gates, history, or bounded active latches
 

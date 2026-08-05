@@ -292,7 +292,23 @@ fleet_inject() {
   #
   # `from` and `kind` STAY: from is who to answer, kind is ask-vs-FYI, and both
   # change agent behaviour. They earn their tokens.
-  full="[$tag from $from] $text"
+  #
+  # The TIMESTAMP earns them by the same test, and it is the reason it was added
+  # (Roy, 2026-08-06) rather than an ornament: an agent has NO RUNNING CLOCK. It
+  # learns the time only when something is injected, and its system prompt dates
+  # only the session start. Without a stamp a lane cannot tell a one-minute gap
+  # from an overnight one, cannot report how long it was blocked, and cannot act
+  # on a date — which is the whole of why "get it done by Friday" did not work.
+  # That changes agent behaviour, which is exactly the bar `hop` failed.
+  #
+  # SAFE AGAINST THE ONE PARSER: fleet_box_has_stuck_inject (below) is the sole
+  # matcher of this envelope and greps `\[fleet (msg|ask) from ` — a PREFIX. The
+  # stamp goes after `$from`, still inside the bracket, so the prefix is intact.
+  # Verified before the change, both directions: current and stamped envelopes
+  # both match, and a line of human typing still does not.
+  #
+  # Both delivery paths keep agreeing — faculty-bg.sh:53 carries the same stamp.
+  full="[$tag from $from · $(fleet_now_local)] $text"
   local tgt="$FLEET_TMUX_SESSION:$to"
 
   # --- INSERT. Default: ATOMIC bracketed paste via a tmux buffer (FLEET_INJECT_PASTE
