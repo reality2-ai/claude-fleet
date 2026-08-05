@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
-# PREPUSH_VERSION: 10 (2026-07-27) — the flag guard matches ONE dash too; -h no longer exits 0 silent.
+# PREPUSH_VERSION: 11 (2026-08-05) — the PRIVATE KEY arm requires the five dashes. Version bumped
+# because the behaviour changed: android made this edit locally on 2026-08-04 and left the version
+# at 10, so two hooks with the same version number scanned differently and drift was undetectable
+# by the one field that exists to detect it. An unversioned change to a gate is an unauditable gate.
 # BUMPED BECAUSE BEHAVIOUR CHANGED. A behaviour change without a version bump leaves two
 # gates live and indistinguishable — the skew android measured across six repos, where the
 # only discriminator was a sha256 of an untracked file. Redistribute after any change here.
@@ -333,7 +336,22 @@ scan_range() {  # $1 = git rev range or single sha
 
   # 2) high-signal secret VALUES in added content
   grep -qE '[0-9]{8,10}:[A-Za-z0-9_-]{35}' <<<"$added"      && findings+="  • a Telegram-bot-token pattern\n"
-  grep -qE 'BEGIN [A-Z ]*PRIVATE KEY' <<<"$added"           && findings+="  • a PRIVATE KEY block\n"
+  # REQUIRE THE FIVE DASHES (android, 2026-08-04; landed here 2026-08-05). A real PEM header
+  # always carries them; the dashless form matched only prose, and prose is all it caught.
+  # It blocked a 214-commit push on ONE added line — a gate's own known-positive fixture —
+  # with 0 full headers and 0 base64 bodies of 60+ chars in the range. Controlled both ways
+  # before landing: a real PEM fires, a PEM embedded in JSON fires, prose no longer fires.
+  # `--` because a pattern beginning with a dash is otherwise read as an option.
+  #
+  # WHY THIS IS IN THE SOURCE AND NOT IN ONE LANE'S HOOK DIRECTORY. android fixed this a day
+  # ago and said in its own comment that the file was untracked, that the edit vanished on a
+  # fresh clone, and that every other lane still ran the dashless arm — all three true, and
+  # measured again today: standard and composer still carried it. A ruling that lives only
+  # where it was made is not in force anywhere else.
+  #
+  # KNOWN GAP, UNCHANGED BY THIS EDIT AND STATED SO IT IS NOT MISTAKEN FOR COVERAGE: a bare
+  # base64 key body with no header is caught by neither pattern, before or after.
+  grep -qE -- '-----BEGIN [A-Z ]*PRIVATE KEY-----' <<<"$added" && findings+="  • a PRIVATE KEY block\n"
   grep -qE 'AKIA[0-9A-Z]{16}' <<<"$added"                   && findings+="  • an AWS access-key id\n"
   # Two-stage (composer v3, adopted 2026-07-22 after two falsifier rounds):
   # boundary + hyphen-inclusive run >=40, AND the matched run must carry >=2 digits.
