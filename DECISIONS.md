@@ -7307,3 +7307,72 @@ widening the digit count did **not** widen the gate into accepting junk. Without
 has the same defect. Whoever merges that line inherits this fix with it.
 
 **Decision-Log: this entry.**
+
+## D-20260807-144 — A STAMP MARKS AN INSTANT; "SHOULD I HURRY UP" IS A QUESTION ABOUT DURATION
+
+- **Decision-maker:** Roy (feature request), claude-fleet lane (mechanism)
+- **Authority basis:** Roy's direct instruction, 2026-08-07: *"a sense of time passing
+  for each agent … time taken is a critical measure of whether to 'hurry up'"*
+
+**First, the observation was right and the diagnosis was not.** Roy reported that
+messages did not appear to be time-stamped. They are — D-20260806 / `46ed04b` stamps
+every injected envelope, and it renders correctly today:
+
+```
+[fleet msg from core · 2026-08-07 08:09 NZST] <text>
+```
+
+**The feature had simply never run.** Last message-path event in the fleet log:
+`2026-08-01T10:06:33Z`. The stamp landed `2026-08-06 11:51`. The fleet has been down
+throughout, so not one message has passed through the stamping path since it shipped.
+**A feature that has shipped and never executed is indistinguishable, from the outside,
+from one that was never written.**
+
+**But the stamp is not the requested feature, and would not have satisfied it.** A stamp
+marks an INSTANT. It tells a lane the wall time at the moment mail arrives. It cannot
+tell it:
+
+- that nine hours passed since it last spoke — a pause and a night look identical;
+- that it has been on the same task since Tuesday;
+- that a ratified decision falls due tomorrow.
+
+And the stamp rides only on **peer mail**. A human prompt, or a lane working through its
+own plan, carries no time at all. **Duration is the quantity "hurry up" is made of, and
+nothing in the fleet reported it.**
+
+**Mechanism:** `hooks/prompt-submit.sh` (UserPromptSubmit) now emits `additionalContext`
+each turn:
+
+```
+[fleet clock] 2026-08-07 08:11 NZST · 3h 10m since your last turn · 5h 30m on this task · session 2d 4h
+[fleet clock] decision d901 due 2026-08-08 17:00 — 1d 1h left
+```
+
+The deadline line appears **only when it could change what the agent does** —
+`FLEET_CLOCK_DUE_H=48` by default, or already overdue. A clock that reports a deadline
+three weeks out every turn trains the reader to skip the line.
+
+**Every figure is recomputed from epochs at read time, never stored** — the same rule
+`_fleet_decisions_current_print` already follows. A stored *"2 days left"* rots exactly
+like any other unrecomputed number, **and an agent has no clock with which to notice it
+had.** That is the whole reason this feature is needed, so storing its output would
+reproduce the defect it exists to fix.
+
+**Cost:** ~35 tokens per turn against a context measured in hundreds of thousands
+(measured mean 406,780 — see D-20260807-141). `FLEET_CLOCK=off` disables it.
+
+**Evidence — `tests/clock.sh`, 18 assertions, and the controls are the point:**
+
+- a fresh child must **not** invent a gap out of a zero heartbeat (a "since 1970" line
+  is the fail-open form of this feature);
+- the **same** prompt twice must not reset the task clock, or every repeated
+  instruction would read as fresh work;
+- a deadline 14 days out must stay **silent**, or "deadline shown" proves only that the
+  jq ran, not that the window works;
+- a **superseded** decision must not carry a live deadline;
+- the **nearest** deadline must win over the merely-first file read.
+
+Running the whole suite with `FLEET_CLOCK=off` turns 10 of the 18 red, which is the
+check that the suite tests the feature rather than itself.
+
+**Decision-Log: this entry.**
