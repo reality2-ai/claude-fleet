@@ -424,6 +424,27 @@ fleet_compact() {
   # a claude-bg window hosts a controller, not a TUI — never keystroke /compact there
   [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1
   fleet_tmux_has_window "$to" || return 1
+
+  # ONLY AT AN IDLE PROMPT. A slash command typed into a pane that is mid-turn is not
+  # executed — Claude Code QUEUES IT AS A MESSAGE. It looks like it worked (the keys land,
+  # the log says "injected"), the context never drops, and the next trigger sends another.
+  #
+  # Observed live on the composer lane, 2026-08-07: SEVEN attempts, five `/compact` lines
+  # stacked in the input box under "Press up to edit queued messages", context climbing
+  # 897k -> 908k -> 942k -> 950k the whole time. The compaction that was supposed to stop
+  # a lane reaching the ceiling was itself the thing filling the box.
+  #
+  # The guard already existed and this function simply never called it. Deferring is
+  # correct and costs nothing: the trigger re-evaluates every turn, so a genuinely
+  # over-threshold worker compacts on its next idle instead of never.
+  if fleet_pane_is_working "$to" 2>/dev/null; then
+    fleet_log compact "$to" "deferred — pane mid-turn (a /compact typed now would QUEUE as a message, not run)" 2>/dev/null || true
+    return 1
+  fi
+  if fleet_input_busy "$to" 2>/dev/null; then
+    fleet_log compact "$to" "deferred — input box already holds text (never paste on top of pending input)" 2>/dev/null || true
+    return 1
+  fi
   local tgt="$FLEET_TMUX_SESSION:$to"
   fleet_tmux send-keys -t "$tgt" -l "/compact" 2>/dev/null || return 1
   sleep "${FLEET_INJECT_DELAY:-0.2}"

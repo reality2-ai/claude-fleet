@@ -7418,3 +7418,57 @@ running totals every run so the number is visible, and `PATTERN` is the one line
 extend as each further cluster is written up.
 
 **Decision-Log: this entry.**
+
+## D-20260807-146 — THE COMPACTION THAT WAS MEANT TO STOP A LANE REACHING THE CEILING WAS FILLING ITS INPUT BOX
+
+- **Decision-maker:** Roy (sanctioned self-modification of the running tool),
+  claude-fleet lane (mechanism)
+- **Authority basis:** Roy's direct instruction, 2026-08-07: *"it is expected that
+  claude-fleet modifies its own code when running to make improvements"*
+
+**Caught in production, on the live `composer` lane, within an hour of the hard ceiling
+shipping.** `fleet tokens` read composer at **950,312 / 1,000,000 (95%)** after **seven**
+hard-ceiling firings. The pane explained why:
+
+```
+  ❯ /compact
+  ❯ /compact
+  ❯ /compact
+  ❯ /compact
+  ❯ /compact
+                    97% context used
+❯ Press up to edit queued messages
+```
+
+**A slash command typed into a pane that is mid-turn is not executed — Claude Code queues
+it as a MESSAGE.** Every signal said success: the keys landed, `fleet_compact` returned 0,
+the log said *"injected /compact (context bound)"*. Meanwhile the context climbed
+**897k → 908k → 942k → 950k** across the attempts, and each new trigger added another
+line to the box. **The mechanism for keeping a lane off the ceiling was the thing filling
+its input box.**
+
+**The guard already existed.** `fleet_pane_is_working` (`lib/comms.sh:106`) and
+`fleet_input_busy` are used by the delivery path to defer mail for exactly this reason.
+`fleet_compact` never called either.
+
+**D-20260807-141 is where this becomes mine.** The hard ceiling fires *even when mail is
+queued* — deliberately, because that is the case the idle-only trigger cannot reach. That
+is precisely when a worker is busiest. **A latent defect that fired rarely now fired every
+turn.** The feature did not create the bug; it converted it from occasional to reliable,
+which is also why it was found in an hour instead of never.
+
+**Fix:** defer when the pane is working or the box holds text. Deferring costs nothing —
+the trigger re-evaluates every turn, so an over-threshold worker compacts on its next
+idle instead of never.
+
+**Evidence — `tests/faculty.sh` 4c-ter, behavioural, not a grep:** with the working-state
+guard forced true, `fleet_compact` returns non-zero **and sends zero keystrokes**. The
+control matters as much: with the same stubs and the pane idle, the keystrokes *are* sent
+— otherwise "no keys sent" would be equally consistent with a broken harness.
+
+**Standing lesson, third instance today:** a control that reports success by *having
+acted* rather than by *the effect landing* is not a control. The meter said 0 and meant
+"blind" (D-140); the gate said "no trailer" and meant "I cannot parse three digits"
+(D-143); the compactor said "injected" and meant "queued". **Same shape each time.**
+
+**Decision-Log: this entry.**

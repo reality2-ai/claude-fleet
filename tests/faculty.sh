@@ -272,3 +272,26 @@ isfalse "stream returns non-zero (unimplemented)"     faculty_stream x
 # --- summary ----------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]
+
+# --- 4c-ter. fleet_compact must never keystroke into a busy pane ---------------
+# A slash command typed mid-turn is QUEUED AS A MESSAGE, not executed. Live evidence
+# (composer, 2026-08-07): 7 attempts, 5 stacked `/compact` lines in the input box,
+# context climbing 897k -> 950k throughout. The guard existed; this function never
+# called it.
+section "4c-ter. compact defers on a busy pane"
+if declare -f fleet_compact | grep -q 'fleet_pane_is_working'; then ok "fleet_compact consults the working-state guard"; else no "fleet_compact can still type into a mid-turn pane"; fi
+if declare -f fleet_compact | grep -q 'fleet_input_busy'; then ok "fleet_compact consults the input-box guard"; else no "fleet_compact can still paste onto pending input"; fi
+# Behavioural: force "working" true and prove compact refuses WITHOUT sending keys.
+_sent=0
+fleet_pane_is_working() { return 0; }
+fleet_tmux_has_window() { return 0; }
+fleet_tmux() { case "${1:-}" in send-keys) _sent=1 ;; esac; return 0; }
+isfalse "compact returns non-zero when the pane is working" fleet_compact busyw
+eq "compact sent NO keystrokes to a working pane" "$_sent" "0"
+# ...and that the same stubs let it through once the pane is idle (so the test above
+# proves the guard, not a broken harness).
+fleet_pane_is_working() { return 1; }
+fleet_input_busy() { return 1; }
+_sent=0; fleet_compact idlew >/dev/null 2>&1
+eq "control: an idle pane still receives the keystrokes" "$_sent" "1"
+unset -f fleet_pane_is_working fleet_input_busy fleet_tmux fleet_tmux_has_window
