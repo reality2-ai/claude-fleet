@@ -181,6 +181,136 @@ on every operator command. See
 exists, a mobile shell such as Termius still works, but it is a fallback, not the
 intended mixed-provider UI.
 
+## Context, tokens, and the agent clock
+
+A long-lived `--resume` session re-processes its whole transcript on every turn, so
+**token cost climbs with session age** — it is the dominant cost in a running fleet, and
+it is invisible unless you go looking. Measured on one lane's own transcript over 29,364
+turns:
+
+| | tokens |
+|---|---|
+| fixed floor (system prompt, tools, primer) | 23,082 |
+| **mean context re-processed per turn** | **406,780** |
+| p90 | 692,191 |
+| peak | 999,801 |
+| **total input re-processed, that one lane** | **11.94 billion** |
+
+Three mechanisms keep that in check. All are on by default; each can be turned off.
+
+### `fleet tokens` — the meter
+
+Reads each live member's **last-turn context** straight from its transcript and shows it
+against the ceiling. This is the number that matters: not what a turn cost to *produce*,
+but what every subsequent turn has to *re-read*.
+
+The two providers name the same quantity differently — Claude reports
+`cache_read_input_tokens` + `cache_creation_input_tokens`, Codex reports
+`last_token_usage.input_tokens`. `fleet_ctx_tokens` handles both. **If you add a third
+provider you must add its arm too**, with a fixture in `tests/faculty.sh`: a meter that
+does not know a provider's field names reports `0`, which is also its word for *"cannot
+read"*, so the blindness is silent. That exact defect shipped and hid for weeks
+(D-20260807-140).
+
+| variable | default | what it does |
+|---|---|---|
+| `FLEET_CTX_CEILING` | `1000000` | the context window you are measuring against |
+| `FLEET_CTX_WARN_PCT` | `90` | `fleet tokens` flags a member at or above this |
+| `FLEET_CTX_WARN_TOKENS` | — | absolute alternative to the percentage |
+| `FLEET_CTX_TAIL_BYTES` | `300000` | how much transcript tail to scan for the figure |
+
+### Proactive compaction
+
+When a managed worker returns to its prompt **idle with an empty inbox** and its context
+is over `FLEET_COMPACT_AT_PCT` of the ceiling, `fleet` injects `/compact`. `RESUME.md`
+and the decision ledger anchor real state, so a compaction does not lose working context.
+
+A **hard ceiling** covers the case the routine trigger cannot: a worker kept busy by a
+steady stream of peer mail never *is* idle with an empty inbox, and would otherwise grow
+until the provider auto-compacts at ~95% — the most expensive compaction there is, at
+maximum context, unplanned, mid-task. The hard ceiling runs **before** the inbox drain
+and defers it; mail waits one turn and lands against a fresh context. (Draining injects
+text into the pane, and `/compact` keystroked onto a half-submitted message corrupts it.)
+
+| variable | default | what it does |
+|---|---|---|
+| `FLEET_COMPACT_AT_PCT` | `70` | routine trigger, idle + empty inbox only. `0` disables |
+| `FLEET_COMPACT_HARD_PCT` | `85` | fires even with mail queued; defers the drain. `0` disables |
+| `FLEET_COMPACT_EVERY` | `40` | turn-count backstop, **only** when the meter reads unknown |
+| `FLEET_COMPACT_SKIP` | — | space-separated member ids to exempt entirely |
+
+> **Why the backstop is conditional.** A compaction destroys the cached prefix, so a
+> turn-timer that fires at 5% of the ceiling is a pure loss. It is insurance against a
+> blind meter, never a second schedule.
+
+> **`70` is not a derived number.** Lowering it cuts per-turn cost roughly linearly
+> (400k ≈ 0.60× the cost of 700k, still ~355 turns between compactions), but a
+> compaction also costs re-derivation — the agent re-reads files, re-derives state,
+> re-asks peers — and that side has never been measured. Change it deliberately.
+
+### Tool-output budget
+
+A single fat command output is read once and then re-sent on every turn until the next
+compaction. A 50KB result is ~12k tokens of permanent residency. Measured on a live lane:
+results over 4KB are **4.7% of results but 45% of all tool-result bytes**.
+
+The `PostToolUse` hook **spills rather than truncates**. The complete output is written to
+`<workspace>/.fleet/spill/`, the head and tail stay verbatim inline, flagged lines
+(errors, failures, verdicts) are lifted out of the elided middle, and the marker states
+exactly how many bytes and lines moved and where to read them. Nothing is lost — it is
+deferred, and the agent pays for the middle only if it asks.
+
+Head and tail alone were not enough: replayed against 161 real over-budget results,
+**10.6% had their only decisive line in the elided middle**, concentrated in `fleet inbox`
+and `grep` output where every line is its own record and there is no verdict at the
+bottom. Carrying the flagged lines drops that to 0% for 3 points of saving.
+
+| variable | default | what it does |
+|---|---|---|
+| `FLEET_OUTPUT_BUDGET` | `on` | `off` disables the hook entirely |
+| `FLEET_OUTPUT_BUDGET_BYTES` | `4000` | inline budget; head and tail split it |
+| `FLEET_OUTPUT_HL_MAX` | `12` | flagged middle lines carried inline; the remainder is announced |
+| `FLEET_OUTPUT_SPILL_KEEP` | `200` | spill files retained per workspace |
+
+Claude members only — it replies with `updatedToolOutput`, a Claude Code hook contract
+with no verified Codex equivalent. Spill files are gitignored by `fleet init`.
+
+### The agent clock
+
+**An agent has no running clock.** It learns the time only when something is injected into
+its thread, and its system prompt dates only the session start. Two separate things give
+it back:
+
+1. **Stamps** — every injected peer message carries local time and a named zone:
+   `[fleet msg from core · 2026-08-07 08:09 NZST] …`. That fixes *instants*.
+2. **The clock line** — emitted each turn as `additionalContext`, this is *duration*,
+   which is what "should I hurry up?" is actually made of:
+
+```
+[fleet clock] 2026-08-07 08:11 NZST · 3h 10m since your last turn · 5h 30m on this task · session 2d 4h
+[fleet clock] decision d901 due 2026-08-08 17:00 — 1d 1h left
+```
+
+The deadline line appears **only when it could change what the agent does** — inside
+`FLEET_CLOCK_DUE_H`, or already overdue. A clock that reports a three-week deadline every
+turn trains the reader to skip the line.
+
+Every figure is **recomputed from epochs at read time, never stored**. A stored *"2 days
+left"* rots like any other unrecomputed number, and an agent has no clock with which to
+notice — which is the defect the clock exists to fix.
+
+| variable | default | what it does |
+|---|---|---|
+| `FLEET_CLOCK` | `on` | `off` suppresses the clock line; task recording continues |
+| `FLEET_CLOCK_DUE_H` | `48` | how near a deadline must be before it is mentioned. `0` never |
+
+Cost: ~35 tokens per turn, against a measured mean context of 406,780.
+
+Set deadlines with `fleet decision add --due` / `fleet decide --due`, which accept what
+someone actually types: `2026-08-08`, `2026-08-08 17:00`, `friday`, `+2 days`,
+`tomorrow 09:00`. An unparseable deadline is **refused, not defaulted** — a deadline that
+silently became *now* or *never* would be discovered by missing the date.
+
 ## Troubleshooting
 
 - **`fleet status` shows everything `dead`, but the sessions are running.** `fleet`

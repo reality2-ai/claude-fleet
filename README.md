@@ -89,6 +89,14 @@ and `fleet` keeps it running.
   (`send`); replies route back to the asker; a hop cap stops runaway loops.
 - **Remote control** — enable Claude Code's own Remote Control on Claude-backed
   members and drive them from claude.ai/code or the mobile app.
+- **Context & token control** — `fleet tokens` meters what each member re-processes
+  every turn (the dominant cost of a long-running fleet); proactive compaction keeps
+  it off the ceiling, and fat command output spills to disk instead of living in the
+  context window forever. See
+  [Context, tokens, and the agent clock](docs/OPERATIONS.md#context-tokens-and-the-agent-clock).
+- **A sense of time** — agents have no running clock. Every peer message is stamped,
+  and each turn carries how long since the member last spoke, how long it has been on
+  this task, and any decision deadline close enough to matter.
 
 ## Where it runs
 
@@ -326,7 +334,7 @@ fleet help | version
 - [`docs/MANIFEST.md`](docs/MANIFEST.md) — full `fleet.toml` reference: fields, restart semantics, config versioning, providers (Claude/Codex) + tuning env vars, pair/handoff/failover.
 - [`docs/SAFETY.md`](docs/SAFETY.md) — full safety & permissions model: permission modes, skip-permissions rationale, auto-approve hook, firmware/key escalation gate, self-reporting hooks.
 - [`docs/COMMS-AND-DECISIONS.md`](docs/COMMS-AND-DECISIONS.md) — inter-agent communication (`ask`/`send`, hop cap, comms doctrine + dense form), the decision ledger, shared context (`primer.md`).
-- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — day-to-day operations: repo onboarding, `RESUME.md` handoffs, the supervisor, `/fleet` slash command, surviving logout & reboot (systemd), remote control, troubleshooting, project layout.
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — day-to-day operations: repo onboarding, `RESUME.md` handoffs, the supervisor, `/fleet` slash command, surviving logout & reboot (systemd), remote control, [context/token control and the agent clock](docs/OPERATIONS.md#context-tokens-and-the-agent-clock) (what a fleet costs to run, and every knob for it), troubleshooting, project layout.
 - [`docs/DOCTRINE.md`](docs/DOCTRINE.md) — the operating doctrine: autonomy with a failsafe, Codex as an adversarial helper, the reusable working process, non-goals, and direction.
 
 **Working doctrine** (project-agnostic, drop-in prompts):

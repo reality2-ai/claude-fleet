@@ -58,3 +58,4 @@ jobs:
           tests/faculty.sh
           tests/output-budget.sh
           tests/clock.sh
+          tests/docs.sh

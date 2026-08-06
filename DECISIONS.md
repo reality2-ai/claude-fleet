@@ -7376,3 +7376,45 @@ Running the whole suite with `FLEET_CLOCK=off` turns 10 of the 18 red, which is 
 check that the suite tests the feature rather than itself.
 
 **Decision-Log: this entry.**
+
+## D-20260807-145 — 101 OF 137 KNOBS WERE UNDOCUMENTED; THE COST CLUSTER IS NOW CLOSED AND GUARDED
+
+- **Decision-maker:** Roy (directive: the repo must be reproducible by someone else,
+  instructions "super good"), claude-fleet lane (mechanism)
+- **Authority basis:** Roy's direct instruction, 2026-08-07
+
+**The documented install path was tested cold rather than read.** A throwaway workspace,
+`fleet init`, `fleet status` — it works end to end, scaffolds correctly, and the
+generated `settings.json` wires both `PostToolUse` hooks. **The README is not the
+problem.**
+
+**Measured gap:** `137` `FLEET_*` variables are read by shipping code; `36` appeared
+anywhere in `docs/` or `README.md`. **101 undocumented — 74%.** A knob nobody can
+discover cannot be tuned or turned off, and the count only grows, because adding a
+variable is a one-line change and documenting it is not.
+
+**Worst cluster, and the one that decides what a fleet costs to run, was 100%
+undocumented:** every `COMPACT` / `CTX` / `OUTPUT` / `CLOCK` variable — 14 of them,
+including the pre-existing `FLEET_COMPACT_AT_PCT` and `FLEET_CTX_CEILING`. **An adopter
+could not have discovered that proactive compaction existed, let alone that it was
+mis-set.**
+
+**Closed:** a *Context, tokens, and the agent clock* section in `docs/OPERATIONS.md`
+carrying the measured figures (23,082 floor · 406,780 mean/turn · 11.94 billion on one
+lane), all 14 variables with defaults, and the reasoning behind each — including the two
+things a reader must not take on faith: that the turn backstop is conditional because a
+compaction destroys the cached prefix, and that **`70` is not a derived number** and the
+re-derivation side of that trade has never been measured.
+
+**Guarded, not just written.** `tests/docs.sh` DERIVES the cluster from shipping code and
+fails if any member is missing from the doc, so the next knob added to it cannot ship
+undocumented. Controls: a fabricated variable must not be found (else the guard would
+stay green over a deleted doc), and four defaults must be stated — a knob whose default
+you cannot see still cannot be reasoned about before changing it. Verified by removing a
+knob from the doc and watching the guard go red.
+
+**The remaining 87 are open debt, stated rather than hidden.** `tests/docs.sh` prints the
+running totals every run so the number is visible, and `PATTERN` is the one line to
+extend as each further cluster is written up.
+
+**Decision-Log: this entry.**
