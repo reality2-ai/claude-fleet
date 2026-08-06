@@ -288,6 +288,12 @@ _hs_detok() {
   n=${#t}
   while (( i < n )); do
     ch="${t:i:1}"
+    # shellcheck disable=SC1003  # '\' is a case PATTERN matching one literal backslash,
+    # not a botched attempt to escape a quote. The house convention for this exact
+    # false positive is a per-line disable with a reason (see .github/workflows/ci.yml).
+    # Do not "fix" it to \\ without re-running tests/firmware-gate.sh: this is the
+    # detokeniser the flash/key gate depends on, and `\espflash` is one of the bypasses
+    # it exists to catch.
     case "$ch" in
       "'"|'"') : ;;                              # drop quote characters entirely
       '\')     out+="${t:i+1:1}"; (( i++ )) ;;   # escaped char: take the escapee

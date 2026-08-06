@@ -950,7 +950,11 @@ mkdir -p "$GW/.fleet" "$GW/work" "$TRIP" "$STUB"
 for _t in espflash esptool esptool.py openssl ssh python python3 make dfu-util uvx pipx; do
   printf '#!/bin/sh\ntouch "%s/%s"\nexit 99\n' "$TRIP" "$_t" > "$STUB/$_t"; chmod 755 "$STUB/$_t"
 done
-_g_live_before="$(cd "$ROOT/.." 2>/dev/null && ls -l .fleet/flash-authorization 2>/dev/null | wc -l)"
+# Existence of the LIVE authorisation file, as a plain test rather than `ls | wc -l`
+# (which is what SC2012 was flagging). Same question, one fewer subprocess, and no
+# dependence on how ls renders a name. NOTE the assertion is unchanged and still only
+# detects CREATION or DELETION of the live file — a modification in place would pass.
+_g_live_before=0; [ -e "$ROOT/../.fleet/flash-authorization" ] && _g_live_before=1
 printf 'expires=%s\nartifact=probe-fixture.bin\ntarget=/dev/ttyPROBE0\nsha256=%s\n' \
   "$(( $(date +%s) + 86400 ))" "$(printf '0%.0s' $(seq 1 64))" > "$GW/.fleet/flash-authorization"
 printf '#!/bin/bash\nespflash flash --port /dev/ttyNOPE9 app.bin\n' > "$GW/work/flash-board.sh"
@@ -1027,7 +1031,7 @@ g_case "E5 bash -n syntax check is not denied"               'bash -n flash-boar
 g_case "E6 reading a script that mentions a flasher"         'command grep -n espflash flash-board.sh'          notdeny
 
 # G4 — the live authorisation state must be untouched by this suite.
-_g_live_after="$(cd "$ROOT/.." 2>/dev/null && ls -l .fleet/flash-authorization 2>/dev/null | wc -l)"
+_g_live_after=0; [ -e "$ROOT/../.fleet/flash-authorization" ] && _g_live_after=1
 if [ "$_g_live_before" = "$_g_live_after" ]; then ok "G4 live .fleet/flash-authorization untouched"
 else no "G4 the suite touched the LIVE authorisation state"; fi
 
