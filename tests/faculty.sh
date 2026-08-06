@@ -154,12 +154,51 @@ isfalse "fleet_compact with no window returns non-zero" fleet_compact ghostC
 # the on-stop hook compacts by CONTEXT SIZE (primary, adaptive) with a turn-count backstop
 if grep -q 'FLEET_COMPACT_AT_PCT' "$ROOT/hooks/on-stop.sh"; then ok "on-stop hook has size trigger (FLEET_COMPACT_AT_PCT)"; else no "on-stop hook missing size trigger"; fi
 if grep -q 'fleet_ctx_tokens' "$ROOT/hooks/on-stop.sh"; then ok "on-stop hook reads ctx size for the trigger"; else no "on-stop hook does not read ctx size"; fi
-if grep -q 'FLEET_COMPACT_EVERY' "$ROOT/hooks/on-stop.sh"; then ok "on-stop hook has FLEET_COMPACT_EVERY backstop"; else no "on-stop hook missing turn backstop"; fi
+# The backstop must be ON by default. Asserting only that the NAME appears in the file was
+# a false green for weeks: FLEET_COMPACT_EVERY was defaulted to 0 (disabled) three lines
+# below a comment promising 40, and this line stayed green throughout. Assert the DEFAULT.
+if grep -qE 'FLEET_COMPACT_EVERY:-[1-9][0-9]*' "$ROOT/hooks/on-stop.sh"; then ok "on-stop turn backstop is enabled by default"; else no "on-stop turn backstop defaults to disabled"; fi
+# ...and that it is gated on a BLIND meter, not run as a second unconditional schedule
+if grep -qE '_ctx == 0 && _compact_every' "$ROOT/hooks/on-stop.sh"; then ok "turn backstop fires only when ctx unreadable"; else no "turn backstop not gated on unreadable ctx"; fi
 if grep -q 'turns_since_compact' "$ROOT/hooks/on-stop.sh" && declare -f fleet_compact >/dev/null; then ok "on-stop hook tracks turns_since_compact"; else no "on-stop hook no turn counter"; fi
 # the counter mechanism the hook relies on: state round-trips an integer
 fleet_state_ensure cmpw "$TMP" true
 fleet_state_jq cmpw --argjson t 3 '.turns_since_compact=$t' >/dev/null 2>&1
 eq "turns_since_compact round-trips in state" "$(fleet_state_get cmpw '.turns_since_compact' 0)" "3"
+
+# --- 4c-bis. the METER itself, per provider ---------------------------------
+# fleet_ctx_tokens is the instrument the size trigger and `fleet tokens` both read. It
+# returned 0 for every codex lane because it only knew Claude's field names, and 0 is
+# ALSO the legitimate "unknown" answer — so nothing anywhere reported the blindness.
+# Real transcript fixtures, one per provider, plus a negative control that must read 0.
+section "4c-bis. fleet_ctx_tokens reads BOTH providers"
+export CLAUDE_PROJECTS_DIR="$TMP/projects" CODEX_HOME="$TMP/codex"
+mkdir -p "$CODEX_HOME/sessions"
+
+# claude: per-turn context = cache_read + cache_creation
+_csid="11111111-2222-3333-4444-555555555555"
+_cdir="$CLAUDE_PROJECTS_DIR/$(fleet_encode_path "$TMP")"; mkdir -p "$_cdir"
+printf '%s\n' '{"type":"assistant","message":{"usage":{"input_tokens":7,"cache_read_input_tokens":120000,"cache_creation_input_tokens":3456}}}' > "$_cdir/$_csid.jsonl"
+fleet_state_ensure ctxc "$TMP" true >/dev/null 2>&1
+fleet_state_jq ctxc --arg s "$_csid" '.session_id=$s | .provider="claude"' >/dev/null 2>&1
+eq "claude ctx = cache_read + cache_creation" "$(fleet_ctx_tokens ctxc)" "123456"
+
+# codex: per-turn context = last_token_usage.input_tokens. The line also carries
+# total_token_usage (CUMULATIVE, 32.6M on a real lane) — reading the bare
+# "input_tokens" key would pick that up and trip every threshold on turn one.
+_xsid="019f81fb-7311-7f63-8a8e-c36f0acaa87c"
+printf '%s\n' '{"type":"turn_context","info":{"total_token_usage":{"input_tokens":32501144,"cached_input_tokens":30416640,"total_tokens":32601334},"last_token_usage":{"input_tokens":79676,"cached_input_tokens":78592,"output_tokens":46,"total_tokens":79722}}}' > "$CODEX_HOME/sessions/rollout-2026-07-21T12-02-47-$_xsid.jsonl"
+fleet_state_ensure ctxx "$TMP" true >/dev/null 2>&1
+fleet_state_jq ctxx --arg s "$_xsid" '.session_id=$s | .provider="codex"' >/dev/null 2>&1
+eq "codex ctx = last_token_usage.input_tokens (not the cumulative total)" "$(fleet_ctx_tokens ctxx)" "79676"
+
+# negative control: the meter must be able to READ ZERO, or the two greens above prove nothing
+_nsid="99999999-9999-9999-9999-999999999999"
+printf '%s\n' '{"type":"assistant","message":{"content":"no usage record here"}}' > "$_cdir/$_nsid.jsonl"
+fleet_state_ensure ctxn "$TMP" true >/dev/null 2>&1
+fleet_state_jq ctxn --arg s "$_nsid" '.session_id=$s | .provider="claude"' >/dev/null 2>&1
+eq "negative control: a transcript with no usage reads 0" "$(fleet_ctx_tokens ctxn)" "0"
+unset CLAUDE_PROJECTS_DIR CODEX_HOME
 
 # --- 4d. inject defer / stuck-message guard ---------------------------------
 section "4d. inject defer (stuck+truncated message fix)"

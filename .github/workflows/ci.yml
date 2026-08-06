@@ -48,3 +48,12 @@ jobs:
         run: |
           tests/smoke.sh
           tests/multi-workspace.sh
+
+      - name: Unit suites
+        # These are hermetic (throwaway dirs, an unused tmux socket, no real fleet) and
+        # were never wired into CI — 100+ assertions, including the per-provider context
+        # meter and the output-budget losslessness controls, ran only when someone
+        # remembered to. A suite nobody runs is documentation, not a gate.
+        run: |
+          tests/faculty.sh
+          tests/output-budget.sh

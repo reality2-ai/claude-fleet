@@ -274,3 +274,163 @@ It is not a task log and does not replace specifications, ADRs, or code.
 - **Consequences:** specs records (b)/(c)/(6) (ledger + minimal canon notes where a
   cite-target is needed; no big spec surgery); android updates §6 markers 3/4/6
   resolved + 5 deferred. Design note then fully frozen against v0.12.
+
+## D-20260807-140 — THE TOKEN METER READ ZERO ON EVERY CODEX LANE, AND ZERO IS ALSO ITS WORD FOR "UNKNOWN"
+
+- **Decision-maker:** Roy (directive: review the fleet for token-usage optimisation and
+  for proper conjecture/refutation), claude-fleet lane (mechanism)
+- **Authority basis:** Roy's direct instruction, 2026-08-07
+
+`fleet_ctx_tokens` (`lib/registry.sh`) read only Claude's field names —
+`cache_read_input_tokens` + `cache_creation_input_tokens`. Codex rollouts record
+`last_token_usage.input_tokens` and `total_token_usage.*`. Neither Claude name appears in
+a codex transcript, so the function returned **0 for every codex lane in the fleet**, and
+0 is also its legitimate answer for "cannot read". **A blind meter does not report that it
+is blind; it reports a small number, and every consumer believed it.**
+
+**Measured on a real rollout** (`~/.codex/sessions/2026/07/21/rollout-…019f81fb…`):
+
+```
+"last_token_usage":{"input_tokens":79676,...}
+"total_token_usage":{"input_tokens":32501144,...,"total_tokens":32601334}
+```
+
+The lane had re-processed 79,676 tokens on its last turn and 32.6M cumulatively. The
+instrument said 0.
+
+**Three layers failed together, and each hid the next:**
+
+1. `fleet tokens` reported 0 for every codex lane — half the fleet, invisible.
+2. The `on-stop` compaction size trigger never fired for those lanes. They never compacted.
+3. The documented backstop that would have caught it — `FLEET_COMPACT_EVERY=40` in the
+   comment three lines above — was **`:-0` in the code**. Disabled. And
+   `tests/faculty.sh` asserted only that the *string* `FLEET_COMPACT_EVERY` appeared in
+   the file, so it stayed **green the whole time**.
+
+**This is D-112's class recurring in the token instrument** — *"the instrument matched its
+own scaffolding"*. The sweep that followed D-112 did not reach the meters.
+
+**Fix:** a codex arm scoped to the LAST `last_token_usage` object (grepping the bare
+`input_tokens` key would match `total_token_usage`'s cumulative 32.6M and trip every
+threshold on turn one); backstop default corrected to 40; the backstop now fires **only
+when the meter reads unknown**, never as a second unconditional schedule — a compaction
+destroys the cached prefix, so a turn-timer that fires at 5% of the ceiling is a pure
+loss; and a `ctx-unknown` log line so a blind meter is findable instead of being silently
+absorbed by the backstop.
+
+**Evidence — controls fired before the fix and passed after** (`tests/faculty.sh` 4c/4c-bis,
+real transcript fixtures per provider):
+
+```
+FAIL on-stop turn backstop defaults to disabled
+FAIL turn backstop not gated on unreadable ctx
+FAIL codex ctx = last_token_usage.input_tokens (got '0' want '79676')
+ok   claude ctx = cache_read + cache_creation          <- unchanged, no regression
+ok   negative control: a transcript with no usage reads 0
+```
+
+The negative control is load-bearing: without it, two green readings prove only that the
+function returns *some* number.
+
+**Decision-Log: this entry.**
+
+## D-20260807-141 — 70% WAS NOT HOLDING, AND THE VALUE WAS NEVER THE PROBLEM — REACHABILITY WAS
+
+- **Decision-maker:** Roy (directive), claude-fleet lane (mechanism)
+- **Authority basis:** Roy's direct instruction, 2026-08-07
+
+**Measured on the r2-hive lane's own transcript, 29,364 turns:**
+
+```
+context floor (fixed preamble)      23,082 tok
+mean context re-processed / turn   406,780 tok
+median                             397,234 tok
+p90                                692,191 tok
+max                                999,801 tok      <- reached the 1M ceiling
+TOTAL input re-processed        11.94 BILLION tok   <- one lane
+compactions                             46          (one per 638 turns)
+```
+
+**9.0% of turns ran above the 70% trigger and 1.0% above 90%.** The trigger was set to 70%
+throughout. **It was not holding — and not because 70 is the wrong number.** The routine
+trigger requires MANAGED **and idle with an empty inbox**. A worker kept busy by a steady
+stream of peer mail never meets that condition, and grows until the provider auto-compacts
+at ~95%: the most expensive compaction available, at maximum context, unplanned, mid-task.
+
+**Fix:** `FLEET_COMPACT_HARD_PCT=85`, the only compaction that runs while mail is waiting.
+It runs **BEFORE the inbox drain and skips the drain when it fires.** That ordering is the
+whole safety argument: draining injects text into the pane, and `/compact` keystroked onto
+a half-submitted message corrupts it. Mail stays queued — an already-supported state with
+its own defer path — and lands next turn against a fresh context.
+
+**A cost model was built and then REJECTED as a basis for changing the 70.** With F=23,082
+and g≈1,061 tok/turn, `cost/turn = 0.1·(T+F)/2 + (T+1.25F)·g/(T−F)` falls monotonically
+toward the floor (700k→400k = 0.60x, →200k = 0.34x). **The model omits the re-derivation
+cost** — a compaction destroys working context and the agent then re-reads files, re-derives
+state, re-asks peers. That term is unmeasured, so the interior optimum is an artefact of
+what was left out. **The number stays at 70 until someone measures the other side.** What
+the model does establish: 70 was never derived either.
+
+**Decision-Log: this entry.**
+
+## D-20260807-142 — TOOL OUTPUT NOW SPILLS INSTEAD OF TRUNCATING, BECAUSE HEAD+TAIL ALONE HID A DECISIVE LINE IN 10.6% OF REAL CASES
+
+- **Decision-maker:** Roy (directive: be inspired by Headroom, then run the head+tail
+  attack), claude-fleet lane (mechanism)
+- **Authority basis:** Roy's direct instruction, 2026-08-07
+
+Prompted by Headroom (Tejas Chopra, Netflix; Apache-2.0; claimed 60–95%, demo 88%).
+**The headline does not transfer and was not adopted.** Headroom wins where *"tool output
+dominates the context window"*. Measured on the r2-hive lane's LIVE context window (every
+record since its last compaction, so no inference about what is in context):
+
+```
+tool_use 32.8% | text 31.5% + 6.9% | thinking 18.2% | tool_result 10.7%
+```
+
+88% off 10.7% is ~9% of the window. **The mechanism transfers; the magnitude does not.**
+
+A rival conjecture — *"the fixed preamble dominates"* — was **refuted by measurement**: the
+floor is 23,082 tokens, not the ~217k predicted. The gap that suggested it was
+compaction-summary text inside the window being measured against.
+
+**What was built:** `hooks/output-budget.sh`, a PostToolUse hook using `updatedToolOutput`
+(a native Claude Code contract — no proxy, no model, no dependency). **Spill, not
+truncate:** the full output is written to `.fleet/spill/`, head and tail stay verbatim
+inline, and the elision states exactly how many bytes and lines moved and where to read
+them. Information is deferred, never lost. Fails open on every error — a hook that eats a
+tool result is worse than a hook that saves nothing.
+
+**THEN THE ATTACK, AND IT LANDED.** 161 real over-budget results from a live transcript
+replayed through the elision: **17 of 161 (10.6%) had a decisive line — an error, a
+failure, a verdict — existing ONLY in the elided middle**, with nothing in either end to
+hint at it. Two classes accounted for all of them, and both are line-oriented output where
+every line is its own record and there is no verdict at the bottom:
+
+```
+fleet inbox   7/27    each peer message is its own finding
+grep results  8/68    the match you wanted is at whatever line it is at
+```
+
+**A token win bought with a lost finding is the defect class this repo keeps killing**, and
+`tools/comms-fitness.py` would reject it: capability is a gate, not a term.
+
+**Repair:** carry the flagged middle lines inline (up to `FLEET_OUTPUT_HL_MAX=12`, 200
+cols), announcing the remainder when the cap bites — no silent caps. Re-measured on the
+same 161: **10.6% → 0.0% hidden, at a cost of 3 percentage points of saving (53% → 50%).**
+
+`tests/output-budget.sh` asserts both halves — smaller AND lossless — including that the
+spill is **byte-identical** to the original, plus three controls that must fire: no rewrite
+outside a `.fleet` workspace, pass-through-whole when the spill cannot be written, and the
+attack itself (`FLEET_OUTPUT_HL_MAX=0` reproduces the pre-repair algorithm and turns the
+attack assertions red).
+
+**Not wired for codex:** `updatedToolOutput` is a Claude Code hook contract with no
+verified codex equivalent. Asserted as a test, so the omission is deliberate rather than
+forgotten.
+
+**Also:** `tests/faculty.sh` and `tests/output-budget.sh` are now in CI. 103 assertions —
+including the per-provider meter above — ran only when someone remembered to. **A suite
+nobody runs is documentation, not a gate.**
+
+**Decision-Log: this entry.**
