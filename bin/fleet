@@ -268,6 +268,7 @@ cmd_init() {
 /run/
 /log/
 /inbox/
+/spill/
 /managed.settings.json
 *.lock
 *.tmp
@@ -390,7 +391,12 @@ _render_hooks_json() {
       SessionStart:      hk("session-start.sh"),
       UserPromptSubmit:  hk("prompt-submit.sh"),
       PreToolUse:        hk("auto-approve.sh"),
-      PostToolUse:       hkm("Edit|Write|MultiEdit|NotebookEdit"; "post-edit.sh"),
+      # Two PostToolUse groups: post-edit records touched files; output-budget spills a
+      # fat result to disk and leaves head+tail inline. Claude only — the budget hook
+      # replies with `updatedToolOutput`, which is a Claude Code hook contract; codex has
+      # no verified equivalent and MUST NOT be handed a reply shape it may not honour.
+      PostToolUse:       hkm("Edit|Write|MultiEdit|NotebookEdit"; "post-edit.sh")
+                       + hkm("Bash|Grep|Glob"; "output-budget.sh"),
       Stop:              hk("on-stop.sh"),
       SessionEnd:        hk("session-end.sh")
     }'

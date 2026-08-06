@@ -134,11 +134,24 @@ fleet_state_get() {
   printf '%s\n' "${v:-$def}"
 }
 
-# Last-turn CONTEXT size for <id>, in tokens = cache_read + cache_creation input
-# tokens of the most recent assistant turn in its transcript. This is the figure
-# every turn re-processes — the per-turn token cost that drives rate-limits and
-# "running out" — and what proactive /compact makes sawtooth. Prints an integer
-# (0 if unknown). Cheap: reads only the transcript TAIL, not the whole file.
+# Last-turn CONTEXT size for <id>, in tokens: the input the most recent turn had to
+# re-process. This is the figure every turn re-processes — the per-turn token cost
+# that drives rate-limits and "running out" — and what proactive /compact makes
+# sawtooth. Prints an integer (0 if unknown). Cheap: reads only the transcript TAIL.
+#
+# THE TWO PROVIDERS NAME THE SAME QUANTITY DIFFERENTLY, and reading only Claude's
+# names made this instrument return 0 for EVERY codex lane — silently, because 0 is
+# also the legitimate "unknown" answer. A blind meter does not report that it is
+# blind; it reports a small number, and every consumer (fleet tokens, the on-stop
+# size trigger) believed it. Measured on a real rollout: the lane had re-processed
+# 79,676 input tokens on its last turn and carried 32.6M cumulative, and this
+# function said 0.
+#   claude: cache_read_input_tokens + cache_creation_input_tokens  (per-turn, cached
+#           + freshly-written prefix; the uncached remainder is noise at this scale)
+#   codex:  last_token_usage.input_tokens                          (per-turn input,
+#           of which cached_input_tokens is a SUBSET — do not add them, that
+#           double-counts the cache and inflates the figure by ~2x)
+# Adding a third provider means adding its arm HERE, with a fixture in tests/faculty.sh.
 fleet_ctx_tokens() {
   local id="$1" sid cwd provider f buf r c
   sid="$(fleet_state_get "$id" '.session_id' '')"
@@ -148,8 +161,20 @@ fleet_ctx_tokens() {
   f="$(fleet_transcript_path "$cwd" "$sid" "$provider")"
   [[ -f "$f" ]] || { printf '0\n'; return 1; }
   buf="$(tail -c "${FLEET_CTX_TAIL_BYTES:-300000}" "$f" 2>/dev/null)"
-  r="$(printf '%s' "$buf" | grep -o '"cache_read_input_tokens":[0-9]*'     | tail -1 | grep -o '[0-9]*')"
-  c="$(printf '%s' "$buf" | grep -o '"cache_creation_input_tokens":[0-9]*' | tail -1 | grep -o '[0-9]*')"
+  case "$provider" in
+    codex)
+      # Scope the field read to the LAST last_token_usage object. Grepping the bare
+      # key would also hit total_token_usage's input_tokens (the CUMULATIVE figure —
+      # 32.6M where the context is 79k), which would trip every threshold instantly.
+      r="$(printf '%s' "$buf" | grep -o '"last_token_usage":{[^}]*}' | tail -1 \
+           | grep -o '"input_tokens":[0-9]*' | head -1 | grep -o '[0-9]*')"
+      c=""
+      ;;
+    claude|*)
+      r="$(printf '%s' "$buf" | grep -o '"cache_read_input_tokens":[0-9]*'     | tail -1 | grep -o '[0-9]*')"
+      c="$(printf '%s' "$buf" | grep -o '"cache_creation_input_tokens":[0-9]*' | tail -1 | grep -o '[0-9]*')"
+      ;;
+  esac
   printf '%s\n' "$(( ${r:-0} + ${c:-0} ))"
 }
 
