@@ -265,7 +265,17 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
     (( parent_count > 1 )) && continue
 
     msg="$(git log -1 --format=%B "$commit" 2>/dev/null || true)"
-    if grep -qE '^Decision-Log: (none|D-[0-9]{8}-[0-9]{2}(, D-[0-9]{8}-[0-9]{2})*)[[:space:]]*$' <<<"$msg"; then
+    # {2,} not {2}. The sequence number was matched as EXACTLY two digits, so the moment
+    # this repo's ledger passed D-...-99 the gate stopped accepting citations of its own
+    # decisions: 43 of 123 records now carry a three-digit number, and every commit citing
+    # one was told it "neither updates DECISIONS.md nor has a Decision-Log trailer".
+    #
+    # A gate that exists to force decision citation was REJECTING the citations, and its
+    # only remaining exits were "update the ledger in this commit" or "Decision-Log: none".
+    # It pushed authors toward `none` — the opposite of its purpose — and said nothing.
+    # It survived because the fixture in tests/smoke.sh is D-20260721-99: the largest
+    # two-digit value there is, chosen before the boundary existed and never revisited.
+    if grep -qE '^Decision-Log: (none|D-[0-9]{8}-[0-9]{2,}(, D-[0-9]{8}-[0-9]{2,})*)[[:space:]]*$' <<<"$msg"; then
       continue
     fi
 

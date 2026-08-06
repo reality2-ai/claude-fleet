@@ -7257,3 +7257,53 @@ including the per-provider meter above — ran only when someone remembered to. 
 nobody runs is documentation, not a gate.**
 
 **Decision-Log: this entry.**
+
+## D-20260807-143 — THE DECISION GATE STOPPED ACCEPTING CITATIONS OF ITS OWN DECISIONS AT D-…-100, AND SAID NOTHING
+
+- **Decision-maker:** Roy (directive: open the PR), claude-fleet lane (mechanism)
+- **Authority basis:** Roy's direct instruction, 2026-08-07
+
+Found by being blocked by it. A commit carrying `Decision-Log: D-20260807-142` was
+rejected with *"neither updates DECISIONS.md nor has a Decision-Log trailer"* — while
+carrying exactly that trailer.
+
+`hooks/git/pre-push` matched the sequence number as **exactly two digits**:
+
+```
+'^Decision-Log: (none|D-[0-9]{8}-[0-9]{2}(, D-[0-9]{8}-[0-9]{2})*)[[:space:]]*$'
+```
+
+**43 of this repo's 123 decision records carry a three-digit number.** Every commit
+citing one of them was told its citation did not exist.
+
+**The consequence is the inversion, not the inconvenience.** The gate exists to force a
+commit to account for the decisions governing it. With citation rejected, the only exits
+left were *update the ledger inside this commit* or *`Decision-Log: none`*. **A gate
+built to demand citation was steering authors to declare "no decision applies" — and it
+reported this as the author's failure, never its own.**
+
+**Why it survived.** `tests/smoke.sh` exercised the gate with `D-20260721-99` — the
+largest two-digit id there is. The fixture sat exactly on the boundary and never crossed
+it. **A fixture chosen at the edge tests everything except the edge.** The ledger passed
+100 somewhere around 2026-07-26; the gate has been wrong ever since, over roughly 43
+decisions' worth of commits.
+
+**Fix:** `[0-9]{2,}` in both positions.
+
+**Evidence — controls, red before and green after:**
+
+```
+FAIL a three-digit decision citation can publish
+FAIL a mixed-width multi-id citation can publish
+ok   a malformed decision id is still rejected      <- green in BOTH runs
+FAIL the malformed case can still publish once acknowledged
+```
+
+The malformed-id control is the load-bearing one: it stays green across the change, so
+widening the digit count did **not** widen the gate into accepting junk. Without it,
+"three-digit ids now pass" is equally consistent with "the gate stopped checking".
+
+**Not fixed here:** `master` carries the identical regex and is 245 commits behind, so it
+has the same defect. Whoever merges that line inherits this fix with it.
+
+**Decision-Log: this entry.**

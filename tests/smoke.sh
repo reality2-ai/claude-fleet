@@ -749,6 +749,23 @@ assert "explicit no-decision acknowledgement can publish" git -C "$DECREPO" push
 printf '\n### D-20260721-99 — test record\n' >> "$DECREPO/DECISIONS.md"
 git -C "$DECREPO" add DECISIONS.md; git -C "$DECREPO" commit -qm decision
 assert "a commit containing a decision record can publish" git -C "$DECREPO" push -q origin HEAD:refs/heads/master
+# THREE-DIGIT sequence numbers. The fixture above is D-20260721-99 — the largest two-digit
+# id there is — so the gate's `[0-9]{2}` was never exercised past its own boundary, and the
+# day this repo's ledger reached D-...-100 the gate silently began rejecting every citation
+# of its own decisions. A fixture chosen at the edge tests everything except the edge.
+printf 'three-digit\n' >> "$DECREPO/f.txt"
+git -C "$DECREPO" add f.txt; git -C "$DECREPO" commit -qm $'three-digit\n\nDecision-Log: D-20260807-142'
+assert "a three-digit decision citation can publish" git -C "$DECREPO" push -q origin HEAD:refs/heads/master
+printf 'multi\n' >> "$DECREPO/f.txt"
+git -C "$DECREPO" add f.txt; git -C "$DECREPO" commit -qm $'multi\n\nDecision-Log: D-20260807-140, D-20260807-141, D-20260721-05'
+assert "a mixed-width multi-id citation can publish" git -C "$DECREPO" push -q origin HEAD:refs/heads/master
+# CONTROL: widening the digits must not have widened it into accepting junk.
+printf 'junk\n' >> "$DECREPO/f.txt"
+git -C "$DECREPO" add f.txt; git -C "$DECREPO" commit -qm $'junk\n\nDecision-Log: D-2026-7'
+_junk_rc=0; git -C "$DECREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || _junk_rc=$?
+if (( _junk_rc != 0 )); then ok "a malformed decision id is still rejected"; else no "a malformed decision id now passes"; fi
+git -C "$DECREPO" commit --amend -qm $'junk\n\nDecision-Log: none'
+assert "the malformed case can still publish once acknowledged" git -C "$DECREPO" push -q origin HEAD:refs/heads/master
 
 # --- 11b. pre-push GATE CONTROLS — error must not read as clean --------------
 # Each case FORCES a failure and asserts the gate reports ERROR, not PASS. A clean run over
