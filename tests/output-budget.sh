@@ -93,7 +93,12 @@ if grep -q 'output-budget.sh' "$ROOT/bin/fleet"; then ok "fleet init wires the h
 # Claude-only by design: updatedToolOutput is a Claude Code hook contract and codex has
 # no verified equivalent. Assert the codex renderer does NOT wire it.
 if ! sed -n '/_render_codex_hooks_json/,/^}/p' "$ROOT/bin/fleet" | grep -q 'output-budget.sh'; then ok "codex hooks do NOT wire it (unverified contract)"; else no "codex hooks wire an unverified reply shape"; fi
-if grep -q '/spill/' "$ROOT/.fleet/.gitignore"; then ok "spill directory is gitignored"; else no "spill directory would be committed"; fi
+# Assert the SHIPPING surface — the .gitignore `fleet init` generates — not this
+# checkout's own `.fleet/.gitignore`, which is untracked runtime state that does not
+# exist in a fresh clone. The first version of this line read that file and passed
+# only because the developer's workspace happened to have one; on a clean worktree it
+# failed, which is what a test asserting on local state always does eventually.
+if sed -n '/claude-fleet runtime state/,/^GI$/p' "$ROOT/bin/fleet" | grep -q '^/spill/$'; then ok "fleet init's generated .gitignore excludes the spill directory"; else no "generated .gitignore would commit spill files"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 exit $(( fail > 0 ))
