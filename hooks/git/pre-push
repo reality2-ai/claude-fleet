@@ -275,7 +275,25 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
     # It pushed authors toward `none` — the opposite of its purpose — and said nothing.
     # It survived because the fixture in tests/smoke.sh is D-20260721-99: the largest
     # two-digit value there is, chosen before the boundary existed and never revisited.
-    if grep -qE '^Decision-Log: (none|D-[0-9]{8}-[0-9]{2,}(, D-[0-9]{8}-[0-9]{2,})*)[[:space:]]*$' <<<"$msg"; then
+    #
+    # ‼ AND `D-` WAS NEVER THE ONLY FORM. Measured in r2-composer 2026-08-08, headings in
+    # its DECISIONS.md and trailers across its FULL history, not a sample:
+    #   R-YYYYMMDD-NN  195 headings, 115 trailers   ← the form this ledger ISSUES
+    #   D-YYYYMMDD-NN   47 headings,  51 trailers
+    #   dNNN            fleet decision register,  63 trailers
+    #   none                                      265 trailers
+    # THE ARM ACCEPTED ONLY `none` AND `D-`, SO IT REFUSED THE MOST-USED CITATION FORM IN
+    # THE REPOSITORY WHILE ACCEPTING THE ESCAPE HATCH. A gate meant to force decision
+    # citation was pushing authors to `none`, which is already the most-used trailer at 265
+    # — the failure is invisible in the history precisely BECAUSE the refused authors
+    # complied by declaring no decision. `R-` and `dNNN` are kept on EVIDENCE, not caution.
+    #
+    # This arm was fixed in r2-composer's DEPLOYED hook on 2026-08-06 and lost on
+    # 2026-08-08 when `fleet install-git-hooks` overwrote it from THIS file, which had
+    # never carried it. A local hook fix that is not upstreamed here survives only until
+    # the next install. `doctor` reported "DRIFTS" for both the upgrade and the downgrade
+    # and could not name the direction.
+    if grep -qE '^Decision-Log: (none|(R|D)-[0-9]{8}-[0-9]{2,}|d[0-9]{3,})((, )((R|D)-[0-9]{8}-[0-9]{2,}|d[0-9]{3,}))*[[:space:]]*$' <<<"$msg"; then
       continue
     fi
 
