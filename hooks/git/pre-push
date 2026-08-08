@@ -228,6 +228,8 @@ fi
 zero='0000000000000000000000000000000000000000'
 findings=""
 decision_findings=""
+decision_checked=0
+decision_exempted=0
 
 check_decision_accountability() {  # $1 = remote sha, $2 = local sha
   local remote="$1" local_sha="$2" commits commit parent_count changed msg short malformed ledgers id
@@ -280,8 +282,23 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
     # message one level out: a remedy naming a state the author cannot be in.
     #
     # Matched on BASENAME so a ledger at any depth counts, in any repository layout.
+    #
+    # THE EXEMPTION IS COUNTED, NOT JUST TAKEN. r2-standard 2026-08-08: AN EXEMPTION IS SAFE
+    # ONLY WHERE IT IS INDEPENDENT OF THE PROPERTY BEING CHECKED — and this one is not. A
+    # ledger citation is almost always made in the commit that LANDS the ledger entry, so
+    # the exemption removes exactly the commits whose trailers are most likely to be
+    # interesting. Eleven malformed `D-nnn` trailers sat unnoticed in that repository for
+    # that reason. NOTHING DISTINGUISHES CHECKED-AND-CLEAN FROM EXEMPTED-AND-UNEXAMINED,
+    # BECAUSE BOTH ARE SILENCE.
+    #
+    # So the counts are printed on every push. REPORTED, NEVER REFUSED: taking the branch is
+    # legitimate and refusing it would be wrong. What was missing is the denominator.
     changed="$(git diff-tree --root --no-commit-id --name-only -r "$commit" 2>/dev/null || true)"
-    grep -qE '(^|/)DECISIONS\.md$' <<<"$changed" && continue
+    if grep -qE '(^|/)DECISIONS\.md$' <<<"$changed"; then
+      decision_exempted=$(( decision_exempted + 1 ))
+      continue
+    fi
+    decision_checked=$(( decision_checked + 1 ))
 
     # Generated merge commits combine already-accounted histories and do not themselves
     # choose repo behaviour. A merge that removes the ledger was caught above.
@@ -623,6 +640,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   scan_range "$range"
 done
 
+# THE DENOMINATOR, ALWAYS, PASS OR FAIL. Without this line an exempted commit and a checked
+# one are both silence, and the exemption's share of the population is invisible to everyone
+# including whoever tightens this gate next. Standing question it exists to answer: WHAT
+# FRACTION OF THE REAL POPULATION TAKES THE EXEMPTION BRANCH, AND IS THAT THE FRACTION YOU
+# CARE ABOUT.
+if (( decision_checked + decision_exempted > 0 )); then
+  printf 'decision gate: %d commit(s) checked, %d exempted (ledger touched)\n' \
+    "$decision_checked" "$decision_exempted" >&2
+fi
+
 if [[ -n "$decision_findings" ]]; then
   printf '\n\033[1;31m✗ PUSH BLOCKED — commits do not account for key decisions:\033[0m\n' >&2
   printf '%b' "$decision_findings" >&2
@@ -631,13 +658,37 @@ if [[ -n "$decision_findings" ]]; then
   # including the ones whose trailer was present and merely malformed — a remedy naming a
   # state the reader is not in reads as the gate being broken, and the next step after that
   # is `--no-verify`. Do NOT restore a single undifferentiated instruction here.
+  #
+  # ‼ AND THE REMEDY MUST LIST EVERY FORM THE PATTERN ADMITS. This sentence named only
+  # `D-YYYYMMDD-NN` after the undated `D-nnn` form was accepted, so it told an author their
+  # own valid identifier was not an option — THE PATTERN-WIDENED-MESSAGE-NOT-UPDATED SHAPE,
+  # FOURTH INSTANCE, INSIDE THE COMMIT THAT FIXED THE THIRD. Reported by r2-standard through
+  # the escalation route. Whoever widens the pattern next: THE REMEDY TEXT IS PART OF THE
+  # PATTERN. They are edited together or the gate lies about itself again.
+  #
+  # Only the bullets that actually fired are printed. Printing both on every refusal reads
+  # as a legend, and a legend is where a reader stops distinguishing their case from the
+  # other one — which is how the false-absence message survived two repairs.
   printf '\nRead DECISIONS.md.\n' >&2
-  printf '  • Trailer MISSING — amend to add Decision-Log: D-YYYYMMDD-NN, or\n' >&2
-  printf '    Decision-Log: none for routine work.\n' >&2
-  printf '  • Trailer PRESENT but not accepted — amend so the identifier is the whole\n' >&2
-  printf '    value. The accepted forms are printed beside the offending line above.\n' >&2
+  if grep -q 'neither updates DECISIONS.md' <<<"$decision_findings"; then
+    printf '  • Trailer MISSING — amend to add an accepted trailer:\n' >&2
+    printf '      Decision-Log: none            routine work, no decision\n' >&2
+    printf '      Decision-Log: D-277           undated lane ledger ID\n' >&2
+    printf '      Decision-Log: D-20260808-01   dated form (also R-)\n' >&2
+    printf '      Decision-Log: d448            FLEET register — lowercase, NOT the same\n' >&2
+    printf '                                    namespace as D-NNN. Do not substitute.\n' >&2
+  fi
+  if grep -q 'in a form this gate does not accept' <<<"$decision_findings"; then
+    printf '  • Trailer PRESENT but not accepted — amend so the identifier is the WHOLE\n' >&2
+    printf '    value; put the reasoning in the commit body. The accepted forms are\n' >&2
+    printf '    printed beside your offending line above.\n' >&2
+  fi
+  if grep -q 'removes DECISIONS.md' <<<"$decision_findings"; then
+    printf '  • The commit REMOVES the ledger. That is itself an unaccounted decision.\n' >&2
+  fi
   printf 'If the commit made a new key decision, append the record and commit it instead.\n' >&2
-  printf 'Do not reach for --no-verify. It is use-banned and this refusal is legible.\n\n' >&2
+  printf 'Do not reach for --no-verify. It is use-banned and this refusal is legible.\n' >&2
+  printf 'If this refusal names a state you are not in, STOP and send it to the supervisor.\n\n' >&2
   exit 1
 fi
 
