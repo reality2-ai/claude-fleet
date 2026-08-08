@@ -230,7 +230,7 @@ findings=""
 decision_findings=""
 
 check_decision_accountability() {  # $1 = remote sha, $2 = local sha
-  local remote="$1" local_sha="$2" commits commit parent_count changed msg short
+  local remote="$1" local_sha="$2" commits commit parent_count changed msg short malformed
   [[ "${FLEET_DECISION_LOG_CHECK:-on}" == off ]] && return 0
 
   if [[ "$remote" == "$zero" ]]; then
@@ -298,7 +298,36 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
     fi
 
     short="$(git rev-parse --short "$commit" 2>/dev/null || printf '%s' "$commit")"
-    decision_findings+="  • $short neither updates DECISIONS.md nor has a Decision-Log trailer\n"
+
+    # REPORT THE FORM, NOT AN ABSENCE. A trailer that is PRESENT and malformed was
+    # reported as MISSING, and the summary then told the author to add the very thing
+    # they already had — so the only reading left was that the gate could not see it.
+    #
+    # This is not a hypothetical. THE TWO COMMENTS ABOVE ARE BOTH THIS DEFECT: three-digit
+    # sequence numbers, and `R-` citations, each reported as "neither updates DECISIONS.md
+    # nor has a Decision-Log trailer" while sitting on a commit that carried one. BOTH WERE
+    # FIXED BY WIDENING THE PATTERN AND NEITHER BY CORRECTING THE MESSAGE, so the false
+    # report survived both repairs and went on to describe a state no author was in.
+    #
+    # It cost a `--no-verify` on 2026-08-08: r2-composer's `Decision-Log: none (measurement
+    # + arm only...)` was refused for trailing prose and reported as absent, and A REMEDY
+    # SENTENCE THAT DESCRIBES A STATE THE AUTHOR IS NOT IN MAKES A BYPASS LOOK LIKE THE
+    # DIAGNOSIS RATHER THAN THE EVASION.
+    #
+    # The pattern is NOT widened here, deliberately: admitting prose is how the field stops
+    # being machine-readable. What changes is that the refusal becomes legible.
+    malformed="$(grep -E '^Decision-Log:' <<<"$msg" | head -1)"
+    if [[ -n "$malformed" ]]; then
+      decision_findings+="  • $short HAS a Decision-Log trailer, in a form this gate does not accept:\n"
+      decision_findings+="        ${malformed//\\/\\\\}\n"
+      decision_findings+="      The identifier must be the WHOLE value — no trailing prose, no\n"
+      decision_findings+="      parenthetical, no explanation. Put the reasoning in the commit body.\n"
+      decision_findings+="      Accepted: Decision-Log: none\n"
+      decision_findings+="                Decision-Log: D-20260808-01     (also R-, and dNNN)\n"
+      decision_findings+="                Decision-Log: d448, d449         (comma-space separated)\n"
+    else
+      decision_findings+="  • $short neither updates DECISIONS.md nor has a Decision-Log trailer\n"
+    fi
   done <<<"$commits"
 }
 
@@ -547,9 +576,18 @@ done
 if [[ -n "$decision_findings" ]]; then
   printf '\n\033[1;31m✗ PUSH BLOCKED — commits do not account for key decisions:\033[0m\n' >&2
   printf '%b' "$decision_findings" >&2
-  printf '\nRead DECISIONS.md. Amend each listed commit to either include the applicable\n' >&2
-  printf 'Decision-Log: D-YYYYMMDD-NN trailer, or Decision-Log: none for routine work.\n' >&2
-  printf 'If the commit made a new key decision, append the record and commit it instead.\n\n' >&2
+  # EACH FINDING ABOVE ALREADY STATES WHICH OF THE TWO STATES THE COMMIT IS IN, and this
+  # summary must not contradict it. It previously told every author to ADD a trailer,
+  # including the ones whose trailer was present and merely malformed — a remedy naming a
+  # state the reader is not in reads as the gate being broken, and the next step after that
+  # is `--no-verify`. Do NOT restore a single undifferentiated instruction here.
+  printf '\nRead DECISIONS.md.\n' >&2
+  printf '  • Trailer MISSING — amend to add Decision-Log: D-YYYYMMDD-NN, or\n' >&2
+  printf '    Decision-Log: none for routine work.\n' >&2
+  printf '  • Trailer PRESENT but not accepted — amend so the identifier is the whole\n' >&2
+  printf '    value. The accepted forms are printed beside the offending line above.\n' >&2
+  printf 'If the commit made a new key decision, append the record and commit it instead.\n' >&2
+  printf 'Do not reach for --no-verify. It is use-banned and this refusal is legible.\n\n' >&2
   exit 1
 fi
 
