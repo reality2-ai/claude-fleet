@@ -230,7 +230,7 @@ findings=""
 decision_findings=""
 
 check_decision_accountability() {  # $1 = remote sha, $2 = local sha
-  local remote="$1" local_sha="$2" commits commit parent_count changed msg short malformed
+  local remote="$1" local_sha="$2" commits commit parent_count changed msg short malformed ledgers id
   [[ "${FLEET_DECISION_LOG_CHECK:-on}" == off ]] && return 0
 
   if [[ "$remote" == "$zero" ]]; then
@@ -246,17 +246,42 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
 
     # Once the ledger exists it is a durable invariant. Removing it is itself an
     # unaccounted decision and must not turn the guard off for later commits.
-    if ! git cat-file -e "${commit}:DECISIONS.md" 2>/dev/null; then
+    #
+    # THIS TEST WAS ROOT-RELATIVE AND ITS `continue` SKIPS THE COMMIT, SO IN A REPOSITORY
+    # WITH NO ROOT `DECISIONS.md` THE ENTIRE ARM WAS INERT — every commit fell out here and
+    # nothing was ever checked. MEASURED 2026-08-08, not reasoned: a throwaway repository
+    # built in r2-impl's layout — ledgers at `r2-core/DECISIONS.md` and
+    # `r2-hive/DECISIONS.md`, none at the root — accepted a push of a commit with NO trailer
+    # and NO ledger change, using the hook exactly as deployed. r2-impl has 1047
+    # Decision-Log trailers in its history written under a gate that never ran.
+    #
+    # A GATE THAT CANNOT FIRE IS INDISTINGUISHABLE FROM ONE THAT PASSES, and the lanes
+    # writing those trailers had every reason to believe it was enforcing them.
+    #
+    # Basename match at any depth, so a lane-prefixed ledger counts.
+    ledgers="$(git ls-tree -r --name-only "$commit" 2>/dev/null | grep -E '(^|/)DECISIONS\.md$' || true)"
+    if [[ -z "$ledgers" ]]; then
       if git rev-parse -q --verify "${commit}^" >/dev/null 2>&1 \
-          && git cat-file -e "${commit}^:DECISIONS.md" 2>/dev/null; then
+          && git ls-tree -r --name-only "${commit}^" 2>/dev/null | grep -qE '(^|/)DECISIONS\.md$'; then
         short="$(git rev-parse --short "$commit" 2>/dev/null || printf '%s' "$commit")"
         decision_findings+="  • $short removes DECISIONS.md\n"
       fi
       continue
     fi
 
-    changed="$(git diff-tree --root --no-commit-id --name-only -r "$commit" -- DECISIONS.md 2>/dev/null || true)"
-    [[ "$changed" == "DECISIONS.md" ]] && continue
+    # THE LEDGER IS NOT ALWAYS AT THE ROOT. This was a root pathspec, so in a repository
+    # whose ledgers live under lane prefixes THE EXEMPTION COULD NEVER FIRE FOR ANYBODY.
+    # Measured in r2-impl 2026-08-08: no root DECISIONS.md exists, the ledgers are
+    # r2-core/DECISIONS.md and r2-hive/DECISIONS.md, and on 8c756ed — a commit whose ONLY
+    # change is the ledger — the root pathspec returned EMPTY while the actual path list was
+    # [r2-core/DECISIONS.md]. So "update the ledger in this commit" was an exit the author
+    # COULD NOT REACH BY REPOSITORY LAYOUT, leaving the trailer as the only way out of a
+    # gate whose stated purpose is to prefer the ledger. Same shape as the false-absence
+    # message one level out: a remedy naming a state the author cannot be in.
+    #
+    # Matched on BASENAME so a ledger at any depth counts, in any repository layout.
+    changed="$(git diff-tree --root --no-commit-id --name-only -r "$commit" 2>/dev/null || true)"
+    grep -qE '(^|/)DECISIONS\.md$' <<<"$changed" && continue
 
     # Generated merge commits combine already-accounted histories and do not themselves
     # choose repo behaviour. A merge that removes the ledger was caught above.
@@ -293,7 +318,28 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
     # never carried it. A local hook fix that is not upstreamed here survives only until
     # the next install. `doctor` reported "DRIFTS" for both the upgrade and the downgrade
     # and could not name the direction.
-    if grep -qE '^Decision-Log: (none|(R|D)-[0-9]{8}-[0-9]{2,}|d[0-9]{3,})((, )((R|D)-[0-9]{8}-[0-9]{2,}|d[0-9]{3,}))*[[:space:]]*$' <<<"$msg"; then
+    # ‼ AND THE UNDATED `D-nnn` FORM IS A REAL NAMESPACE THIS ARM REFUSED OUTRIGHT.
+    # Measured across r2-impl's FULL history 2026-08-08: 1047 Decision-Log trailers, 516
+    # refused by the arm above — 265 bare `D-nnn`, 12 `D-nnn amended`, 6 comma pairs of
+    # them, 23 `none.` with a full stop. NEARLY HALF THE TRAILERS THE REPOSITORY HAS EVER
+    # WRITTEN, and the majority are r2-core citing its OWN ledger, which mints D-257..D-282
+    # by a convention older than this gate.
+    #
+    # The lane found the passing workaround and REFUSED TO TAKE IT, correctly: `d277`
+    # matches — lowercase `d`, three digits — BUT `dNNN` IS THE FLEET DECISION REGISTER AND
+    # `d277` IS SOMEBODY ELSE'S RULING. The only accepted spelling of its identifier aliased
+    # a namespace it does not own, so the gate's remedy was to cite the wrong decision.
+    #
+    # Undated `(R|D)-nn+` is therefore accepted. It cannot collide with `dNNN` (case) nor
+    # with the dated form (the whole value is anchored). A single trailing full stop is
+    # allowed because a period is punctuation, not content, and cannot be mistaken for an
+    # identifier — this is NOT a licence for prose, which stays refused.
+    #
+    # STILL REFUSED, PRINTED HERE RATHER THAN LEFT TO BE DISCOVERED: `D-193 amended` and
+    # every other trailing-prose form (put it in the body), and `SS293` — standard's
+    # sufficiency register, 2 instances in r2-impl, too thin a population to admit on.
+    id='(R|D)-[0-9]{8}-[0-9]{2,}|(R|D)-[0-9]{2,}|d[0-9]{3,}'
+    if grep -qE "^Decision-Log: (none|($id))((, )($id))*\.?[[:space:]]*\$" <<<"$msg"; then
       continue
     fi
 
@@ -323,8 +369,12 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
       decision_findings+="      The identifier must be the WHOLE value — no trailing prose, no\n"
       decision_findings+="      parenthetical, no explanation. Put the reasoning in the commit body.\n"
       decision_findings+="      Accepted: Decision-Log: none\n"
-      decision_findings+="                Decision-Log: D-20260808-01     (also R-, and dNNN)\n"
-      decision_findings+="                Decision-Log: d448, d449         (comma-space separated)\n"
+      decision_findings+="                Decision-Log: D-20260808-01     (also R-)\n"
+      decision_findings+="                Decision-Log: D-277              (undated lane ledger ID)\n"
+      decision_findings+="                Decision-Log: d448               (FLEET register, lowercase)\n"
+      decision_findings+="                Decision-Log: D-277, D-280       (comma-space separated)\n"
+      decision_findings+="      Note: dNNN and D-NNN are DIFFERENT registers. Do not substitute one\n"
+      decision_findings+="      for the other to satisfy this gate — it would cite the wrong decision.\n"
     else
       decision_findings+="  • $short neither updates DECISIONS.md nor has a Decision-Log trailer\n"
     fi
