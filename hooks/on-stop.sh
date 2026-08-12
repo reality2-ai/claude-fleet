@@ -63,7 +63,18 @@ fi
 # give direction or pick up the completion, instead of the human discovering it idle.
 # Fires only on genuine idle (empty inbox), never self-notifies, one note per idle.
 #   FLEET_IDLE_NOTIFY=off  disables · FLEET_IDLE_NOTIFY_TO=<id>  routes to another coordinator
-if [[ "${FLEET_IDLE_NOTIFY:-on}" != "off" && "$MANAGED" == true ]]; then
+# WORKSPACE OFF-SWITCH, added 2026-08-07 on Roy's instruction ("we are getting too many
+# nothing queued messages"). An env var cannot reach an ALREADY-RUNNING session — its
+# environment is fixed at launch — but this script is re-read on every fire, so a file
+# check takes effect immediately and fleet-wide without restarting any worker.
+#   touch .fleet/no-idle-notify   silences · rm it   restores
+# Default behaviour is unchanged when the file is absent.
+if [[ -e "${FLEET_WORKSPACE:-.}/.fleet/no-idle-notify" ]]; then
+  _idle_notify=off
+else
+  _idle_notify="${FLEET_IDLE_NOTIFY:-on}"
+fi
+if [[ "$_idle_notify" != "off" && "$MANAGED" == true ]]; then
   _coord="${FLEET_IDLE_NOTIFY_TO:-supervisor}"
   if [[ "$CHILD_ID" != "$_coord" && "${_pending:-0}" -eq 0 ]]; then
     # BACKGROUND it (`&`) + disown: fleet_notify injects into the coordinator's tmux pane, which
