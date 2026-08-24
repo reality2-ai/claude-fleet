@@ -105,6 +105,41 @@ check pass 'openssl verify -CAfile ca.pem cert.pem'
 check pass 'openssl asn1parse -in persona.der -inform DER'
 check pass 'openssl dgst -sha256 persona.bin'
 
+echo "── ssh-keygen IS TWO TOOLS — the read half must pass, the mint half must deny (defect 4, second binary) ──"
+# 2026-08-24. ssh-keygen sat in the unconditional key-mint arm, classified by the word
+# "keygen". The inversion was inside ONE line reported by a lane:
+#   `ssh-keyscan HOST | ssh-keygen -lf -`  -> DENY   (the half that only formats bytes)
+#   `ssh-keyscan HOST`  alone              -> PASS   (the half that establishes trust)
+# Both directions are asserted here because fixing one without the other is how this
+# arrived: the openssl arm had carried the verifying-is-not-signing fix since 2026-07-17
+# and its neighbour did not.
+check pass 'ssh-keygen -lf -'
+check pass 'ssh-keygen -F somehost'
+check pass 'ssh-keygen -l -f /tmp/host.pub'
+check pass 'ssh-keygen -lE sha256 -f /tmp/host.pub'
+check pass 'ssh-keygen -Q key'
+# The allowlist is per-CHARACTER because short options bundle: `-lt ed25519` carries a
+# key type behind an allowed `-l`, and a substring test would have passed it.
+check deny 'ssh-keygen -lt ed25519'
+check deny 'ssh-keygen -t ed25519 -f /tmp/k'
+check deny 'ssh-keygen -s ca_key -I id -n user key.pub'
+check deny 'ssh-keygen -y -f /home/x/.ssh/id_ed25519'
+check deny 'ssh-keygen -R somehost'
+check deny 'ssh-keygen -p -f key'
+check deny 'ssh-keygen'
+check deny 'sudo ssh-keygen -t rsa'
+
+echo "── ssh-keyscan ESTABLISHES TRUST — must always be denied (added 2026-08-24) ──"
+# It mints nothing, which is why it was absent from the gate entirely. It fetches a host
+# key off the network, and whatever is written from its output is what this machine
+# trusts from then on — the same act as StrictHostKeyChecking=accept-new.
+check deny 'ssh-keyscan -T 10 somehost'
+check deny 'timeout 25 ssh-keyscan -T 10 somehost 2>/dev/null | grep -E "ssh-ed25519" | head -2'
+check deny 'ssh-keyscan somehost >> ~/.ssh/known_hosts'
+# The reported line stays denied — now on account of the keyscan half rather than the
+# fingerprint half. Same verdict, correct reason.
+check deny 'timeout 25 ssh-keyscan -T 10 somehost 2>/dev/null | ssh-keygen -lf - 2>/dev/null | head -3'
+
 echo "── REAL OPS — must always be denied (positive controls; defect 2) ──"
 # ...and the same subcommands when they actually SIGN or MINT.
 check deny 'openssl dgst -sha256 -sign key.pem -out sig.bin persona.bin'

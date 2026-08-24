@@ -421,6 +421,61 @@ _hs_openssl_mutates() {
   return 1          # verify / asn1parse / pkey -pubout / version / … = inspection
 }
 
+# ssh-keygen IS A READ TOOL AND A MINT TOOL IN ONE BINARY, and until 2026-08-24 it sat
+# in the unconditional arm below beside five key-minting binaries — classified by the
+# word "keygen". MEASURED THAT DAY, and the inversion was inside a single line:
+#   `ssh-keyscan -T 10 HOST | ssh-keygen -lf -`   -> DENY
+#   `ssh-keyscan -T 10 HOST`  (that half alone)   -> ordinary prompt
+# `ssh-keygen -lf -` reads bytes from stdin, mints nothing, touches no file and
+# contacts no host. THE GATE DENIED THE READ THAT MINTS NOTHING AND PERMITTED THE READ
+# THAT ESTABLISHES TRUST — a lane was stopped because it tried to LOOK at the key it
+# was fetching. Reported by r2, escalated rather than worked around; the lane declined
+# StrictHostKeyChecking=accept-new on its own judgement before it knew keyscan was
+# unpoliced, which is the only reason this was found by a report and not by a surprise.
+#
+# THIS IS DEFECT 4 (VERIFYING IS NOT SIGNING) A SECOND TIME, ON A DIFFERENT BINARY. The
+# openssl arm already carries that fix and has since 2026-07-17; ssh-keygen was left
+# behind in the same file. A fix applied to one member of a list is not applied to the
+# list.
+#
+# ALLOWLIST, NOT BLOCKLIST, AND THAT IS THE DESIGN RATHER THAN A DETAIL: a blocklist
+# enumerates the dangerous flags somebody thought of, and this binary hides `-s` (sign
+# a certificate), `-y` (read a private key), `-p` (rewrite a key file) and `-R` (rewrite
+# known_hosts) among two dozen options. DENY unless EVERY option character present is
+# named here:
+#     l  print a fingerprint          f  input file (takes an argument)
+#     F  find a host in known_hosts   Q  query supported algorithms
+#     E  fingerprint hash algorithm   v  verbose
+# Short options BUNDLE — `-lf -` is `-l -f -` — so every character of every cluster is
+# checked, which is what stops `-lt ed25519` being read as an allowed `-l`. A bare
+# `ssh-keygen` with no options is INTERACTIVE KEY GENERATION and denies. An empty or
+# unparseable segment reaches the end with saw=0 and DENIES: fail closed.
+#
+# Locate the binary rather than assuming token 0, for the reason _hs_openssl_mutates
+# already carries: the caller reaches here through the wrapper loop, so the segment may
+# be `sudo ssh-keygen …` or `timeout 25 ssh-keygen …`.
+_hs_sshkeygen_readonly() {
+  local -a t; local i j tok rest ch start=0 saw=0
+  read -ra t <<<"$1"
+  for (( i=0; i<${#t[@]}; i++ )); do
+    [[ "${t[i]##*/}" == ssh-keygen ]] && { start=$i; break; }
+  done
+  for (( i=start+1; i<${#t[@]}; i++ )); do
+    tok="${t[i]}"
+    case "$tok" in
+      --*) return 1 ;;                 # no long option here is read-only; fail closed
+      -)   continue ;;                 # the stdin operand
+      -*)  saw=1; rest="${tok#-}"
+           for (( j=0; j<${#rest}; j++ )); do
+             ch="${rest:j:1}"
+             case "$ch" in l|f|F|Q|E|v) ;; *) return 1 ;; esac
+           done ;;
+      *)   continue ;;                 # an operand: a filename, a host, an algorithm
+    esac
+  done
+  (( saw ))
+}
+
 _hs_flash_or_mint() {
   local base="$1" seg="$2" cargo_sub cargo_d; local -a _cw
   case "$base" in
@@ -508,7 +563,17 @@ _hs_flash_or_mint() {
       case " $seg " in *' upload'*) return 0 ;; esac ;;
     arduino-cli)
       case " $seg " in *' upload'* | *' burn-bootloader'*) return 0 ;; esac ;;
-    ssh-keygen|age-keygen|minisign|signify|certtool|mkcert)
+    # ssh-keyscan ADDED 2026-08-24. It mints nothing, which is exactly why it was
+    # missed — but it fetches a host key off the network, and whatever is written from
+    # its output becomes what this machine trusts from then on. That is the same trust
+    # act as StrictHostKeyChecking=accept-new, which nobody would have left ungated.
+    ssh-keyscan)
+      return 0 ;;
+    # ssh-keygen: deny by default, with the named read-only allowlist above.
+    ssh-keygen)
+      _hs_sshkeygen_readonly "$seg" && return 1
+      return 0 ;;
+    age-keygen|minisign|signify|certtool|mkcert)
       return 0 ;;
     keytool)
       case " $seg " in *' -genkey'* | *' -genseckey'* | *' -importcert'* | *' -certreq'*) return 0 ;; esac ;;   # ' -genkey'* already covers -genkeypair

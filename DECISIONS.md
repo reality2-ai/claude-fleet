@@ -7472,3 +7472,49 @@ acted* rather than by *the effect landing* is not a control. The meter said 0 an
 (D-143); the compactor said "injected" and meant "queued". **Same shape each time.**
 
 **Decision-Log: this entry.**
+
+## D-20260825-147 — ssh-keygen SPLIT INTO ITS TWO TOOLS AND ssh-keyscan GATED AT ALL, BECAUSE THE GATE DENIED THE READ THAT MINTS NOTHING AND PERMITTED THE READ THAT ESTABLISHES TRUST
+
+**Decision-maker:** Roy (verbatim: "yes, fix the gate", 2026-08-24), on a supervisor
+escalation carrying the r2 lane's report. The lane escalated rather than working around,
+and separately declined `StrictHostKeyChecking=accept-new` on its own judgement before it
+knew keyscan was unpoliced — which is the only reason this was found by a report and not
+by a surprise.
+
+**Context.** Deploying the composer GUI to a tailnet host, r2 ran one line:
+`ssh-keyscan -T 10 HOST | ssh-keygen -lf -` — and was denied by the firmware/key gate.
+Measured at the hook: the DENY was for the `ssh-keygen -lf -` half, which reads bytes
+from stdin, mints nothing, touches no file and contacts no host; the `ssh-keyscan` half
+alone drew an ordinary prompt. The lane was stopped because it tried to LOOK at the key
+it was fetching, while the act that decides what this machine trusts from then on — the
+same trust act as `accept-new` — was not in the gate at all. `ssh-keygen` sat in the
+unconditional key-mint arm beside age-keygen/minisign/signify/certtool/mkcert,
+classified by the word "keygen".
+
+**Ruling and rationale.** (1) `ssh-keyscan`: unconditional deny. (2) `ssh-keygen`: deny
+by default with a named read-only allowlist (`l f F Q E v`), checked PER CHARACTER
+because short options bundle — `-lt ed25519` carries a key type behind an allowed `-l`
+and a substring test would pass it. An allowlist rather than a blocklist because a
+blocklist enumerates the dangerous flags somebody thought of, and this binary hides
+`-s` (sign a certificate), `-y` (read a private key), `-p` and `-R` among two dozen
+options. Bare `ssh-keygen` is interactive key generation and denies; an unparseable
+segment denies.
+
+**Alternatives rejected.** Narrowing by blocklist (enumerates what somebody thought of);
+leaving keyscan ungated with guidance (a rule not at the instruction site); widening to
+allow the reported line (the keyscan half is the half that must not pass).
+
+**Evidence.** `tests/firmware-gate.sh`: 17 new KATs asserting both directions, 89/89
+(was 72/72). The reported line stays denied — now on account of the keyscan half: same
+verdict, correct reason. This is the verifying-is-not-signing defect (2026-07-17, the
+openssl arm) a SECOND time in the same file: a fix applied to one member of a list is
+not applied to the list. Seven copies of auto-approve.sh exist on this machine; the one
+wired by every live settings file is patched, the six unwired copies (one separate
+clone, five agent worktrees) are not — which is what makes the push part of the fix
+rather than tidiness: the other clone can only receive it through the remote.
+
+**Expected consequences.** Host-key fetching now escalates to a human everywhere the
+hook is wired; fingerprint reads of piped or on-disk keys no longer do. A new ssh-keygen
+long option is denied until someone admits it deliberately.
+
+**Decision-Log: this entry.**
