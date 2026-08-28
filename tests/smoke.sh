@@ -1095,6 +1095,39 @@ R3="$(newrepo r3)"
 did      "--dry-run reports the action it WOULD take"          "$R3" installed dry
 assert   "--dry-run installed nothing"                         test ! -f "$R3/.git/hooks/pre-push"
 
+# --- M. per-lane model and effort reach a claude lane ------------------------
+# 2026-08-29. `model` was already per-lane for codex and silently absent for
+# claude, so the SAME manifest key worked or did nothing depending on the
+# provider. `effort` existed nowhere, which is why setting it inside a lane only
+# held for that session: /effort writes the USER-GLOBAL default, not lane state.
+# BOTH DIRECTIONS: the flags appear when the keys are set, and NOTHING is added
+# when they are not — an always-on flag would silently override every global.
+section "M. per-lane model and effort (claude)"
+cat >> "$WS2/.fleet/fleet.toml" <<'TOML'
+
+[[child]]
+id      = "effortlane"
+cwd     = "."
+restart = "transient"
+name    = "effortlane"
+adapter = "cli-tmux"
+model   = "claude-sonnet-5"
+effort  = "low"
+TOML
+export FLEET_STUB_LOG="$TMP/effortlane.log"; : > "$FLEET_STUB_LOG"
+"$FLEET" up --no-supervisor --no-pairs effortlane >/dev/null 2>&1
+sleep 0.6
+hasline "manifest effort reaches the lane as --effort" "$FLEET_STUB_LOG" "--effort"
+hasline "manifest effort passes its value"             "$FLEET_STUB_LOG" "low"
+hasline "manifest model reaches the lane as --model"   "$FLEET_STUB_LOG" "--model"
+# THE CONTROL THAT CAN FAIL: alpha declares neither key, so neither flag may
+# appear. Without this, an unconditional flag would pass every assertion above
+# while overriding the operator's global setting on every lane in the fleet.
+export FLEET_STUB_LOG="$TMP/alpha.noeffort.log"; : > "$FLEET_STUB_LOG"
+"$FLEET" up --no-supervisor --no-pairs alpha >/dev/null 2>&1
+sleep 0.6
+lacks  "a lane declaring no effort gets NO --effort flag" "$FLEET_STUB_LOG" "--effort"
+
 # --- N. the fleet outlives its last lane ------------------------------------
 # 2026-08-29. Until this fix the server's lifetime was EXACTLY the lifetime of its
 # lane windows: `fleet_tmux_drop_placeholder` removed the 300s bootstrap and put

@@ -141,6 +141,31 @@ $primer"
       argv+=("$bin" --name "$name")
       [[ -n "${MANAGED_SETTINGS:-}" ]] && argv+=(--settings "$MANAGED_SETTINGS")
       [[ -n "$primer" ]] && argv+=(--append-system-prompt "$primer")
+      # PER-LANE model and effort, read from the manifest exactly as the codex
+      # arm below already reads `model`. Until 2026-08-29 a claude lane was given
+      # NEITHER, so both came from the user-global settings.json and there was no
+      # way to hold a per-lane value at all.
+      #
+      # ‼ THE SYMPTOM WAS "I set the effort for a lane and it only stays set for
+      #   that session; if I restart the fleet I have to set it again", and the
+      #   cause is that `/effort` INSIDE a lane writes the USER-GLOBAL default —
+      #   it is not lane state and nothing here carried it. A restarted lane came
+      #   up on whatever the global happened to be, which also means TWO LANES
+      #   COULD NEVER DIFFER: setting one set them all.
+      #
+      # ‼ AND THE ASYMMETRY IS THE FINDING RATHER THAN THE FIX. `model` was
+      #   already per-lane for codex and silently absent for claude, so the same
+      #   manifest key worked or did nothing DEPENDING ON THE PROVIDER, with
+      #   nothing announcing which. A key that is honoured on one arm and ignored
+      #   on the other reads as configuration that did not take.
+      #
+      # Empty stays empty: an unset key adds no flag and the global default
+      # applies, so existing manifests are unaffected.
+      local _cmodel _ceffort
+      _cmodel="$(fleet_child_get "$id" model "")"
+      _ceffort="$(fleet_child_get "$id" effort "")"
+      [[ -n "$_cmodel" ]]  && argv+=(--model "$_cmodel")
+      [[ -n "$_ceffort" ]] && argv+=(--effort "$_ceffort")
       # Autonomous WORKERS must never block on an interactive permission prompt. The
       # overnight stalls were workers hung at prompts for hardware commands (ssh bench-host
       # '…espflash…serial…') the auto-approve hook didn't cover — no human to press "Yes".
