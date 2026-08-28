@@ -39,9 +39,56 @@ fleet_tmux_server_running() {
 }
 
 # Keep bootstrap lifetime independent of prompt-construction time. A real window
-# removes it immediately after a successful spawn.
+# removes the 300s bootstrap immediately after a successful spawn — AND REPLACES
+# IT WITH A DURABLE ANCHOR, which is the half that was missing until 2026-08-29.
+#
+# ‼ WHY AN ANCHOR AT ALL, AND IT IS MEASURED RATHER THAN ASSUMED. Dropping the
+#   bootstrap outright made THE FLEET'''S LIFETIME EXACTLY THE LIFETIME OF ITS LANE
+#   WINDOWS: when the last lane exited — a provider usage limit, a crash, an
+#   /exit — tmux exited with it, the transient unit went inactive, and the whole
+#   fleet was gone. Measured 2026-08-29: `__fleet_root` ABSENT, three lane windows,
+#   and a server recreated fresh at 09:39 the previous morning after a weekend in
+#   which the codex lane hit its usage limit and the claude refuter stopped.
+#
+# ‼ THE REPORTED SYMPTOM NAMED THE WRONG CAUSE, AND THAT IS WORTH KEEPING: it was
+#   "the fleet does not survive closing the laptop lid". LOGOUT SURVIVAL WAS
+#   ALREADY CORRECT and had been all along — lingering on, the unit under
+#   `user@.service` exactly as the comment below intends, host uptime six weeks,
+#   `user@1000.service` continuous since July, no suspend events. Nothing about
+#   the lid was broken. WHAT DIED WAS THE LAST LANE, AND THE FLEET WENT WITH IT.
+#   *A correct mechanism next to a missing one reads as the failing mechanism,
+#   because it is the one the reporter can name.*
+#
+# ‼ AND THE 300s BOOTSTRAP IS KEPT RATHER THAN WIDENED TO `sleep infinity`,
+#   because it carries a property the anchor must not destroy: AN ABANDONED
+#   FAILED LAUNCH — no lane ever spawns, so this function is never reached —
+#   still self-cleans after five minutes. Widening it at creation would leave a
+#   server alive forever behind every failed `fleet up`. The anchor is therefore
+#   installed HERE, ON THE SUCCESS PATH ONLY, where a real window already proves
+#   the launch was not abandoned.
+#
+# The anchor reuses the `__fleet_root` name deliberately: `fleet_tmux_window_ids`
+# already skips it, so it stays invisible to lane accounting, reap and liveness.
+# Killing before creating is safe because every caller has just spawned a real
+# window — the server is held throughout, and the sequence is idempotent.
 fleet_tmux_drop_placeholder() {
   fleet_tmux kill-window -t "$FLEET_TMUX_SESSION:__fleet_root" 2>/dev/null || true
+  # The anchor is a detached SESSION, not a window, and that is the whole reason
+  # it is not simply a long-lived `__fleet_root` window: a window would sit in the
+  # operator's window bar forever, and an anchor nobody wants to look at is one
+  # somebody eventually closes. A second session on the same socket holds the
+  # SERVER open while staying out of `$FLEET_TMUX_SESSION` entirely — every
+  # enumeration in this tree (`fleet_tmux_window_ids`, `fleet_tmux_has_window`,
+  # fleet-unblock, fleet-api-watchdog) is scoped `-t "$FLEET_TMUX_SESSION"`, so
+  # the anchor is invisible to lane accounting AND to the attached operator.
+  #
+  # ‼ ONE BEHAVIOUR CHANGE, STATED RATHER THAN LEFT TO BE DISCOVERED: the server
+  #   now outlives `fleet down`. It always could have — nothing in this tree calls
+  #   kill-session or kill-server, so the server exiting was a SIDE EFFECT of its
+  #   last window closing, never a deliberate stop. To stop it outright:
+  #       tmux -L "$FLEET_TMUX_SOCKET" kill-server
+  fleet_tmux has-session -t __fleet_anchor 2>/dev/null && return 0
+  fleet_tmux new-session -d -s __fleet_anchor 'sleep infinity' 2>/dev/null || true
 }
 
 # True when the tmux server can be parked in the per-user systemd manager
@@ -77,15 +124,44 @@ fleet_tmux_install_server_hooks() {
     "run-shell -b 'FLEET_WORKSPACE=$WORKSPACE $fleetbin reap >/dev/null 2>&1'" 2>/dev/null || true
 }
 
+# Push the CURRENT process's FLEET_* environment into the server's global
+# environment, which is what new windows inherit for anything not passed with -e.
+#
+# THIS BECAME NECESSARY THE MOMENT THE SERVER STARTED OUTLIVING `fleet down` (the
+# anchor session above). Before that, a `down` closed the last window, the server
+# exited, and the next `up` built a server that captured the invoking shell's
+# environment — so staleness was impossible BY ACCIDENT rather than by design. A
+# server that persists hands every later lane A SNAPSHOT OF THE ENVIRONMENT FROM
+# WHENEVER IT FIRST STARTED, and the lane looks healthy while reading settings the
+# operator changed hours ago.
+#
+# CAUGHT BY tests/smoke.sh RATHER THAN BY REVIEW, and the catch is the argument for
+# the test: 23 assertions went red because section 4's lanes were still writing to
+# section 3's stub log. The suite had never asserted this directly — it was
+# PROTECTED BY THE SERVER DYING, a property nobody wrote down and everybody
+# depended on.
+#
+# Prefix allowlist, not an enumeration of the variables somebody thought of.
+fleet_tmux_refresh_env() {
+  fleet_tmux_server_running || return 0
+  local line k
+  while IFS= read -r line; do
+    k="${line%%=*}"
+    case "$k" in FLEET_*) ;; *) continue ;; esac
+    fleet_tmux set-environment -g "$k" "${line#*=}" 2>/dev/null || true
+  done < <(env)
+}
+
 fleet_tmux_ensure_session() {
   fleet_has_tmux || die "tmux is not installed (needed for 'up/down/restart'). Run: sudo apt install tmux"
-  fleet_tmux_session_exists && { fleet_tmux_install_server_hooks; return 0; }
+  fleet_tmux_session_exists && { fleet_tmux_refresh_env; fleet_tmux_install_server_hooks; return 0; }
   # The timeout only cleans up an abandoned failed launch. A successful first
   # window explicitly removes the bootstrap.
   local -a srv=(tmux -L "$FLEET_TMUX_SOCKET" new-session -d -s "$FLEET_TMUX_SESSION" -n __fleet_root "sleep 300")
   # A server is already up on our socket but lacks the fleet session. Create it there.
   if fleet_tmux_server_running; then
     "${srv[@]}" 8>&- 2>/dev/null || true
+    fleet_tmux_refresh_env
     fleet_tmux_install_server_hooks; return 0
   fi
   # A tmux server spawned inside a login session lives in that session's cgroup

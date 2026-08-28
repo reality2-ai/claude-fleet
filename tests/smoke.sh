@@ -1095,6 +1095,34 @@ R3="$(newrepo r3)"
 did      "--dry-run reports the action it WOULD take"          "$R3" installed dry
 assert   "--dry-run installed nothing"                         test ! -f "$R3/.git/hooks/pre-push"
 
+# --- N. the fleet outlives its last lane ------------------------------------
+# 2026-08-29. Until this fix the server's lifetime was EXACTLY the lifetime of its
+# lane windows: `fleet_tmux_drop_placeholder` removed the 300s bootstrap and put
+# nothing back, so when the last lane exited — a provider usage limit, a crash, an
+# /exit — tmux exited with it and the whole fleet went. Reported as "the fleet does
+# not survive closing the laptop lid"; the lid was a red herring (logout survival was
+# already correct). BOTH DIRECTIONS ARE ASSERTED because a test that only checks the
+# anchor exists cannot tell a held server from one that never lost its last window.
+section "N. the fleet outlives its last lane"
+export FLEET_STUB_LOG="$TMP/alpha.anchor.log"; : > "$FLEET_STUB_LOG"
+"$FLEET" up --no-supervisor alpha >/dev/null 2>&1
+sleep 0.6
+# the anchor is a SESSION, never a window — it must not reach the operator's bar
+command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' > "$TMP/wins.anchor.out" 2>/dev/null
+lacks  "the anchor is not a window in the fleet session" "$TMP/wins.anchor.out" "__fleet_anchor"
+lacks  "the bootstrap window is still removed"           "$TMP/wins.anchor.out" "__fleet_root"
+assert "an anchor session holds the server" \
+  command tmux -L "$SOCK" has-session -t __fleet_anchor
+# THE CONTROL THAT CAN FAIL: kill every lane window and require the server to live.
+# Without the anchor this kills the server and `has-session` below returns non-zero.
+while read -r w; do
+  [ -n "$w" ] && [ "$w" != "__fleet_root" ] && \
+    command tmux -L "$SOCK" kill-window -t "$SOCK:$w" 2>/dev/null || true
+done < <(command tmux -L "$SOCK" list-windows -t "$SOCK" -F '#W' 2>/dev/null)
+sleep 0.4
+assert "server survives its LAST lane window closing" \
+  command tmux -L "$SOCK" has-session -t __fleet_anchor
+
 # --- summary ----------------------------------------------------------------
 printf '\n%s\n' "------------------------------------------"
 printf 'smoke: %d passed, %d failed\n' "$pass" "$fail"
