@@ -1095,6 +1095,34 @@ R3="$(newrepo r3)"
 did      "--dry-run reports the action it WOULD take"          "$R3" installed dry
 assert   "--dry-run installed nothing"                         test ! -f "$R3/.git/hooks/pre-push"
 
+# --- L. a companion recovers its primary's id -------------------------------
+# 2026-08-30. `fleet refute` mints "$target-$provider-refute", so a claude
+# companion is r2-claude-refute. The guard that decides who a read-only companion
+# may message recovered the primary by STRIPPING A SUFFIX, and knew -codex-refute,
+# -refute and -codex and nothing about -claude. It recovered "r2-claude" — a lane
+# that has never existed — so the refuter was refused when messaging either real
+# reader and its report sat unread in a mailbox nobody opens. Two halves of one
+# convention; only the generator was ever updated.
+section "L. companion primary recovery"
+_cb() {
+  local b="${1%-refute}"
+  case "$b" in
+    *-codex)  b="${b%-codex}" ;;
+    *-claude) b="${b%-claude}" ;;
+  esac
+  printf '%s\n' "$b"
+}
+assert "claude companion recovers its primary" test "$(_cb r2-claude-refute)" = "r2"
+assert "codex companion recovers its primary" test "$(_cb r2-codex-refute)" = "r2"
+assert "bare -refute recovers its primary" test "$(_cb r2-refute)" = "r2"
+assert "bare -codex twin recovers its primary" test "$(_cb r2-codex)" = "r2"
+assert "a hyphenated primary is not eaten" test "$(_cb standard-codex-refute)" = "standard"
+# THE PRODUCER SIDE: refute must record the target under the key the guards read.
+# .refutes was written and .companion_for was read — a wrong key reads as absence,
+# and absence is the LEGITIMATE state for a non-companion, so it failed silently.
+has "refute records companion_for, not only refutes" "$ROOT/bin/fleet" ".companion_for=\$target"
+has "the guard prefers the recorded fact to the name" "$ROOT/bin/fleet" "'.refutes' \"\""
+
 # --- M. per-lane model and effort reach a claude lane ------------------------
 # 2026-08-29. `model` was already per-lane for codex and silently absent for
 # claude, so the SAME manifest key worked or did nothing depending on the

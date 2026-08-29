@@ -1055,6 +1055,24 @@ _fleet_is_readonly_standby() {
 # must be human-gated, not a peer power. Denies + audits; every other
 # invocation is unchanged. A companion is identified by .companion_for being set
 # (e.g. supervisor-codex has role=supervisor, so the readonly-standby check is
+# Strip a companion suffix to recover the primary's id. LAST RESORT ONLY — the
+# recorded fact (.companion_for, then .refutes) is preferred, because a name is a
+# label and a label has to be parsed by a rule that can fall behind the rule that
+# generates it. IT DID: `fleet refute` mints `$target-$provider-refute`, so a
+# claude companion is `r2-claude-refute`, and this stripper knew `-codex-refute`,
+# `-refute` and `-codex` and NOTHING ABOUT `-claude`. It recovered `r2-claude` —
+# a lane that has never existed — and the refuter was refused when messaging
+# either real reader, having been told it may only address a name nothing answers
+# to. Two halves of one convention, and only the generator was ever updated.
+_fleet_companion_base() {
+  local b="${1%-refute}"
+  case "$b" in
+    *-codex)  b="${b%-codex}" ;;
+    *-claude) b="${b%-claude}" ;;
+  esac
+  printf '%s\n' "$b"
+}
+
 # NOT sufficient), OR readonly-standby state, OR a *-refute name.
 _fleet_actor_is_readonly_companion() {
   local a="$1"
@@ -1086,7 +1104,8 @@ _fleet_guard_primary_lifecycle() {
   _fleet_actor_is_readonly_companion "$actor" || return 0  # actor is a primary/writer — allowed
   local primary base
   primary="$(fleet_state_get "$actor" '.companion_for' "")"
-  base="${actor%-codex-refute}"; base="${base%-refute}"; base="${base%-codex}"
+  [[ -n "$primary" ]] || primary="$(fleet_state_get "$actor" '.refutes' "")"
+  base="$(_fleet_companion_base "$actor")"
   # deny when the target is the actor's primary/logical pair, or the whole suite
   # (empty target = down/failover all, which includes the primary).
   if [[ -z "$target" || "$target" == "$primary" || "$target" == "$base" ]]; then
@@ -1115,7 +1134,8 @@ _fleet_guard_messaging() {
   _fleet_actor_is_readonly_companion "$from" 2>/dev/null || return 0  # writer/primary — allowed
   local primary base
   primary="$(fleet_state_get "$from" '.companion_for' "")"
-  base="${from%-codex-refute}"; base="${base%-refute}"; base="${base%-codex}"
+  [[ -n "$primary" ]] || primary="$(fleet_state_get "$from" '.refutes' "")"
+  base="$(_fleet_companion_base "$from")"
   primary="${primary:-$base}"
   case "$kind" in
     broadcast|pair)
@@ -2083,7 +2103,7 @@ cmd_refute() {
   fleet_tmux_new_agent_window "$reviewer" "$cwd" "$exitfile" "$provider" cargs
   fleet_state_ensure "$reviewer" "$cwd" true
   fleet_state_jq "$reviewer" --arg p "$provider" --arg target "$target" \
-    '.state="running" | .reason=null | .provider=$p | .role="adversary" | .refutes=$target | .current_task=("Adversarial review of " + $target)' >/dev/null
+    '.state="running" | .reason=null | .provider=$p | .role="adversary" | .refutes=$target | .companion_for=$target | .current_task=("Adversarial review of " + $target)' >/dev/null
   fleet_log refute "$reviewer" "target=$target target_provider=$target_provider reviewer_provider=$provider"
   info "refute: '$reviewer' ($provider) is reviewing '$target' ($target_provider) read-only"
   info "attach with: fleet attach $reviewer"
