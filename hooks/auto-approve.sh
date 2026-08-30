@@ -283,6 +283,40 @@ _hs_is_noexec() {
 # no case arm and no wrapper arm, so the gate NEVER FIRED. `"espflash" flash --port …`,
 # `'espflash' …`, `\espflash …` and `esp''flash …` were all silent. ONE KEYSTROKE
 # defeated both the flash gate and the key-mint gate, with no wrapper file involved.
+# Unquote a token WITHOUT taking its basename. Split out of _hs_detok on 2026-08-30
+# because the two callers want different things and one of them was silently getting
+# the wrong one — see the note on _hs_detok below.
+_hs_unquote() {
+  local t="$1" out='' i=0 n ch
+  n=${#t}
+  while (( i < n )); do
+    ch="${t:i:1}"
+    # shellcheck disable=SC1003  # see the identical note in _hs_detok
+    case "$ch" in
+      "'"|'"') : ;;
+      '\\')     out+="${t:i+1:1}"; (( i++ )) ;;
+      *)       out+="$ch" ;;
+    esac
+    (( i++ ))
+  done
+  printf '%s' "$out"
+}
+
+# ‼ RETURNS A BASENAME. That is correct for CLASSIFYING A PROGRAM — `/usr/bin/espflash`
+#   must classify as `espflash` — and WRONG for anything that then wants the PATH.
+#   The script-file look-through wanted the path, called this, and got a basename:
+#   `bash r2-composer/tools/write-image.sh` yielded `_cand=write-image.sh`, which was
+#   resolved against cwd, did not exist, failed the `-f` test, AND THE LOOK-THROUGH
+#   SILENTLY DID NOTHING. Measured 2026-08-30 with identical file content:
+#       bash top.sh                (cwd root)   -> DENY
+#       bash sub/dir/nested.sh                  -> PASS
+#       bash /abs/path/nested.sh                -> PASS
+#   So the look-through only ever covered scripts sitting in the cwd ROOT, and every
+#   real invocation in this tree names a path. 786624 bytes reached silicon through it.
+#   ONE HELPER SERVING TWO PURPOSES, CORRECT FOR ONE — and the file's own comment
+#   already warned that "a path test against the wrong base is a check that always
+#   passes", having fixed the cwd half of exactly this and not the basename half.
+#   Use _hs_unquote where a PATH is wanted; this where a PROGRAM NAME is.
 _hs_detok() {
   local t="$1" out='' i=0 n ch
   n=${#t}
@@ -812,6 +846,44 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
     _hs_is_noexec "$seg" && continue      # `bash -n file` parses, executes nothing
     _hs_flash_or_mint "$base" "$seg" && { _HS_MATCHED_SEG="$seg"; return 0; }
     _hs_is_make_firmware "$seg" && { _HS_MATCHED_SEG="$seg"; return 0; }
+    # `set -- <program> <args>` IS AN ARGV BUILDER, and until 2026-08-30 it was the one
+    # shape that walked through everything else in this scan.
+    #
+    # ‼ MEASURED, against this hook with a payload only and no board reachable:
+    #     espflash flash a.elf                 -> DENY
+    #     T=espflash; $T flash a.elf           -> DENY   (the assignment arm, already here)
+    #     set -- espflash flash a.elf; exec "$@" -> PASS
+    #   and `r2-composer/tools/write-image.sh:166` is exactly that form. The SCRIPT-FILE
+    #   LOOK-THROUGH below did its job — it resolved the path, read the body and re-scanned
+    #   it — and the body's program token is `set`, which is not a flasher and not a
+    #   wrapper, so the content scan classified the argv BUILDER instead of the argv.
+    #   786624 bytes reached silicon through that gap.
+    #
+    # ‼ IT IS THE ASSIGNMENT BYPASS WEARING A DIFFERENT SPELLING. This file already
+    #   records `T=espflash; $T flash …` as a measured past bypass and closed it by
+    #   testing the VALUE rather than the token. `set --` does the same job with different
+    #   syntax, and the fix that closed one did not generalise to the other. TWO WAYS TO
+    #   BUILD AN ARGV, ONE OF THEM LEARNED.
+    #
+    # ‼ AND THE INVERSION IS WHY IT MATTERED RATHER THAN MERELY EXISTED: the same gate
+    #   DENIED `espflash reset` — which is not a write — while passing this, which is.
+    #   Loud on the safe act and silent on the dangerous one. The lane that met the reset
+    #   refusal declined the DTR toggle that would have evaded it, and had already driven
+    #   a write through this gap unknowing.
+    #
+    # Anchored on the PROGRAM token, never a token scan: `grep -n "set --" x.sh` is a READ
+    # and must stay allowed, which is the overreach this file was bitten by twice.
+    if [[ "$base" == set ]]; then
+      read -ra _settoks <<<"$seg"
+      local _si=1 _stok
+      [[ "${_settoks[1]:-}" == "--" ]] && _si=2
+      for _stok in "${_settoks[@]:$_si}"; do
+        _stok="$(_hs_detok "$_stok")"
+        case "$_stok" in ''|-*) continue ;; esac
+        _hs_flash_or_mint "${_stok##*/}" "$seg" && { _HS_MATCHED_SEG="$seg"; return 0; }
+        break
+      done
+    fi
     # look THROUGH a command-wrapper (env/sudo/timeout/nice/bash -c … <flasher>):
     # re-classify every token's basename so the wrapper can't hide the real op.
     if _hs_is_wrapper "$base" || _hs_is_assign "$first"; then
@@ -875,7 +947,7 @@ hs_bash() {   # is this Bash command a flash / firmware-sign / key-mint operatio
       if (( ${_HS_FILE_DEPTH:-0} < 3 )) && [[ "$base" =~ ^(sh|bash|dash|zsh|ksh|source|\.)$ ]]; then
         local _cand='' _body=''
         for tb in "${segtoks[@]:1}"; do
-          tbn="$(_hs_detok "$tb")"
+          tbn="$(_hs_unquote "$tb")"    # PATH, not basename — see _hs_detok's note
           case "$tbn" in -*|'') continue ;; esac
           _cand="$tbn"; break                     # first non-option arg = the program
         done

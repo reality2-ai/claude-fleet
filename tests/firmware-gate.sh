@@ -140,6 +140,32 @@ check deny 'ssh-keyscan somehost >> ~/.ssh/known_hosts'
 # fingerprint half. Same verdict, correct reason.
 check deny 'timeout 25 ssh-keyscan -T 10 somehost 2>/dev/null | ssh-keygen -lf - 2>/dev/null | head -3'
 
+echo "── A SCRIPT IS ONLY SEEN IF IT SITS IN THE CWD ROOT (defect 5, 2026-08-30) ──"
+# The script-file look-through resolved its candidate through _hs_detok, which returns a
+# BASENAME. `bash r2-composer/tools/write-image.sh` yielded _cand=write-image.sh, resolved
+# against cwd, failed -f, and the look-through SILENTLY DID NOTHING. Measured with
+# IDENTICAL CONTENT: a script in the cwd root denied, the same bytes one directory down
+# passed. 786624 bytes reached silicon through it. Both directions asserted because a
+# test that only checks the root case cannot tell a working look-through from this.
+# Scripts are created inside the harness's OWN workspace ($WS), so the standard `check`
+# helper — which passes cwd=$WS — exercises them. An earlier cut of this block defined its
+# own ok/no helpers, which exist in tests/smoke.sh and NOT here: three assertions printed
+# "command not found" and counted as NEITHER pass NOR fail, so the suite reported green
+# while three controls did nothing. Second time in one day; use the harness's own helper.
+mkdir -p "$WS/sub/dir"
+printf '#!/usr/bin/env bash\nespflash flash a.elf --port /dev/null\n' > "$WS/top.sh"
+cp "$WS/top.sh" "$WS/sub/dir/nested.sh"
+check deny 'bash top.sh'
+check deny 'bash sub/dir/nested.sh'
+check pass 'cat sub/dir/nested.sh'
+check pass 'grep -n espflash sub/dir/nested.sh'
+# `set -- <flasher>` is an argv BUILDER — the assignment bypass in another spelling.
+check deny 'set -- espflash flash a.elf --port /dev/null'
+check deny 'set -- espflash flash a.elf; exec "$@"'
+check pass 'set -euo pipefail'
+check pass 'set -- a b c'
+check pass 'grep -n "set -- espflash" writer.sh'
+
 echo "── REAL OPS — must always be denied (positive controls; defect 2) ──"
 # ...and the same subcommands when they actually SIGN or MINT.
 check deny 'openssl dgst -sha256 -sign key.pem -out sig.bin persona.bin'
