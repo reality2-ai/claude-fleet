@@ -1355,7 +1355,21 @@ _fleet_repo_onboarding_problem() {
     printf '%s: missing AGENTS.md; run fleet init-repo %s\n' "$id" "$id"
     return 0
   fi
-  if [[ ! -f "$cwd/DECISIONS.md" ]]; then
+  # ‼ THE GATE AND THIS CHECK DISAGREED ABOUT WHERE A LEDGER LIVES, AND ONLY ONE OF THEM WAS
+  #   CORRECTED. hooks/git/pre-push:264 matches `DECISIONS.md` AT ANY DEPTH — a fix landed
+  #   2026-08-08 after r2-impl was measured accepting an ungated push because its ledgers are
+  #   `r2-core/DECISIONS.md` and `r2-hive/DECISIONS.md` with none at the root. THIS CHECK
+  #   STAYED ROOT-ONLY. MEASURED 2026-09-01: r2's ledger is `ledgers/DECISIONS.md`, 742292
+  #   bytes, and doctor reported `missing DECISIONS.md; run fleet init-repo r2` on every run.
+  #
+  # ‼ A FALSE FAIL IS NOT A HARMLESS FAIL. It sat beside two true ones, and a report that is
+  #   wrong about a third of what it says teaches the reader to skim the other two. The
+  #   remedy it offered would also have written a second ledger at the root of a repo that
+  #   already had one.
+  #
+  # Tracked files only, matching the gate: an untracked ledger cannot satisfy a control that
+  # reads committed history.
+  if ! git -C "$cwd" ls-files 2>/dev/null | grep -qE '(^|/)DECISIONS\.md$' && [[ ! -f "$cwd/DECISIONS.md" ]]; then
     printf '%s: missing DECISIONS.md; run fleet init-repo %s\n' "$id" "$id"
     return 0
   fi

@@ -262,6 +262,30 @@ if "$FLEET" init-repo absent > "$TMP/init_repo_absent.out" 2>&1; then
 else
   ok "init-repo rejects an unknown manifest member"
 fi
+# ★ A LEDGER BELOW THE ROOT IS STILL A LEDGER, AND THE GATE ALREADY KNEW THAT.
+# hooks/git/pre-push:264 matches DECISIONS.md at ANY depth — corrected 2026-08-08 after
+# r2-impl was measured accepting an ungated push with its ledgers under r2-core/ and
+# r2-hive/. THIS CHECK STAYED ROOT-ONLY, so doctor reported "missing DECISIONS.md" against
+# r2 every run while ledgers/DECISIONS.md sat there at 742292 bytes. A false FAIL standing
+# beside true ones teaches the reader to skim, and the remedy would have written a SECOND
+# ledger into a repo that already had one.
+#
+# Exercised on repoA itself. Pointing a STATE file at a scratch repo does nothing: doctor
+# takes a managed member's cwd from the MANIFEST, so the repo is never visited and both the
+# positive and its control pass vacuously. The negative control is what exposed that — it
+# failed twice while the positive sat green, which is the whole reason it is written.
+mkdir -p "$WS2/repoA/ledgers"
+git -C "$WS2/repoA" mv DECISIONS.md ledgers/DECISIONS.md >/dev/null 2>&1 || mv "$WS2/repoA/DECISIONS.md" "$WS2/repoA/ledgers/DECISIONS.md"
+git -C "$WS2/repoA" add -A >/dev/null 2>&1
+FLEET_RESUME_CHECK=off FLEET_HOOK_DRIFT_CHECK=off "$FLEET" doctor --quiet > "$TMP/doctor_ledger_depth.out" 2>/dev/null || true
+lacks "a ledger at ledgers/DECISIONS.md is NOT reported missing" "$TMP/doctor_ledger_depth.out" "missing DECISIONS.md"
+# ★ NEGATIVE CONTROL: with no ledger at any depth the check must still fire, or it is blind.
+git -C "$WS2/repoA" rm -q --cached ledgers/DECISIONS.md >/dev/null 2>&1
+rm -f "$WS2/repoA/ledgers/DECISIONS.md"
+FLEET_RESUME_CHECK=off FLEET_HOOK_DRIFT_CHECK=off "$FLEET" doctor --quiet > "$TMP/doctor_ledger_none.out" 2>/dev/null || true
+has "a repo with NO ledger at any depth is still reported missing" "$TMP/doctor_ledger_none.out" "missing DECISIONS.md"
+printf '# decisions\n' > "$WS2/repoA/ledgers/DECISIONS.md"; git -C "$WS2/repoA" add -A >/dev/null 2>&1
+
 sed -i 's/TODO(fleet-onboarding)/configured/g' "$WS2/repoA/AGENTS.md"
 FLEET_RESUME_CHECK=off FLEET_HOOK_DRIFT_CHECK=off "$FLEET" doctor --quiet > "$TMP/doctor_onboarding_clear.out" 2>/dev/null || true
 lacks "doctor clears the onboarding hold after repository map completion" "$TMP/doctor_onboarding_clear.out" "unresolved fleet onboarding fields"

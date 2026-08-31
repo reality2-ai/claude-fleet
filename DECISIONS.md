@@ -7584,3 +7584,34 @@ be a supervisor lane **and not itself read-only**, and the smoke test asserts th
 not just the permission.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260901-150 — the gate learned that a ledger can live below the root; doctor never did
+
+**Context.** `hooks/git/pre-push:264` matches `DECISIONS.md` **at any depth**
+(`grep -E '(^|/)DECISIONS\.md$'`). That widening landed 2026-08-08, after r2-impl was
+measured accepting an ungated push because its ledgers are `r2-core/DECISIONS.md` and
+`r2-hive/DECISIONS.md` with none at the root. **`_fleet_repo_onboarding_problem` stayed
+root-only.**
+
+**Measured, 2026-09-01.** r2's ledger is `ledgers/DECISIONS.md` at 742292 bytes, and
+`fleet doctor` reported `r2: missing DECISIONS.md; run fleet init-repo r2` on every run.
+
+**Why it mattered more than a wrong line.** The false FAIL stood beside two true ones. A
+report that is wrong about a third of what it says teaches its reader to skim the rest —
+and the remedy it offered would have written a **second** ledger into the root of a repo
+that already had one.
+
+**Decision.** The check now matches the gate: tracked files at any depth, falling back to
+the root path for a non-git tree. An untracked ledger does not count, because it cannot
+satisfy a control that reads committed history.
+
+**The test method is the durable part.** The first two attempts asserted against a scratch
+repo pointed at by a fresh state file. Doctor takes a managed member's cwd from the
+**manifest**, so that repo was never visited and **both the positive and its control passed
+vacuously**. The negative control failed twice while the positive sat green. A check driven
+through a fixture the production path never reaches is not a check, and only the arm that
+must FAIL can tell you so.
+
+**Decision-Log: this entry.**
