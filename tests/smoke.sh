@@ -1066,9 +1066,30 @@ drift_is "installed commit-msg matches source"                  "$R1" ok commit-
 
 # ★ NEGATIVE CONTROL: the drift check must actually FAIL on drift, or it is theatre.
 printf '\n# tampered\n' >> "$R1/.git/hooks/pre-push"
-drift_is "a TAMPERED deployed hook is detected as 'drift'"     "$R1" drift
+drift_is "same version + different bytes is 'drift-tampered'"  "$R1" drift-tampered
 did      "re-install heals drift (reports 'updated')"          "$R1" updated
 drift_is "healed hook matches source again"                    "$R1" ok
+
+# ★ DIRECTION. Drift alone never said WHICH SIDE was stale, so its remedy — overwrite the
+#   deployed copy — was right in one direction and a silent downgrade in the other. MEASURED
+#   2026-09-01: r2-standard ran PREPUSH_VERSION 13 against a source at 12, and the delta was
+#   the D-186 fold exemption covering 1726 commits. Installing would have deleted it.
+_pv() { grep -m1 -oE '^# PREPUSH_VERSION: [0-9]+' "$1" | grep -oE '[0-9]+$'; }
+_SRCV="$(_pv "$ROOT/hooks/git/pre-push")"
+R5="$(newrepo r5)"; fleet_install_git_hook "$R5" >/dev/null
+sed -i "s/^# PREPUSH_VERSION: ${_SRCV}/# PREPUSH_VERSION: $(( _SRCV + 1 ))/" "$R5/.git/hooks/pre-push"
+drift_is "a deployed hook AHEAD of source reads 'drift-ahead'"  "$R5" drift-ahead
+did      "and the installer REFUSES to downgrade it"            "$R5" refused-ahead
+assert   "the ahead hook still carries its own version"         grep -q "PREPUSH_VERSION: $(( _SRCV + 1 ))" "$R5/.git/hooks/pre-push"
+# the opposite direction must still install, or the refusal is just a broken installer
+R6="$(newrepo r6)"; fleet_install_git_hook "$R6" >/dev/null
+sed -i "s/^# PREPUSH_VERSION: ${_SRCV}/# PREPUSH_VERSION: 1/" "$R6/.git/hooks/pre-push"
+drift_is "a deployed hook BEHIND source reads 'drift-stale'"    "$R6" drift-stale
+did      "and a stale hook still installs normally"             "$R6" updated
+# an unreadable version must not be guessed at in either direction
+R7="$(newrepo r7)"; fleet_install_git_hook "$R7" >/dev/null
+sed -i "/^# PREPUSH_VERSION:/d" "$R7/.git/hooks/pre-push"
+drift_is "no readable version reads 'drift-unknown', not a guess" "$R7" drift-unknown
 
 # a FOREIGN pre-existing hook must be preserved as the chained pre-push.local, not clobbered
 R2="$(newrepo r2)"

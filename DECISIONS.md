@@ -7518,3 +7518,40 @@ hook is wired; fingerprint reads of piped or on-disk keys no longer do. A new ss
 long option is denied until someone admits it deliberately.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260901-148 — a drift check that never measured direction always recommended the downgrade
+
+**Context.** `fleet doctor`'s hook-drift check hash-compares each repo's deployed
+`.git/hooks/*` against `hooks/git/*` and, on any difference, printed
+`DRIFTS from source-of-truth (run: fleet install-git-hooks)`. It was written for one
+case — source gains a scan while repos keep running the old file — and the word
+*source-of-truth* did the deciding rather than a comparison.
+
+**Measured, 2026-09-01.** `r2-standard` ran `PREPUSH_VERSION: 13` (55384 bytes, dated
+2026-08-17) against a source at `12` (47222 bytes, last touched `a8e6490` on 2026-08-08).
+**The deployed hook was nine days AHEAD.** Its delta is the `D-186` r2-impl fold
+exemption — `IMPORTED HISTORY` appears 4 times deployed and 0 times in source — covering
+1726 commits under `implementations/rust/`. The advertised remedy would have deleted a
+named exemption and made every later push of that subtree fail the decision gate.
+
+**Decision.** `fleet_hook_drift_state` now measures the direction and returns one of
+`drift-stale` / `drift-ahead` / `drift-tampered` / `drift-unknown`, each with its own
+remedy, and **no remedy at all is offered for `drift-ahead`**. `fleet_install_git_hook`
+returns `refused-ahead` and refuses the write. No override variable is offered: a bypass
+there would be a way to lose a security control by typing one variable.
+
+**Expected consequences.** Four repos that previously read as plain `DRIFTS` now report
+`drift-tampered` — same declared version, different bytes — which surfaced that the
+2026-08-08 fix to the root-relative `DECISIONS.md` arm landed **without a version bump**,
+so `PREPUSH_VERSION: 12` names two different files.
+
+**Owed and deliberately not done here.** The v13 delta hardcodes `r2-standard` SHAs and
+names `r2-impl`/`D-186` 19 times, so it must NOT be promoted wholesale; the generic
+mechanism belongs in the source with the SHAs in a repo-local file. **And the order
+matters:** bumping the source's version before merging that mechanism would turn
+`r2-standard`'s visible `drift-ahead` into an invisible `drift-stale`, restoring the
+original trap behind a correct-looking comparison.
+
+**Decision-Log: this entry.**

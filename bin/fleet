@@ -2259,8 +2259,13 @@ cmd_doctor() {
         while read -r _hook; do
           _st="$(fleet_hook_drift_state "$_rcwd" "$_hook" 2>/dev/null)" || _st=notgit
           case "$_st" in
-            drift)   problems+=("$(basename "$_rcwd"): deployed $_hook hook DRIFTS from source-of-truth (run: fleet install-git-hooks)") ;;
-            missing) problems+=("$(basename "$_rcwd"): no $_hook hook installed (run: fleet install-git-hooks)") ;;
+            drift-stale)    problems+=("$(basename "$_rcwd"): deployed $_hook hook is BEHIND source-of-truth (run: fleet install-git-hooks)") ;;
+            drift-tampered) problems+=("$(basename "$_rcwd"): deployed $_hook hook declares the same version as source but differs (run: fleet install-git-hooks)") ;;
+            # ‼ NO REMEDY IS OFFERED HERE ON PURPOSE. The deployed copy is NEWER, so the
+            #   obvious remedy is a downgrade — see lib/githooks.sh fleet_hook_drift_state.
+            drift-ahead)    problems+=("$(basename "$_rcwd"): deployed $_hook hook is AHEAD of source-of-truth — DO NOT install-git-hooks, that would DOWNGRADE it; promote the deployed hook into the tool instead") ;;
+            drift-unknown)  problems+=("$(basename "$_rcwd"): deployed $_hook hook differs from source and neither declares a readable version — direction UNKNOWN, diff before acting") ;;
+            missing)        problems+=("$(basename "$_rcwd"): no $_hook hook installed (run: fleet install-git-hooks)") ;;
           esac
         done < <(fleet_git_hook_names)
       done

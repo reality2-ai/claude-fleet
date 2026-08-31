@@ -58,19 +58,54 @@ fleet_git_hook_is_ours() {
   grep -q "$marker" "$file" 2>/dev/null
 }
 
+# The declared version of one hook file, as a bare integer. Empty when absent/unparseable.
+fleet_hook_version() {
+  local file="$1" name="${2:-pre-push}" marker v
+  case "$name" in
+    pre-push)   marker=PREPUSH_VERSION ;;
+    commit-msg) marker=FLEET_COMMITMSG_VERSION ;;
+    *) return 1 ;;
+  esac
+  v="$(grep -m1 -oE "^# ${marker}: [0-9]+" "$file" 2>/dev/null | grep -oE '[0-9]+$')" || true
+  printf '%s\n' "$v"
+}
+
 # Drift state of one repo's deployed named hook vs source-of-truth.
-# Echoes exactly one of: ok | drift | missing | notgit
+# Echoes exactly one of:
+#   ok | missing | notgit
+#   drift-stale     deployed is BEHIND source          → reinstall
+#   drift-ahead     deployed is AHEAD of source        → DO NOT reinstall; promote the source
+#   drift-tampered  same declared version, other bytes → reinstall (source owns its version)
+#   drift-unknown   either version unparseable         → report, no remedy
+#
+# ‼ WHY THE DIRECTION IS MEASURED RATHER THAN ASSUMED. This check was written for one case —
+#   source gains a scan while repos keep running the old file — and it named the other side
+#   "source-of-truth", so its remedy was always "overwrite the deployed one". MEASURED
+#   2026-09-01: r2-standard ran PREPUSH_VERSION 13 (55384 bytes) against a source at 12
+#   (47222). THE DEPLOYED HOOK WAS NINE DAYS AHEAD. Its delta was the D-186 r2-impl fold
+#   exemption — `IMPORTED HISTORY` appears 4 times deployed and 0 times in source — so the
+#   advertised remedy would have DELETED a named exemption covering 1726 commits and made
+#   every later push of that subtree fail the decision gate.
+#
+# ‼ A DRIFT CHECK THAT NAMES A SOURCE OF TRUTH WITHOUT MEASURING WHICH SIDE IS NEWER WILL
+#   ALWAYS TELL YOU TO OVERWRITE THE NEWER ONE. The word "source" did the deciding, not a
+#   comparison. Detecting a difference and knowing which side is stale are two findings and
+#   only the first was ever computed.
 fleet_hook_drift_state() {
-  local repo="$1" name="${2:-pre-push}" hk dep src
+  local repo="$1" name="${2:-pre-push}" hk dep src dv sv
   src="$(fleet_git_hook_src "$name")"
   [[ -f "$src" ]] || { printf 'notgit\n'; return 0; }
   hk="$(fleet_git_hook_dir "$repo")" || { printf 'notgit\n'; return 0; }
   dep="$hk/$name"
   [[ -f "$dep" ]] || { printf 'missing\n'; return 0; }
   if [[ "$(sha256sum "$dep" 2>/dev/null | cut -d' ' -f1)" == "$(sha256sum "$src" 2>/dev/null | cut -d' ' -f1)" ]]; then
-    printf 'ok\n'
-  else
-    printf 'drift\n'
+    printf 'ok\n'; return 0
+  fi
+  dv="$(fleet_hook_version "$dep" "$name")"; sv="$(fleet_hook_version "$src" "$name")"
+  if [[ -z "$dv" || -z "$sv" ]]; then printf 'drift-unknown\n'
+  elif (( 10#$dv > 10#$sv ));      then printf 'drift-ahead\n'
+  elif (( 10#$dv < 10#$sv ));      then printf 'drift-stale\n'
+  else                                  printf 'drift-tampered\n'
   fi
 }
 
@@ -91,6 +126,13 @@ fleet_install_git_hook() {
   if [[ -f "$dep" ]]; then
     if [[ "$(sha256sum "$dep" 2>/dev/null | cut -d' ' -f1)" == "$(sha256sum "$src" 2>/dev/null | cut -d' ' -f1)" ]]; then
       action=current
+    elif [[ "$(fleet_hook_drift_state "$repo" "$name")" == drift-ahead ]]; then
+      # ‼ REFUSE THE DOWNGRADE. doctor only advises; THIS function acts, so this is where the
+      #   wrong remedy would actually have destroyed the exemption. No override env var is
+      #   offered on purpose — the correct path is to promote the newer hook into the source,
+      #   after which the deployed copy is behind and installs normally. A bypass here would
+      #   be a way to lose a security control by typing one variable.
+      printf 'refused-ahead\n'; return 0
     elif fleet_git_hook_is_ours "$dep" "$name"; then
       action=updated
     else
