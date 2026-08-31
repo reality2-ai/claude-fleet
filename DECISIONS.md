@@ -7555,3 +7555,32 @@ matters:** bumping the source's version before merging that mechanism would turn
 original trap behind a correct-looking comparison.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260901-149 — a falsifier's verdicts reached the adjudicator through the lane they judged
+
+**Context.** `_fleet_guard_messaging` let a read-only companion/refuter message **only its
+primary**. That is the right shape for coordination — `broadcast` and `pair` are fleet-wide
+and stay denied — but the supervisor is not a peer, it is the **adjudicator** of the
+refuter's findings, and it was not reachable.
+
+**Measured, 2026-09-01.** `r2-codex-refute` was briefed to report verdicts to the
+supervisor, hit the refusal, and said so: *"The fleet transport refuses direct messages
+from this read-only lane to the supervisor… I'm routing the acknowledgment and every
+verdict through `r2`."* So every refutation of r2's retrieval-sweep pointers would have
+reached the adjudicator **through r2** — the one party with a reason to soften, delay or
+drop them. No malice is required; a busy lane summarising is enough. **It was found
+because the lane reported the constraint instead of quietly complying.**
+
+**Decision.** A read-only companion may now `send` to a supervisor lane as well as to its
+primary. `broadcast` and `pair` remain denied; any other peer remains denied.
+
+**The narrowing is the load-bearing half.** `fleet_is_supervisor_id` matches
+`supervisor-*`, which also matches **a supervisor's own refuter — itself a read-only
+companion**. Allowing that would be a companion-to-companion side channel wearing the
+adjudicator's name, which is precisely what this guard exists to prevent. The target must
+be a supervisor lane **and not itself read-only**, and the smoke test asserts the refusal,
+not just the permission.
+
+**Decision-Log: this entry.**

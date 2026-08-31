@@ -1143,9 +1143,27 @@ _fleet_guard_messaging() {
       die "refused: '$from' is a read-only companion/refuter and may not '$kind' (fleet-wide coordination). Send your observation to your primary ('$primary'); the primary decides + relays. (audit logged)"
       ;;
     msg)
-      if [[ "$to" != "$primary" && "$to" != "$base" ]]; then
-        fleet_log security "$from" "DENIED send to='$to' — read-only companion/refuter may message only its primary ('$primary')"
-        die "refused: '$from' is a read-only companion/refuter and may only message its primary ('$primary'), not '$to'. Route coordination through the primary. (audit logged)"
+      # ‼ THE ADJUDICATOR IS NOT A PEER, AND ROUTING A VERDICT THROUGH THE LANE IT JUDGES IS
+      #   NOT INDEPENDENCE. Until 2026-09-01 a refuter could message ONLY its primary, so a
+      #   falsifier's verdicts about r2 reached the supervisor THROUGH r2 — the one party with
+      #   a reason to soften, delay or drop them. No malice is required; a busy lane
+      #   summarising is enough. MEASURED: r2-codex-refute was told to report to the
+      #   supervisor, hit this refusal, and proposed relaying through r2 instead — it reported
+      #   the constraint rather than quietly complying, which is how this was found.
+      #
+      # ‼ THE EXCEPTION IS NARROW ON PURPOSE. A supervisor lane is the ADJUDICATOR of this
+      #   companion's findings and cannot be reached any other way. `broadcast` and `pair`
+      #   stay denied — those ARE fleet-wide coordination — and a message to any OTHER peer
+      #   stays denied, so this does not become a side channel between companions.
+      #   ‼ AND `supervisor-*` MATCHES A SUPERVISOR'S OWN REFUTER, WHICH IS A COMPANION.
+      #     Allowing that would be a companion-to-companion side channel wearing the
+      #     adjudicator's name — the exact thing this guard exists to prevent — so the
+      #     target must be a supervisor lane AND NOT itself read-only.
+      local _to_ok=0
+      if fleet_is_supervisor_id "$to" 2>/dev/null && ! _fleet_actor_is_readonly_companion "$to" 2>/dev/null; then _to_ok=1; fi
+      if [[ "$to" != "$primary" && "$to" != "$base" && $_to_ok -eq 0 ]]; then
+        fleet_log security "$from" "DENIED send to='$to' — read-only companion/refuter may message only its primary ('$primary') or a supervisor lane"
+        die "refused: '$from' is a read-only companion/refuter and may only message its primary ('$primary') or a supervisor lane, not '$to'. Route coordination through the primary. (audit logged)"
       fi
       ;;
   esac

@@ -417,6 +417,25 @@ lacks "companion send-to-primary is NOT authority-blocked" "$TMP/msg_primary.out
 # (5) provenance: the delivered message carries the companion advisory tag
 has "companion send-to-primary carries the advisory provenance tag" "$WS2/.fleet/inbox/gc.jsonl" "companion·advisory"
 
+# (5c) ★ THE ADJUDICATOR IS REACHABLE DIRECTLY, AND ONLY THE REAL ONE.
+# Until 2026-09-01 a refuter could message ONLY its primary, so a falsifier's verdicts about
+# a lane reached the supervisor THROUGH that lane — the one party with a reason to soften or
+# drop them. Found because r2-codex-refute hit the refusal and REPORTED it rather than
+# quietly relaying. The exception must not become a companion side channel, so the negative
+# control matters more than the positive: `supervisor-*` also matches a supervisor's own
+# REFUTER, which is itself read-only.
+printf '{"state":"running","role":"expert","writer":true}\n'                            > "$WS2/.fleet/state/prim.json"
+printf '{"state":"running","role":"adversary","writer":false,"companion_for":"prim"}\n' > "$WS2/.fleet/state/prim-refute.json"
+printf '{"state":"running","role":"supervisor","writer":true}\n'                        > "$WS2/.fleet/state/supervisor.json"
+printf '{"state":"running","role":"standby","writer":false,"companion_for":"supervisor"}\n' > "$WS2/.fleet/state/supervisor-codex-refute.json"
+
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=prim-refute "$FLEET" send supervisor "verdict: REFUTED" > "$TMP/msg_sup.out" 2>&1 || true
+lacks "a refuter may reach the supervisor WITHOUT relaying through the lane it judges" "$TMP/msg_sup.out" "read-only companion/refuter"
+
+FLEET_WORKSPACE="$WS2" FLEET_CHILD_ID=prim-refute "$FLEET" send supervisor-codex-refute "sidebar" > "$TMP/msg_supref.out" 2>&1; grc=$?
+[ "$grc" -ne 0 ] && ok "a refuter may NOT message a supervisor's own refuter" || no "companion side channel via supervisor-* is OPEN"
+has "the side-channel refusal names the reason" "$TMP/msg_supref.out" "read-only companion/refuter"
+
 # (5b) ★ FAIL-CLOSED ON UNREADABLE STATE — regression for the 2026-07-17 incident.
 # supervisor-codex's state file was ZERO BYTES, so .companion_for and the
 # readonly-standby read both came back empty and the old name pattern (*-refute
