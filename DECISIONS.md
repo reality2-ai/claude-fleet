@@ -7615,3 +7615,35 @@ through a fixture the production path never reaches is not a check, and only the
 must FAIL can tell you so.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260904-151 — the deployed hook was promoted into the tool, which is the remedy D-148 named and nobody had run
+
+**Context.** `hooks/git/pre-push` in this repo stood at `PREPUSH_VERSION 12` (`a8e6490`,
+2026-08-08, 713 lines). The copy deployed in r2-standard stood at **13** (845 lines): the
+D-186 r2-impl fold exemption — import-aware decision gate and scan dispatch, both counted
+and printed. Measured 2026-09-04: the deployed file was **the only copy on this machine**.
+No tracked source in r2-standard, no matching blob on any branch or any commit in this
+repo's whole history, no `pre-push.local` chain.
+
+**Why it was not the hazard it looked like.** The obvious reading — one
+`install-git-hooks` reverts it — is **false, and was already false**. `D-20260901-148`
+made `fleet_install_git_hook` return `refused-ahead` on `drift-ahead`, keyed on
+`PREPUSH_VERSION`, with no override variable. Verified in `lib/githooks.sh:129-135`, not
+taken from the ledger. The control held; what was missing was the **other half of that
+decision's own remedy** — *promote the deployed hook into the tool* — which nothing did,
+so the refusal was load-bearing indefinitely and the sole copy of a security control sat
+untracked for eighteen days.
+
+**A refusal that protects an unbacked file buys time, not safety.** `refused-ahead` keeps
+the newer hook from being overwritten by the installer. It does nothing about the disk it
+lives on, and it makes the un-promoted state comfortable: doctor advises, the installer
+declines, and everyone reads the pair as handled.
+
+**Decision.** The deployed v13 is promoted verbatim into `hooks/git/pre-push` — byte-equal,
+`sha256 48decb94…`. Behaviour for every other repo is unchanged **by construction**: the
+v13 code enters only when `IMPORTED_TIP` resolves in that object database, guarded by
+`git cat-file -e`, and degrades to v12 exactly otherwise. `tests/smoke.sh` 320/320.
+
+**Decision-Log: this entry.**

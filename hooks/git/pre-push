@@ -1,5 +1,26 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
+# PREPUSH_VERSION: 13 (2026-08-17) — IMPORTED HISTORY IS EXEMPT BY A NAMED RULE, NOT SILENCE.
+# The r2-impl fold (D-186) merges 1,726 commits of implementation history under
+# implementations/rust/ via a subtree merge. Those commits were authored under r2-impl's own
+# gates and pushed to its own public origin through this same hook family; they never carried
+# this repo's Decision-Log discipline and cannot be amended without rewriting published
+# history. So: a pushed commit that is an ancestor of the imported r2-impl tip (8b8705bc...)
+# and NOT an ancestor of the pre-fold r2-standard main (104a1843...) is exempted as IMPORTED
+# HISTORY by both the decision gate and the secret scan — COUNTED AND NAMED in the denominator
+# print, never silently skipped, because checked-and-clean and exempted-and-unexamined are
+# both silence and this file's own decision-gate comment says so. The secret scan goes
+# IMPORT-AWARE only when the pushed range actually contains imported commits (once, at the
+# fold push; every later range excludes them by ancestry): it scans each NON-imported commit
+# individually, and exempts the subtree merge itself only after MEASURING that its entire
+# first-parent diff sits inside its declared git-subtree prefix — a merge with any added line
+# outside the prefix is scanned in full, size guard and all. Rationale for not scanning the
+# imported diff here: it is 168,789 added lines (3.4x the size guard), and its content was
+# already carried out to a public origin by r2-impl's own pushes under this hook's secret
+# scan — the leak this gate exists to stop already could not have happened silently for that
+# content. Commits authored in this repo AFTER the fold, including ones touching
+# implementations/**, are checked exactly as before by both arms. Behaviour changed, so the
+# version moves.
 # PREPUSH_VERSION: 12 (2026-08-05) — annotated tags are PEELED AND SCANNED, message included,
 # instead of refused. Blobs are still refused. Behaviour changed, so the version moves.
 # PREPUSH_VERSION 11 (2026-08-05) — the PRIVATE KEY arm requires the five dashes. Version bumped
@@ -230,6 +251,30 @@ findings=""
 decision_findings=""
 decision_checked=0
 decision_exempted=0
+decision_imported=0
+
+# ── IMPORTED HISTORY (the r2-impl fold, 2026-08-17, D-186) ──────────────────────
+# The set is DERIVED FROM THE STATED DEFINITION, not from a path or a message
+# pattern: ancestors of the merged r2-impl tip that are not ancestors of the
+# pre-fold r2-standard main. Both endpoints are pinned because the definition
+# names them; a path-based exemption would also exempt commits AUTHORED here that
+# touch implementations/**, which stay checked.
+IMPORTED_TIP='8b8705bcdefff65356aada8a38990a5516d42d96'   # r2-impl main, the subtree merge's second parent
+PREFOLD_MAIN='104a1843b01746b78cac79ab889ee5a1db7010e3'   # r2-standard main the fold landed on
+declare -A imported_lookup=()
+imported_count=0
+# If the tip is not in this object database there is no import to exempt and the
+# gate behaves exactly as v12 — an empty set here is a fact about the repository,
+# not a failed enumeration (the enumeration itself still fails closed below).
+if git cat-file -e "${IMPORTED_TIP}^{commit}" 2>/dev/null; then
+  enumerate_into __imported "the imported-history set (fold D-186)" \
+    git rev-list "$IMPORTED_TIP" --not "$PREFOLD_MAIN"
+  while IFS= read -r __ic; do
+    [[ -n "$__ic" ]] || continue
+    imported_lookup["$__ic"]=1
+    imported_count=$((imported_count + 1))
+  done <<<"$__imported"
+fi
 
 check_decision_accountability() {  # $1 = remote sha, $2 = local sha
   local remote="$1" local_sha="$2" commits commit parent_count changed msg short malformed ledgers id
@@ -245,6 +290,18 @@ check_decision_accountability() {  # $1 = remote sha, $2 = local sha
 
   while IFS= read -r commit; do
     [[ -n "$commit" ]] || continue
+
+    # IMPORTED HISTORY, FIRST AND COUNTED (v13, fold D-186): a commit reachable
+    # through the subtree merge's imported parent predates this repository's
+    # discipline and cannot be amended without rewriting r2-impl's published
+    # history. It takes a NAMED exemption branch — the denominator print below
+    # carries the count and the rule — and it is checked BEFORE the ledger tests
+    # because those would misread an imported lane ledger (r2-core/DECISIONS.md
+    # and kin travel with the import) as this repository's accounting.
+    if [[ -n "${imported_lookup[$commit]:-}" ]]; then
+      decision_imported=$(( decision_imported + 1 ))
+      continue
+    fi
 
     # Once the ledger exists it is a durable invariant. Removing it is itself an
     # unaccounted decision and must not turn the guard off for later commits.
@@ -637,7 +694,81 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     range="${remote_sha}..${local_sha}"
   fi
   check_decision_accountability "${remote_sha:-$zero}" "$local_sha"
-  scan_range "$range"
+
+  # ── IMPORT-AWARE SCAN DISPATCH (v13, fold D-186) ────────────────────────────
+  # Enumerate the commits this ref push actually publishes — the same derivation
+  # the decision gate uses — and ask whether any of them is imported history.
+  # When none is (every push after the fold push, by ancestry), the scan below
+  # is byte-for-byte v12's, including for commits touching implementations/**.
+  if [[ "${remote_sha:-$zero}" == "$zero" ]]; then
+    enumerate_into __pushed "commits for the import-aware scan dispatch" \
+      git rev-list --reverse "$local_sha" --not --remotes
+  else
+    enumerate_into __pushed "commits for the import-aware scan dispatch" \
+      git rev-list --reverse "${remote_sha}..${local_sha}"
+  fi
+  __has_import=0
+  if (( imported_count > 0 )); then
+    while IFS= read -r __pc; do
+      [[ -n "$__pc" && -n "${imported_lookup[$__pc]:-}" ]] && { __has_import=1; break; }
+    done <<<"$__pushed"
+  fi
+  if (( __has_import == 0 )); then
+    scan_range "$range"
+  else
+    # The range's tree-diff contains the whole imported tree (168,789 added
+    # lines — 3.4x the size guard), content already carried to a public origin
+    # by r2-impl's own pushes under this hook family's secret scan. So each
+    # NON-imported commit is scanned individually with the same scan_range —
+    # size guard, denominator print and all — and the imported set takes the
+    # SAME named exemption rule as the decision gate. Nothing here is silent:
+    # both exemptions print with their counts and their rule below.
+    __scan_imported=0; __scan_authored=0; __merge_exempt=""; __merge_prefix=""
+    while IFS= read -r __pc; do
+      [[ -n "$__pc" ]] || continue
+      if [[ -n "${imported_lookup[$__pc]:-}" ]]; then
+        __scan_imported=$(( __scan_imported + 1 ))
+        continue
+      fi
+      # A merge whose EVERY non-first parent is imported is MEASURED, not
+      # trusted: only if its entire first-parent diff sits inside its declared
+      # git-subtree prefix is its diff the imported tree itself, and only then
+      # does it take the exemption. One added line outside the prefix and the
+      # commit is scanned in full instead — fail toward scanning.
+      __parents="$(git rev-list --parents -n 1 "$__pc" 2>/dev/null || true)"
+      read -r -a __par_arr <<<"$__parents"
+      if (( ${#__par_arr[@]} > 2 )); then
+        __all_imported=1
+        for __mp in "${__par_arr[@]:2}"; do
+          [[ -n "${imported_lookup[$__mp]:-}" ]] || { __all_imported=0; break; }
+        done
+        if (( __all_imported == 1 )); then
+          __prefix="$(git log -1 --format=%B "$__pc" 2>/dev/null | sed -n 's/^git-subtree-dir: //p' | head -1)"
+          if [[ -n "$__prefix" ]]; then
+            enumerate_into __outside "the subtree merge's diff outside its prefix" \
+              git diff "${__pc}^" "$__pc" -- . ":(exclude)${__prefix}"
+            if [[ -z "$__outside" ]]; then
+              __merge_exempt="$__pc"; __merge_prefix="$__prefix"
+              continue
+            fi
+          fi
+        fi
+      fi
+      __scan_authored=$(( __scan_authored + 1 ))
+      if git rev-parse -q --verify "${__pc}^" >/dev/null 2>&1; then
+        scan_range "${__pc}^..${__pc}"
+      else
+        scan_range "4b825dc642cb6eb9a060e54bf8d69288fbee4904..${__pc}"
+      fi
+      tag_body=""   # a tag message is scanned once, not once per commit
+    done <<<"$__pushed"
+    printf 'secret scan: IMPORT-AWARE for this range — %d imported commit(s) exempted (ancestors of r2-impl tip %.12s, not reachable from pre-fold main %.12s; carried to a public origin by r2-impl'"'"'s own pushes under this hook family — fold D-186, v13); %d authored commit(s) scanned individually\n' \
+      "$__scan_imported" "$IMPORTED_TIP" "$PREFOLD_MAIN" "$__scan_authored" >&2
+    if [[ -n "$__merge_exempt" ]]; then
+      printf 'secret scan: subtree merge %.12s exempted — MEASURED this run: entire first-parent diff inside git-subtree prefix %s/, nothing outside it\n' \
+        "$__merge_exempt" "$__merge_prefix" >&2
+    fi
+  fi
 done
 
 # THE DENOMINATOR, ALWAYS, PASS OR FAIL. Without this line an exempted commit and a checked
@@ -645,9 +776,10 @@ done
 # including whoever tightens this gate next. Standing question it exists to answer: WHAT
 # FRACTION OF THE REAL POPULATION TAKES THE EXEMPTION BRANCH, AND IS THAT THE FRACTION YOU
 # CARE ABOUT.
-if (( decision_checked + decision_exempted > 0 )); then
-  printf 'decision gate: %d commit(s) checked, %d exempted (ledger touched)\n' \
-    "$decision_checked" "$decision_exempted" >&2
+if (( decision_checked + decision_exempted + decision_imported > 0 )); then
+  printf 'decision gate: %d commit(s) checked, %d exempted (ledger touched), %d exempted (IMPORTED HISTORY: ancestors of r2-impl tip %.12s not reachable from pre-fold main %.12s — fold D-186, v13)\n' \
+    "$decision_checked" "$decision_exempted" "$decision_imported" \
+    "$IMPORTED_TIP" "$PREFOLD_MAIN" >&2
 fi
 
 if [[ -n "$decision_findings" ]]; then
