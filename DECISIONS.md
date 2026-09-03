@@ -7647,3 +7647,79 @@ v13 code enters only when `IMPORTED_TIP` resolves in that object database, guard
 `git cat-file -e`, and degrades to v12 exactly otherwise. `tests/smoke.sh` 320/320.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260904-152 — the assignment arm had never caught anything, and its exemption proved somebody thought it had
+
+**Measured (r2, all 2813 commits of r2-standard).** 10 matches, **0 real secrets**. Four
+were identifier or prose collisions; six sat in one vendored third-party document. Two real
+shapes were **missed**: `AWS_SECRET_ACCESS_KEY=…` — the alternation carried `api[_-]?key`
+but no bare trailing `key`, and `secret` was followed by `_` rather than by `:` or `=` — and
+`TS_KEY = R2-SCRUBBED-…`, **a value this fleet had already judged sensitive and scrubbed**,
+missed through the same gap.
+
+**The exemption is the finding, not the nil.** The scrub allowlist sits on the line directly
+below the matcher, excusing `R2-SCRUBBED/REDACTED/PLACEHOLDER` values so a remediation
+marker is not read as a secret. For `TS_KEY` the matcher could never reach one. An exemption
+written for a case that cannot occur, one line under the code that cannot produce it, and
+**both branches silent**. The zero says the arm caught nothing; the exemption says somebody
+believed it was catching something.
+
+**Four changes, each measured against a collision corpus and a real-shape corpus.**
+
+1. **The value run is anchored.** A trailing exclusion on a greedy run is defeated by
+   backtracking — the engine shortens the run by one character and the lookahead passes.
+   Measured: unanchored removed **1 of 6** live collisions, anchored **5 of 6**. This was
+   proposed as the whole of the fix and would have been mostly inert.
+2. **Base64 value charset (`/ + =`).** The canonical AWS example secret key carries a `/`
+   at offset 13, so the old run stopped short of the 16-character floor. **The arm could
+   not have matched a real AWS secret key even with the right key word.**
+3. **`bearer` gains its actual HTTP shape** (`Bearer <token>`, whitespace, no separator).
+   It had required `bearer:` or `bearer=`, which is not how the header is ever spelled — so
+   in a repo whose L1 domain term is `bearer` the alternative was pure collision cost.
+4. **A bare trailing `key`**, which closes both misses.
+
+**The new reach is paid for only where it is taken.** 3 and 4 reach into ordinary prose and
+identifiers, so those two alternatives alone additionally require the value to look like key
+material (a digit **and** a letter). The pre-existing key words keep the looser value test,
+so nothing previously caught is lost.
+
+**Case sensitivity moved, and that was load-bearing.** `-i` is gone; the key words carry
+`(?i:…)`. Under `-i` the CamelCase test matched lowercase, refused every all-letter value,
+and silently lost digit-free passphrases. **A case-insensitive flag over a pattern that
+reasons about case is not a widening, it is a different pattern** — and it went unnoticed
+because the corpus that would have caught it had a digit in every fixture.
+
+**The corpus I wrote myself proved nothing.** The pattern scored 0 collisions on 13 cases of
+my own construction, then produced ten the moment it met r2-standard's actual tree:
+SCREAMING_SNAKE constants, quoted paths, `per-bearer reach/cost/wire-tier/fade`. The real
+tree is now in the corpus and the synthetic one is kept only for the shapes the tree lacks.
+
+**Two refusals are deliberate and printed rather than hidden.** An unquoted CamelCase run
+assigned under a `client_secret` name is a **known false negative** — shape-identical to a
+type assignment, and no rule over the value alone separates them. Both examples in the hook
+are *described* rather than quoted, because a literal one is matched by the arm it
+documents: writing the collision down is how the lesson recording the first one blocked the
+push after it. And
+`vectors/TEST-VECTORS-FORMATS.md:36` in r2-standard is a **known collision** left to block:
+a scanner that cannot flag a 32-byte key literal is not worth having, and a human confirming
+a test vector is the cheaper error.
+
+**PCRE absence fails closed.** `grep -qP` without PCRE exits non-zero — the same exit this
+scan reads as *no finding* — so an unsupported grep would have reported every push clean.
+The probe is a **positive control** (a pattern that must match), because a probe whose
+failure is indistinguishable from a negative result is not a probe. `tests/smoke.sh` 11e
+drives it with a shim and asserts both arms: refusal without PCRE, and **the same push
+succeeding with PCRE present**, so the row cannot pass for an unrelated reason.
+
+**A collision fixture is as unpushable as a secret one.** The two negative-control fixtures
+are assembled at runtime because this repo's own installed v12 hook matched
+`bearer = BindingProfile…` twice in the new test file and **would have refused the commit
+that fixes the collision**. Section 11b already required assembly for positive fixtures;
+the rule extends to negative ones whenever the gate being replaced is stricter than the one
+being installed.
+
+`tests/smoke.sh` 333/333, thirteen of them new.
+
+**Decision-Log: this entry.**

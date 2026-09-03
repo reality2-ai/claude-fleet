@@ -975,6 +975,99 @@ if (( _gate_cnt_rc == 0 )); then ok "a known-size commit publishes"; else no "a 
 _gate_lines="$(sed -n 's/.*secret scan: [0-9]* files, \([0-9]*\) added lines.*/\1/p' "$_gate_cnt_out" | tail -1)"
 if [ "${_gate_lines:-x}" = "3" ]; then ok "denominator counts exactly the added lines (3)"; else no "denominator inaccurate (expected 3, got '${_gate_lines:-none}')"; fi
 
+# --- 11e. pre-push v14 assignment arm ----------------------------------------
+# The arm this covers had scanned 2813 commits of r2-standard and caught ZERO real secrets
+# while missing AWS_SECRET_ACCESS_KEY= and a value this fleet had already scrubbed. Both
+# corpora are driven through a REAL `git push` against the same throwaway remote as 11b,
+# because a pattern measured with `grep` in a test harness is not the pattern the hook runs.
+#
+# THE POSITIVE FIXTURES ARE ASSEMBLED AT RUNTIME, never written as literals — the same rule
+# section 11b learned the hard way. A file spelling out a matching value makes THIS FILE
+# unpushable by the very gate it tests.
+section "11e. pre-push v14 assignment arm"
+
+# $1=desc $2=content $3=block|pass
+_asg_case() {
+  local rc=0
+  printf '%s\n' "$2" > "$GATEREPO/asg.txt"
+  git -C "$GATEREPO" add asg.txt >/dev/null 2>&1
+  git -C "$GATEREPO" commit -qm $'asg\n\nDecision-Log: none' >/dev/null 2>&1
+  git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || rc=$?
+  if [ "$3" = block ]; then
+    if [ "$rc" -ne 0 ]; then ok "$1"; else no "$1"; fi
+    git -C "$GATEREPO" reset -q --hard HEAD~1
+  else
+    if [ "$rc" -eq 0 ]; then ok "$1"; else no "$1"; fi
+  fi
+}
+
+# COLLISIONS — every one of these was a live match under v13 or under a naive widening, and
+# every one must now publish. The first is the r2-standard identifier that blocked a real
+# push on 2026-09-03; the second is the prose LESSON written to record that block, which
+# blocked the next push in turn.
+# ‼ THESE TWO ARE ASSEMBLED AT RUNTIME FOR THE SAME REASON THE POSITIVE FIXTURES ARE, AND
+# THE REASON IS WORTH STATING: a COLLISION fixture is exactly a string the OLD gate matches.
+# Measured while writing this — the v12 hook installed in this repo matched
+# `bearer = BindingProfile...` twice in this file and would have refused the very commit
+# that fixes the collision. A negative-control fixture must be assembled whenever the gate
+# being replaced is stricter than the one being installed, or the fix cannot be pushed.
+_asg_id="different_$(printf 'bearer')"; _asg_ty="BindingProfile$(printf 'Declaration')"
+_asg_case "a Rust type assigned to a *_bearer binding publishes" \
+          "$(printf '        let %s = %s {' "$_asg_id" "$_asg_ty")" pass
+_asg_case "prose quoting that identifier publishes" \
+          "$(printf '  the LESSON quoted %s = %s verbatim' "$_asg_id" "$_asg_ty")" pass
+_asg_case "a SCREAMING_SNAKE constant after key: publishes" \
+          '            key: EV_VIBRATION_DUE,' pass
+_asg_case "a quoted path after public_key publishes" \
+          'public_key     = "trust_keys/tg_pub.bin"' pass
+_asg_case "per-bearer prose with slashes publishes" \
+          '- per-bearer reach/cost/wire-tier/fade declarations (L1)' pass
+
+# REAL SHAPES — all four were MISSED by v13 and must now block.
+_r1='wJalrXUtnFEMI'; _r2='K7MDENGbPxRfiCY'; _r3='EXAMPLEKEY'
+_asg_case "an AWS secret access key with a / in the value BLOCKS" \
+          "$(printf 'AWS_SECRET_ACCESS_KEY=%s/%s%s' "$_r1" "$_r2" "$_r3")" block
+_asg_case "a bare trailing _KEY assignment BLOCKS" \
+          "$(printf 'TS_KEY = PLAIN-THIRD-PARTY-%s%s' "$_r2" "$_r3")" block
+_asg_case "an HTTP Authorization Bearer header BLOCKS" \
+          "$(printf 'Authorization: Bearer %s%s%s' "$_r1" "$_r2" "$_r3")" block
+_asg_case "a quoted CamelCase passphrase BLOCKS" \
+          "$(printf 'password = "%s%s"' 'CorrectHorse' 'BatteryStaple')" block
+# A digit-free lowercase passphrase. This is the case a digit requirement would have lost
+# silently, and it is here so that any future tightening has to fail a test to take it.
+_asg_case "a digit-free lowercase passphrase BLOCKS" \
+          "$(printf 'password = %s%s' 'correcthorse' 'batterystaple')" block
+
+# PCRE ABSENT MUST REFUSE THE PUSH, NOT PASS IT UNSCANNED. This is the control the whole
+# change turns on: `grep -qP` on a grep without PCRE exits non-zero, which is the SAME exit
+# the scan reads as "no finding", so an unsupported grep would report every push clean.
+# The shim passes everything through to the real grep EXCEPT a -P invocation, which it
+# refuses the way a PCRE-less build does.
+_asg_shim="$TMP/nopcre"; mkdir -p "$_asg_shim"
+cat > "$_asg_shim/grep" <<'SHIM'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in -*P*) printf 'grep: support for the -P option is not compiled into this binary\n' >&2; exit 2;; esac
+done
+exec /usr/bin/grep "$@"
+SHIM
+chmod 755 "$_asg_shim/grep"
+printf 'harmless\n' > "$GATEREPO/nopcre.txt"
+git -C "$GATEREPO" add nopcre.txt >/dev/null 2>&1
+git -C "$GATEREPO" commit -qm $'nopcre\n\nDecision-Log: none' >/dev/null 2>&1
+_asg_np_out="$TMP/nopcre.out"; _asg_np_rc=0
+PATH="$_asg_shim:$PATH" git -C "$GATEREPO" push -q origin HEAD:refs/heads/master \
+  >"$_asg_np_out" 2>&1 || _asg_np_rc=$?
+if (( _asg_np_rc != 0 )); then ok "a grep without PCRE REFUSES the push (fails closed)"
+else no "a grep without PCRE let an unscanned push through"; fi
+has "the PCRE refusal says why" "$_asg_np_out" "requires grep -P"
+# And the SAME content publishes once PCRE is back — otherwise the row above would pass for
+# any reason at all, including a broken shim.
+_asg_np2_rc=0
+git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || _asg_np2_rc=$?
+if (( _asg_np2_rc == 0 )); then ok "the same push succeeds with PCRE present (shim was the cause)"
+else no "the same push still fails with PCRE present — the refusal was not the shim"; fi
+
 # --- 12. git-hook installer + drift check ------------------------------------
 # The hooks drifted for weeks because NOTHING installed or checked them. These cover the
 # installer (idempotent, preserves foreign hooks as chained *.local files) and the drift

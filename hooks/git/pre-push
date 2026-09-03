@@ -1,5 +1,61 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
+# PREPUSH_VERSION: 14 (2026-09-04) — THE ASSIGNMENT ARM WAS MEASURED AND HAD NEVER CAUGHT
+# ANYTHING. r2 scanned all 2813 commits of r2-standard: 10 matches, ZERO real secrets, and
+# two real shapes MISSED — `AWS_SECRET_ACCESS_KEY=…` (the alternation carried `api[_-]?key`
+# but no bare trailing `key`, and `secret` was followed by `_` rather than by `:` or `=`) and
+# a value THIS FLEET HAD ALREADY SCRUBBED, `TS_KEY = R2-SCRUBBED-…`, missed through the same
+# gap. The scrub allowlist on the line below exists for values the matcher could not reach:
+# an exemption written for a case that cannot occur, one line under the matcher, and both
+# branches silent. The nil said it caught nothing; the exemption said somebody believed it
+# was catching something.
+#
+# Four changes, each measured against a collision corpus and a real-shape corpus:
+#   1. THE VALUE RUN IS ANCHORED — `(?!VALUECHAR)` before the exclusions. Without it a
+#      trailing `(?!\s*[({])` is defeated by BACKTRACKING: the engine shortens the greedy
+#      run by one character and the lookahead passes. Measured: the unanchored form removed
+#      1 of 6 live collisions, the anchored form 5 of 6. An exclusion bolted onto a greedy
+#      run does not exclude anything.
+#   2. THE VALUE CHARSET IS BASE64 (`/ + =`). The canonical AWS example secret key contains
+#      a `/` at offset 13, so the old `[A-Za-z0-9_-]` run stopped at 13 characters and the
+#      16-character floor was never reached — the arm could not have matched a real AWS
+#      secret key even with the right key word.
+#   3. `bearer` GAINS ITS ACTUAL HTTP SHAPE, `Bearer <token>` with whitespace and no
+#      separator. As written it required `bearer:` or `bearer=`, which is not how the header
+#      is ever spelled, so the alternative was pure collision cost in a repo whose L1 domain
+#      term is `bearer`.
+#   4. A BARE TRAILING `key` alternative closes the AWS/TS_KEY gap.
+# Changes 3 and 4 reach into ordinary prose and identifiers, so THEY ALONE additionally
+# require the value to look like key material (a digit AND a letter). The pre-existing key
+# words keep the older, looser value test, so nothing previously caught is lost. Splitting
+# the value test by alternative is the point: the new reach is paid for only where it is
+# taken.
+#
+# TWO REFUSALS ARE DELIBERATE AND MEASURED, NOT OVERSIGHTS. A CamelCase TYPE NAME bound to a
+# `*_token` or `*_bearer` name — a `let` whose value is a CamelCase run followed by a brace —
+# is refused as a collision, UNLESS THE VALUE IS QUOTED. A configured secret is quoted and a
+# Rust type is not, so a double-quoted CamelCase passphrase under a `password` name is still
+# caught. THE RESIDUE IS PRINTED RATHER THAN HIDDEN: the UNQUOTED CamelCase case — the same
+# run with no quotes, under a `client_secret` name — is a KNOWN FALSE NEGATIVE. It is
+# shape-identical to a type assignment and no rule over the value alone can separate them.
+#
+# The examples above are DESCRIBED rather than quoted, deliberately. A literal one would be
+# matched by this very arm, so documenting a collision here would make this file unpushable
+# — which is how the lesson recording the first collision blocked the push after it.
+#
+# CASE SENSITIVITY MOVED AND IT IS LOAD-BEARING: `-i` is gone from the grep and the key words
+# carry `(?i:…)` instead. Under `-i` the CamelCase test matched lowercase, so it refused
+# every all-letter value and silently lost digit-free passphrases. A case-insensitive flag
+# over a pattern that reasons about case is not a widening, it is a different pattern.
+#
+# KNOWN COLLISION, NAMED SO THE REFUSAL IS LEGIBLE: r2-standard
+# `vectors/TEST-VECTORS-FORMATS.md:36`, `key = 000102…1e1f`, a conformance vector that is
+# key-shaped by design. It blocks only a push that touches that file. It is left to block:
+# a scanner that cannot flag a 32-byte key literal is not one worth having, and a human
+# confirming a test vector is the cheaper error.
+#
+# Behaviour changed, so the version moves. Controls: tests/smoke.sh section 11d, driven
+# through a real `git push`, including the PCRE-absent arm that must REFUSE.
 # PREPUSH_VERSION: 13 (2026-08-17) — IMPORTED HISTORY IS EXEMPT BY A NAMED RULE, NOT SILENCE.
 # The r2-impl fold (D-186) merges 1,726 commits of implementation history under
 # implementations/rust/ via a subtree merge. Those commits were authored under r2-impl's own
@@ -556,7 +612,27 @@ scan_range() {  # $1 = git rev range or single sha
   # Extract assignments before filtering, so a scrub marker on one minified line cannot
   # hide a second real assignment on that line. Plain R2-SCRUBBED/REDACTED/PLACEHOLDER
   # values and the base64 prefix for "R2-SCRUBBED-" are remediation markers, not secrets.
-  assignments="$(grep -oiE '(secret|token|passwd|password|api[_-]?key|client_secret|bearer)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_\-]{16,}' <<<"$added" || true)"
+  # PCRE IS REQUIRED AND ITS ABSENCE FAILS CLOSED (v14). `grep -qP` on a build without
+  # PCRE exits NON-ZERO, which is the same exit this scan reads as NO FINDING — an
+  # unsupported grep would report every push clean. The probe is therefore a POSITIVE
+  # control: a pattern that MUST match. A probe whose failure is indistinguishable from a
+  # negative result is not a probe, which is how an earlier PCRE check reported PCRE absent
+  # while PCRE worked.
+  if ! printf 'x' | grep -qP 'x' 2>/dev/null; then
+    printf 'pre-push: REFUSED — the secret scan requires grep -P (PCRE) and this grep has none.\n' >&2
+    printf '          The scan cannot run, so the push is refused rather than passed unscanned.\n' >&2
+    exit 1
+  fi
+  _sv='[A-Za-z0-9_\-\/+=]'
+  _spre='["'"'"' ]*[:=]["'"'"' ]*'
+  _sold='secret|token|passwd|password|client_secret|(?:[_\-]|\b)api[_\-]?key'
+  _snew='(?:[_\-]|\b)key'
+  _stail="${_sv}{16,}(?!${_sv})(?!\s*[({])(?!::)"
+  _scamel="(?![A-Z][a-z]+(?:[A-Z][a-z]*)+(?!${_sv}))"
+  _squoted='(?<=["'"'"'])'
+  _smat="(?=${_sv}{0,120}?[0-9])(?=${_sv}{0,120}?[A-Za-z])"
+  _spat="(?:((?i:${_sold}|bearer)${_spre})(?:${_squoted}|${_scamel})|((?i:${_snew})${_spre}|\b(?i:bearer)\s+)${_scamel}${_smat})${_stail}"
+  assignments="$(grep -oP -- "$_spat" <<<"$added" || true)"
   assignments="$(grep -viE '[:=]["'"'"' ]*(R2-(SCRUBBED|REDACTED|PLACEHOLDER)-[A-Z0-9_-]+|UjItU0NSVUJCRUQt[A-Za-z0-9_-]*)$' <<<"$assignments" || true)"
   [[ -n "$assignments" ]] && findings+="  • a hardcoded secret/token/password assignment\n"
 
