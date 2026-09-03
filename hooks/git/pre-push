@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
+# PREPUSH_VERSION: 15 (2026-09-04) — A STRICTLY ASCENDING HEX BYTE RUN IS A TEST VECTOR,
+# NOT A KEY. v14 left one collision deliberately: r2-standard
+# `vectors/TEST-VECTORS-FORMATS.md`, an ascending 32-byte run under a `key` name, on the
+# reasoning that a human confirming a test vector is the cheaper error. THAT REASONING WAS
+# COSTED WRONG, and r2 supplied the fact that changes it: THE FILE IS GENERATED AND
+# GATE-PINNED — pre-commit compares it against its generator — so every generator change
+# rewrites it and refuses that push. A one-off worth a human glance and a RECURRING refusal
+# on a file nobody edits by hand are different things, and only the second was measured.
+#
+# The exclusion is on the SHAPE, not on the path. A path allowlist would blind the scanner
+# to a whole generated file forever, including a real key pasted into it; an ascending byte
+# run cannot be a real key and nothing else is excused. It is a POST-FILTER, so it can only
+# remove a match the pattern already made — it cannot widen anything.
+#
+# NARROW BY CONSTRUCTION, and four negative controls in smoke 11e say so rather than the
+# comment asserting it: a DESCENDING run, a REPEATING run, an ARBITRARY hex run of the same
+# length, and an ASCENDING run with one byte out of place all still BLOCK. Only the strict
+# +1 sequence is dropped, and only when it is the WHOLE value — a real key that merely ends
+# in such a run is untouched, because the check anchors at the start of the value.
+#
+# `strtonum` is deliberately not used: it is a gawk extension and this hook runs wherever
+# the fleet does. The byte value comes from `index()` on a hex-digit string.
 # PREPUSH_VERSION: 14 (2026-09-04) — THE ASSIGNMENT ARM WAS MEASURED AND HAD NEVER CAUGHT
 # ANYTHING. r2 scanned all 2813 commits of r2-standard: 10 matches, ZERO real secrets, and
 # two real shapes MISSED — `AWS_SECRET_ACCESS_KEY=…` (the alternation carried `api[_-]?key`
@@ -634,6 +656,31 @@ scan_range() {  # $1 = git rev range or single sha
   _spat="(?:((?i:${_sold}|bearer)${_spre})(?:${_squoted}|${_scamel})|((?i:${_snew})${_spre}|\b(?i:bearer)\s+)${_scamel}${_smat})${_stail}"
   assignments="$(grep -oP -- "$_spat" <<<"$added" || true)"
   assignments="$(grep -viE '[:=]["'"'"' ]*(R2-(SCRUBBED|REDACTED|PLACEHOLDER)-[A-Z0-9_-]+|UjItU0NSVUJCRUQt[A-Za-z0-9_-]*)$' <<<"$assignments" || true)"
+  # KNOWN-ANSWER TEST VECTORS (v15). A strictly ascending hex byte run — each byte exactly
+  # one more than the last, and the whole value — is the canonical KAT shape and cannot be
+  # a real key. This REMOVES a match the pattern already made and never adds one. The value
+  # is isolated without any quote literal in the awk program (strip to the first separator,
+  # then trim trailing non-alphanumerics), because quoting a quote through two shells is
+  # how this kind of filter silently stops matching anything at all.
+  assignments="$(awk '
+    function hexval(c,  p) { p = index("0123456789abcdef", tolower(c)); return p - 1 }
+    {
+      v = $0
+      sub(/^[^:=]*[:=][ ]*/, "", v)
+      gsub(/^[^0-9A-Za-z]+/, "", v)
+      gsub(/[^0-9A-Za-z]+$/, "", v)
+      keep = 1
+      if (length(v) >= 16 && length(v) % 2 == 0 && tolower(v) ~ /^[0-9a-f]+$/) {
+        asc = 1; prev = -1
+        for (i = 1; i <= length(v); i += 2) {
+          b = hexval(substr(v, i, 1)) * 16 + hexval(substr(v, i + 1, 1))
+          if (prev >= 0 && b != prev + 1) { asc = 0; break }
+          prev = b
+        }
+        if (asc) keep = 0
+      }
+      if (keep) print
+    }' <<<"$assignments" || true)"
   [[ -n "$assignments" ]] && findings+="  • a hardcoded secret/token/password assignment\n"
 
   # 3) MAC-shaped VALUES in added content.

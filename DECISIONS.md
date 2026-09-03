@@ -7723,3 +7723,52 @@ being installed.
 `tests/smoke.sh` 333/333, thirteen of them new.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260904-153 — the deliberate collision was costed wrong, and D-152's exhibit is narrowed by measurement
+
+**Two corrections to `D-20260904-151`/`152`, both supplied by r2 and both verified here.**
+
+**1. The known collision was priced as a one-off and it recurs.** v14 left
+`vectors/TEST-VECTORS-FORMATS.md` blocking on purpose, reasoning that a human confirming a
+test vector is the cheaper error. r2 supplied the fact that changes the sum: **that file is
+generated and gate-pinned** — `pre-commit` compares it against its generator — so every
+generator change rewrites it and refuses that push. *A one-off worth a human glance* and *a
+recurring refusal on a file nobody edits by hand* are different things, and only the second
+was measured. **A false refusal costed once is costed wrong if the file that triggers it is
+regenerated.**
+
+**Fixed in v15 as a shape rule, not a path rule.** A strictly ascending hex byte run — each
+byte exactly one more than the last, and the whole value — is excused. r2 proposed this over
+the path allowlist it had every reason to prefer, and it is the better instrument: a path
+allowlist would blind the scanner to an entire generated file forever, **including a real
+key pasted into it**. The filter runs after the match, so it can only remove, never widen.
+Four negative controls in `smoke.sh` 11e say it is narrow rather than the comment asserting
+it: descending, repeating, arbitrary-hex and ascending-with-one-byte-wrong all still block.
+
+**2. D-152's whitelist exhibit is narrowed, and the narrowing came from the party it
+indicted.** D-152 said the scrub allowlist covered a case the matcher could not produce.
+r2 read `:559-560` and measured that **two of its cases are reachable** — `apiKey` and
+`searchApikey` both hit the `api[_-]?key` alternative and both appear in the 2813-commit
+scan. It is `TS_KEY` **specifically** that the matcher can never produce. The finding stands
+exactly as scoped and **does not generalise to the whole whitelist line**, which is how it
+could have been read. Recorded here rather than by editing D-152.
+
+**The corpus rule is r2's and it is adopted.** Both lanes wrote their own corpus and both
+failed the same way: this lane's false-positive corpus missed ten real collisions in
+r2-standard's tree, and r2's real-shape corpus put `AWS_SECRET_ACCESS_KEY` in it **without
+the `/` the canonical example carries at offset 13** — so its 10-of-10 was ten of ten
+against its own idea of the shape, in the exact place the arm was broken. **Standing rule:
+neither corpus may be authored by the party proposing the pattern.**
+
+**And the anchor mechanism is stated properly, in r2's words.** It had reasoned about
+backtracking and used a word boundary, which is **not** equivalent to a negative lookahead
+on the value charset — because that charset contains a hyphen, the engine can shorten to a
+boundary *at the hyphen* and the exclusion passes. Its anchor held only because no value in
+its corpus carried a hyphen. Same shape as the PCRE probe it had already caught in itself:
+**a guard that holds only on the inputs its author happened to pick.**
+
+`tests/smoke.sh` 338/338, five of them new. Installed and digest-verified in both repos.
+
+**Decision-Log: this entry.**

@@ -975,7 +975,7 @@ if (( _gate_cnt_rc == 0 )); then ok "a known-size commit publishes"; else no "a 
 _gate_lines="$(sed -n 's/.*secret scan: [0-9]* files, \([0-9]*\) added lines.*/\1/p' "$_gate_cnt_out" | tail -1)"
 if [ "${_gate_lines:-x}" = "3" ]; then ok "denominator counts exactly the added lines (3)"; else no "denominator inaccurate (expected 3, got '${_gate_lines:-none}')"; fi
 
-# --- 11e. pre-push v14 assignment arm ----------------------------------------
+# --- 11e. pre-push assignment arm (v14 pattern, v15 KAT filter) ----------------------------------------
 # The arm this covers had scanned 2813 commits of r2-standard and caught ZERO real secrets
 # while missing AWS_SECRET_ACCESS_KEY= and a value this fleet had already scrubbed. Both
 # corpora are driven through a REAL `git push` against the same throwaway remote as 11b,
@@ -984,7 +984,7 @@ if [ "${_gate_lines:-x}" = "3" ]; then ok "denominator counts exactly the added 
 # THE POSITIVE FIXTURES ARE ASSEMBLED AT RUNTIME, never written as literals — the same rule
 # section 11b learned the hard way. A file spelling out a matching value makes THIS FILE
 # unpushable by the very gate it tests.
-section "11e. pre-push v14 assignment arm"
+section "11e. pre-push assignment arm (v14 pattern, v15 KAT filter)"
 
 # $1=desc $2=content $3=block|pass
 _asg_case() {
@@ -1037,6 +1037,31 @@ _asg_case "a quoted CamelCase passphrase BLOCKS" \
 # silently, and it is here so that any future tightening has to fail a test to take it.
 _asg_case "a digit-free lowercase passphrase BLOCKS" \
           "$(printf 'password = %s%s' 'correcthorse' 'batterystaple')" block
+
+# KNOWN-ANSWER TEST VECTORS (v15). The ascending run is excused; four runs that are NOT
+# ascending must still block, or the exclusion is "any long hex value" wearing a narrower
+# name. The ascending fixture is BUILT, not typed, so the excusing rule is not the only
+# thing keeping this file pushable -- if the filter ever regresses, this line must fail as
+# a test rather than as an unpushable repository.
+_kat=""; for _i in $(seq 0 31); do _kat="$_kat$(printf '%02x' "$_i")"; done
+_asg_case "an ascending hex byte run publishes (KAT vector)" \
+          "$(printf 'key = %s' "$_kat")" pass
+_kdesc=""; for _i in $(seq 31 -1 0); do _kdesc="$_kdesc$(printf '%02x' "$_i")"; done
+_asg_case "a DESCENDING hex run still BLOCKS" \
+          "$(printf 'key = %s' "$_kdesc")" block
+# NB the repeating byte is a7, not 07: an all-DIGIT value is not key material under the
+# v14 rule and would never have matched in the first place, so a 07 fixture would go green
+# for the wrong reason. Measured -- it did, and because _asg_case resets HEAD after a block
+# case that did not block, the already-published commit left the local branch behind the
+# remote and the next two cases failed as non-fast-forwards. ONE WRONG FIXTURE POISONS
+# EVERY CASE AFTER IT IN THIS HARNESS.
+_krep=""; for _i in $(seq 1 32); do _krep="${_krep}a7"; done
+_asg_case "a REPEATING hex run still BLOCKS" \
+          "$(printf 'key = %s' "$_krep")" block
+_asg_case "an ARBITRARY hex run of the same length still BLOCKS" \
+          "$(printf 'key = %s' "$(printf 'a1b2c3d4e5f60718293a4b5c6d7e8f90%.0s' 1 2)")" block
+_asg_case "an ascending run with ONE byte out of place still BLOCKS" \
+          "$(printf 'key = %sff' "$_kat")" block
 
 # PCRE ABSENT MUST REFUSE THE PUSH, NOT PASS IT UNSCANNED. This is the control the whole
 # change turns on: `grep -qP` on a grep without PCRE exits non-zero, which is the SAME exit
