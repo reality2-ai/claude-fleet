@@ -299,6 +299,46 @@ undel3="$(jq -s '[.[]|select(.delivered==false)]|length' "$WS/.fleet/inbox/alpha
 eq "(c'') control: and the mail was actually delivered" "$undel3" "0"
 
 # =====================================================================
+section "(d) fleet courier — one owner drains every lane"
+# ‼ MAIL MOVED ONLY WHEN THE RECIPIENT RAN ITS OWN Stop HOOK. A lane with no
+#   hooks was undeliverable-to while looking healthy: r2, 2026-09-05, heartbeat
+#   4s fresh and last_drain_attempt 2898s stale with mail queued behind it.
+#   The courier is the single delivery owner, so a recipient that is running
+#   nothing still receives.
+jq -nc --argjson ts "$(date +%s)" '{ts:$ts,from:"supervisor",to:"alpha",text:"courier-line",hops:1,kind:"fyi",delivered:false}' > "$WS/.fleet/inbox/alpha.jsonl"
+jq '.ready=true' "$WS/.fleet/state/alpha.json" > "$WS/.fleet/state/alpha.json.t" && mv "$WS/.fleet/state/alpha.json.t" "$WS/.fleet/state/alpha.json"
+cr_out="$("$FLEET" courier --once --lane alpha 2>&1)"; cr_rc=$?
+eq "(d) courier --once exits 0" "$cr_rc" "0"
+# ‼ THE SUMMARY LINE IS THE ASSERTION, NOT DECORATION. The first version of this
+#   command used `(( n++ ))`, which RETURNS THE OLD VALUE — so under `set -e` the
+#   first increment killed the loop and it exited 1 printing NOTHING. A row that
+#   only checked delivery would have gone green on a courier that ran one lane and
+#   died. Assert that it reports completing a pass.
+hasstr "(d) courier reports the pass it completed" "$cr_out" "pass(es) over"
+# ‼ THE COURIER'S CONTRACT IS THAT IT ATTEMPTS EVERY LANE, and the observable is
+#   `.last_drain_attempt` moving. Whether a keystroke then lands belongs to
+#   `fleet_inject` and is covered at (c) — asserting delivery here would tie this
+#   row to a live pane and make a courier regression indistinguishable from a
+#   detached terminal. The lane in this fixture has no window, so the mail stays
+#   queued and that is CORRECT.
+lda_before="$(jq -r '.last_drain_attempt // 0' "$WS/.fleet/state/alpha.json")"
+sleep 1
+"$FLEET" courier --once --lane alpha >/dev/null 2>&1
+lda_after="$(jq -r '.last_drain_attempt // 0' "$WS/.fleet/state/alpha.json")"
+if [ "${lda_after:-0}" -gt "${lda_before:-0}" ]; then ok "(d) courier reached the lane (.last_drain_attempt moved)"
+else no "(d) courier did NOT reach the lane (drain attempt not recorded)"; fi
+und="$(jq -s '[.[]|select(.delivered==false)]|length' "$WS/.fleet/inbox/alpha.jsonl")"
+eq "(d) and mail to a lane with no pane stays QUEUED, never dropped" "$und" "1"
+# CONTROL: an unknown lane is not a delivery, and does not make the pass fail.
+cr2_out="$("$FLEET" courier --once --lane no-such-lane 2>&1)"; cr2_rc=$?
+eq "(d) control: unknown lane still exits 0" "$cr2_rc" "0"
+hasstr "(d) control: and reports zero drains" "$cr2_out" "0 drain(s) returned 0"
+# CONTROL: --interval must be a number, so a typo cannot become a busy loop.
+if "$FLEET" courier --once --interval abc >/dev/null 2>&1; then
+  no "(d) control: a non-numeric --interval was accepted"
+else ok "(d) control: a non-numeric --interval is refused"; fi
+
+# =====================================================================
 section "(c') real fleet_inject returns non-zero when verify exhausts"
 # Sanity that the verify loop now returns 1 (not the old optimistic 0) when it
 # can never confirm submission. FLEET_INJECT_VERIFY stays on; we point at a

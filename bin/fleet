@@ -2691,6 +2691,61 @@ cmd_broadcast() {
   done
 }
 
+# ‼ THE SINGLE DELIVERY OWNER. Mail moved only when the RECIPIENT ran its own
+# `Stop` hook, so a lane with no hooks was undeliverable-to while looking healthy:
+# measured 2026-09-05, r2 heartbeat 4s fresh and `last_drain_attempt` 2898s stale,
+# eight messages queued behind it. Delivery is not the recipient's job — a message
+# is undelivered precisely when the recipient is not running anything.
+#
+# ‼ ONE WRITER IS ALSO THE PREMISE THE RACE HARDENING WAS BUILT AGAINST. The
+# snapshot/rotate/no-follow machinery in `fleet_drain_inbox` exists because many
+# mutually-untrusting processes drain one shared directory. It stays until this is
+# the only drainer in practice as well as in design — that removal is a later step
+# and must not be taken on the strength of this comment.
+#
+#   fleet courier [--once] [--interval <s>] [--lane <id>]…
+cmd_courier() {
+  local once=0 interval="${FLEET_COURIER_INTERVAL:-20}" lanes=()
+  while (( $# )); do
+    case "$1" in
+      --once)     once=1; shift ;;
+      --interval) interval="${2:?--interval needs seconds}"; shift 2 ;;
+      --lane)     fleet_require_member_id "${2:?--lane needs an id}"; lanes+=("$2"); shift 2 ;;
+      *) die "usage: fleet courier [--once] [--interval <s>] [--lane <id>]…" ;;
+    esac
+  done
+  [[ "$interval" =~ ^[0-9]+$ ]] || die "--interval must be a whole number of seconds"
+  fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+  # No --lane: every manifest member, plus any lane that has a state file (ad-hoc
+  # and retired lanes keep mailboxes and are still legitimate recipients).
+  if (( ${#lanes[@]} == 0 )); then
+    lanes=("${CHILD_IDS[@]:-}")
+    local f b
+    for f in "$CHILDSTATE_DIR"/*.json; do
+      [[ -e "$f" ]] || continue
+      b="$(basename "$f" .json)"
+      [[ " ${lanes[*]} " == *" $b "* ]] || lanes+=("$b")
+    done
+  fi
+  local n=0 delivered=0 id rc
+  while :; do
+    for id in "${lanes[@]}"; do
+      [[ -n "$id" ]] || continue
+      rc=0; fleet_drain_inbox "$id" force >/dev/null 2>&1 || rc=$?
+      # rc 3 = no mailbox for this id (`D-20260905-158`): not an error, and not a
+      # delivery either. Anything else non-zero is a lane that is offline, busy or
+      # refusing — all normal, all retried next pass.
+      # ‼ `(( x++ ))` RETURNS THE OLD VALUE, so the first increment exits 1 and
+      #   `set -e` kills the courier silently. Arithmetic assignment instead.
+      (( rc == 0 )) && delivered=$((delivered + 1))
+    done
+    n=$((n + 1))
+    (( once )) && break
+    sleep "$interval"
+  done
+  info "courier: $n pass(es) over ${#lanes[@]} lane(s), $delivered drain(s) returned 0"
+}
+
 cmd_inbox() {
   fleet_load_paths
   local id="${1:-${FLEET_CHILD_ID:-}}"
@@ -2828,6 +2883,7 @@ main() {
     pair-send|psend) cmd_pair_send "$@" ;;
     pair-ask|pask) cmd_pair_ask "$@" ;;
     broadcast) cmd_broadcast "$@" ;;
+    courier)   cmd_courier "$@" ;;
     inbox)     cmd_inbox "$@" ;;
     decision)
       case "${1:-}" in

@@ -8000,3 +8000,49 @@ any repeated check what result would make it stop, and whether the command can p
 that result at all.** Forty identical successes are one measurement, not forty.
 
 **Decision-Log: this entry.**
+
+## D-20260905-159 — delivery was the recipient's job, so a lane that ran nothing could not be reached
+
+**Mail moved only when the RECIPIENT ran its own `Stop` hook.** `fleet_drain_inbox` is
+invoked from exactly two places — `comms.sh:77` on the send path, and
+`hooks/on-stop.sh:101` — so a lane whose hooks are absent is undeliverable-to while
+every health signal reads normal.
+
+**Measured, not inferred.** 2026-09-05: `r2` heartbeat **4 seconds** fresh,
+`last_drain_attempt` **2,898 seconds** stale, mail queued behind it. `fleet doctor`
+reported `undelivered mail 732s old` and was the only thing that did. Two supervisor
+messages sat 26 minutes. The same premise produced a second failure the same morning:
+a read-only companion (`--sandbox read-only`, `provider.sh:97-99`) got **`errno 30
+EROFS`** opening its **own** mailbox lock, because sending is a filesystem write and a
+reviewer must not hold one.
+
+**`fleet courier` is the single delivery owner.** One loop, every manifest member plus
+every lane holding a state file, `--once` for tests and `--lane` to scope. A recipient
+that is running nothing still receives.
+
+**The bug this shipped with, and the row that now catches it.** The first version used
+`(( n++ ))` — which **returns the old value**, so under `set -e` the first increment
+killed the loop and the command exited 1 printing nothing. A row asserting only
+delivery would have gone green on a courier that ran one lane and died, because the
+fixture lane has no pane and its mail correctly stays queued either way. The suite
+therefore asserts the **summary line** as well: *"courier reports the pass it
+completed"*.
+
+**And the contract is what is asserted, not the outcome.** The courier guarantees it
+**attempts** every lane; the observable is `.last_drain_attempt` moving. Whether a
+keystroke then lands belongs to `fleet_inject` and is covered at `(c)`. Asserting
+delivery here would tie the row to a live pane and make a courier regression
+indistinguishable from a detached terminal — so a second row asserts the opposite
+half: mail to a lane with no pane stays **queued, never dropped**.
+
+**What this does NOT authorise.** The snapshot/rotate/no-follow hardening in
+`fleet_drain_inbox` exists because many mutually-untrusting processes drain one shared
+directory. One courier makes that premise false *in design*; it is not false *in
+practice* until the `Stop`-hook drain is removed and senders stop opening mailboxes.
+Removing the hardening first would be a vulnerability, not a simplification. Steps in
+order: courier alongside (this entry), then drop the hook drain, then make sending a
+request, and only then delete what the race hardening defends.
+
+`robustness 50/0` (7 new rows), `smoke 350/0`, `faculty 107/0`.
+
+**Decision-Log: this entry.**
