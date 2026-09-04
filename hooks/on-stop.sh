@@ -9,6 +9,27 @@ source "$TOOL_ROOT/lib/tmux.sh" 2>/dev/null || exit 0
 # shellcheck source=../lib/comms.sh
 source "$TOOL_ROOT/lib/comms.sh" 2>/dev/null || exit 0
 
+# ── stop_hook_active — RETURN SUCCESS AND DO NOTHING (2026-09-04) ──────────────
+# The harness re-fires Stop after any hook (this one or another plugin's) has kept
+# the turn open, and sets `stop_hook_active` for those re-fires. Measured on the
+# supervisor lane: NINE consecutive Stop fires, roughly twelve seconds apart, until
+# the harness overrode the cap — and every one of them ran this script in full.
+#
+# That is not merely wasted work. Everything below is a SIDE EFFECT: it drains the
+# inbox by typing into a tmux pane, submits a stuck input box, and can keystroke
+# `/compact`. Re-running those against a turn that is still open is exactly the
+# pane-corruption case the hard-ceiling comment further down argues against, and a
+# drain fired mid-turn re-injects into a session that has not returned to its prompt.
+#
+# So: on a re-fire, exit 0 immediately. The FIRST Stop of the turn did the work; the
+# state it wrote is still current, and the next genuine turn boundary fires again.
+# `.ready` is deliberately NOT set here either — a re-fire means the turn did not
+# end, and reporting ready would be a false statement about this lane.
+if [[ "$(hjq '.stop_hook_active')" == "true" ]]; then
+  fleet_journal_append "$CHILD_ID" "stop re-fire (stop_hook_active) — no-op" 2>/dev/null || true
+  exit 0
+fi
+
 fleet_state_jq "$CHILD_ID" --argjson now "$NOW" '.ready=true | .heartbeat=$now' >/dev/null 2>&1 || true
 # Optional ground-truth liveness journal (no-op unless FLEET_JOURNAL is set).
 fleet_journal_append "$CHILD_ID" "stop turn" 2>/dev/null || true

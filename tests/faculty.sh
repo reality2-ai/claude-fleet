@@ -260,6 +260,30 @@ if declare -f fleet_inject | grep -cE 'send-keys -t "\$tgt" Enter' | grep -qE '^
 # submit only when idle (never fight a working pane with Enter), with a Stop-hook flush backstop
 if declare -F fleet_flush_stuck_box >/dev/null 2>&1; then ok "defined: fleet_flush_stuck_box (Stop-hook backstop submits a stuck-in-box inject)"; else no "fleet_flush_stuck_box missing"; fi
 if grep -q 'fleet_flush_stuck_box' hooks/on-stop.sh; then ok "on-stop hook flushes a stuck box at idle"; else no "on-stop doesn't flush stuck box"; fi
+
+# --- stop_hook_active: the hook must RUN and do nothing, not merely contain the word ---
+# Every other on-stop assertion in this file greps the SOURCE. That proves the text is
+# present and nothing about what the script does, so this one drives the real script
+# through its real entry point (payload on stdin) and asserts an OBSERVABLE difference:
+# `.ready` is written on a first Stop and must NOT be written on a re-fire, because a
+# re-fire means the turn did not end and reporting ready would be a false statement.
+# Falsifier: delete the guard and the second case writes ready=true.
+_sha_ws="$TMP/ws"; mkdir -p "$_sha_ws"
+_sha_run() {   # $1 = stop_hook_active value; echoes the resulting .ready
+  local active="$1" id="stophooktest$$" sf
+  rm -f "$CHILDSTATE_DIR/$id.json"
+  printf '{"session_id":"%s","cwd":"%s","stop_hook_active":%s}' "$id" "$_sha_ws" "$active" \
+    | FLEET_CHILD_ID="$id" FLEET_WORKSPACE="$_sha_ws" WORKSPACE="$_sha_ws" \
+      bash "$ROOT/hooks/on-stop.sh" >/dev/null 2>&1
+  sf="$CHILDSTATE_DIR/$id.json"
+  [[ -f "$sf" ]] && jq -r '.ready // "unset"' "$sf" 2>/dev/null || printf 'nostate\n'
+}
+_sha_first="$(_sha_run false)"
+_sha_refire="$(_sha_run true)"
+if [[ "$_sha_first" == "true" ]]; then ok "a first Stop marks the lane ready (control: the hook does run)"
+else no "a first Stop did not mark ready (got '$_sha_first') — the control cannot discriminate"; fi
+if [[ "$_sha_refire" != "true" ]]; then ok "a stop_hook_active re-fire does NOT mark ready (guard runs)"
+else no "a stop_hook_active re-fire still ran the body and marked ready"; fi
 if declare -F fleet_box_has_stuck_inject >/dev/null 2>&1; then ok "tag-gate fleet_box_has_stuck_inject defined (auto-Enter only on injects, not human text)"; else no "no tag-gate → auto-Enter could submit human typing"; fi
 if declare -f fleet_flush_stuck_box | grep -q "fleet_box_has_stuck_inject"; then ok "flush is tag-gated (never submits human typing)"; else no "flush not tag-gated"; fi
 if declare -f fleet_inject | grep -q 'marker='; then no "old tail-text marker verify still present"; else ok "old tail-text marker verify removed"; fi

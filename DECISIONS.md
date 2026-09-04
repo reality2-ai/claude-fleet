@@ -7877,3 +7877,44 @@ measurement into the benign value, and the benign value is the one nobody invest
 `tests/smoke.sh` 350/350, six of them new.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260904-156 — the Stop hook ran nine times for one turn, and every re-fire replayed its side effects
+
+**Reported by Roy from the harness:** *"A hook blocked the turn from ending 9 consecutive
+times — overriding and ending turn."*
+
+**Measured, not assumed.** `~/.claude/security/log.txt` shows the security-guidance Stop hook
+firing four times between 19:34:36 and 19:35:12, ~12s apart, each logging
+`stop_hook_active=True, skipping to avoid recursion`. **That plugin was already in its skip
+path, so it was not the one keeping the turn open** — and `stop_hook_active` was already true,
+meaning something else was. `hooks/on-stop.sh` read no part of the payload's
+`stop_hook_active` and **ran in full on every one of those fires**.
+
+**Why that is worse than wasted work.** Almost everything in this hook is a SIDE EFFECT: it
+drains the inbox by typing into a tmux pane, re-submits a stuck input box, and can keystroke
+`/compact`. Replaying those against a turn that has NOT ended is the pane-corruption case the
+hard-ceiling block further down this same file argues against in its own comment — and a drain
+fired mid-turn injects into a session that has not returned to its prompt. **The file already
+contained the reasoning for why this must not happen and had no condition enforcing it.**
+
+**Fixed:** a re-fire exits 0 immediately. `.ready` is deliberately *not* written on a re-fire
+either — the turn did not end, and reporting ready would be a false statement about the lane.
+
+**The control is behavioural, and it had to be.** Every other `on-stop` assertion in
+`tests/faculty.sh` greps the source, which proves a word is present and nothing about what the
+script does. The new rows drive the real script through its real entry point — payload on
+stdin — and assert an observable difference: ready is written on a first Stop and must not be
+on a re-fire. **Mutation proof: with the guard deleted the re-fire row goes red and the control
+row stays green**, so the pair can discriminate rather than merely pass.
+
+**One thing observed and NOT measured, recorded as such.** `on-stop.sh` is registered in *both*
+`~/.claude/settings.json` and the project's `.claude/settings.json`, as the same absolute
+command. Whether the harness runs it twice or de-duplicates identical commands across scopes
+was **not** measured here, and the claim is left at what was seen: the same hook is registered
+in two places.
+
+`tests/faculty.sh` 105/105, two of them new.
+
+**Decision-Log: this entry.**
