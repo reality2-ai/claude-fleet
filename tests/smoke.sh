@@ -1087,6 +1087,67 @@ _asg_case "a slash-wrapped ascending run still BLOCKS" \
 _asg_case "a QUOTED ascending run is still excused" \
           "$(printf 'key = "%s"' "$_kat")" pass
 
+# A GREP THAT FAILS ONLY THE INPUT-BUILDING FILTER MUST REFUSE (v17). v16 fixed the three
+# stages that CONSUME the scanned set and left the two greps that BUILD it; an error there
+# empties the input and every arm reports clean on a push nobody looked at.
+#
+# ‼ THE SHIM IS SELECTIVE ON PURPOSE. One that breaks every grep is caught by the v16
+#   extractor check -- that call fails too -- so a blunt instrument reports CLEAN and the
+#   defect survives. This one rejects the exact `^+` filter and passes everything else.
+_asg_pf="$TMP/plusfilter"; mkdir -p "$_asg_pf"
+cat > "$_asg_pf/grep" <<'SHIM'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in '^+') printf 'grep: selective failure for the control
+' >&2; exit 2;; esac
+done
+exec /usr/bin/grep "$@"
+SHIM
+chmod 755 "$_asg_pf/grep"
+printf 'harmless
+' > "$GATEREPO/plusfilter.txt"
+git -C "$GATEREPO" add plusfilter.txt >/dev/null 2>&1
+git -C "$GATEREPO" commit -qm $'pf\n\nDecision-Log: none' >/dev/null 2>&1
+_asg_pf_out="$TMP/plusfilter.out"; _asg_pf_rc=0
+PATH="$_asg_pf:$PATH" git -C "$GATEREPO" push -q origin HEAD:refs/heads/master \
+  >"$_asg_pf_out" 2>&1 || _asg_pf_rc=$?
+if (( _asg_pf_rc != 0 )); then ok "a grep failing only the ^+ filter refuses the push"
+else no "a grep failing only the ^+ filter published an UNSCANNED range (fail-open)"; fi
+# The ^+ shim hits the LINE COUNT first (the range cap runs before the set is built), so
+# that is the refusal this row must name. Asserting "could not build" here failed against
+# the fixed hook -- the push was refused, by a different guard. A row that names the wrong
+# refusal is the same defect as a row that names none.
+has "the refusal names the uncounted lines" "$_asg_pf_out" "could not count"
+
+# AND THE SECOND PRODUCER, reached only when the count succeeds: a shim rejecting the
+# `^+++` filter leaves the count intact and fails the set construction itself.
+_asg_p3="$TMP/plusplus"; mkdir -p "$_asg_p3"
+cat > "$_asg_p3/grep" <<'SHIM'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in '^+++') printf 'grep: selective failure for the control\n' >&2; exit 2;; esac
+done
+exec /usr/bin/grep "$@"
+SHIM
+chmod 755 "$_asg_p3/grep"
+printf 'harmless\n' > "$GATEREPO/plusplus.txt"
+git -C "$GATEREPO" add plusplus.txt >/dev/null 2>&1
+git -C "$GATEREPO" commit -qm $'pp\n\nDecision-Log: none' >/dev/null 2>&1
+_asg_p3_out="$TMP/plusplus.out"; _asg_p3_rc=0
+PATH="$_asg_p3:$PATH" git -C "$GATEREPO" push -q origin HEAD:refs/heads/master \
+  >"$_asg_p3_out" 2>&1 || _asg_p3_rc=$?
+if (( _asg_p3_rc != 0 )); then ok "a grep failing only the ^+++ filter refuses the push"
+else no "a grep failing only the ^+++ filter published an UNSCANNED range (fail-open)"; fi
+has "the refusal names the unbuilt line set" "$_asg_p3_out" "could not build"
+_asg_p4_rc=0
+git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || _asg_p4_rc=$?
+if (( _asg_p4_rc == 0 )); then ok "the same push succeeds with a working grep (^+++ shim was the cause)"
+else no "the same push still fails with a working grep -- the refusal was not the ^+++ shim"; fi
+_asg_pf2_rc=0
+git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || _asg_pf2_rc=$?
+if (( _asg_pf2_rc == 0 )); then ok "the same push succeeds with a working grep (selective shim was the cause)"
+else no "the same push still fails with a working grep -- the refusal was not the shim"; fi
+
 # A GREP THAT ACCEPTS -P BUT REJECTS THIS PATTERN MUST REFUSE (v16), AND THIS IS THE ROW THE
 # v14 CONTROL COULD NOT HAVE FAILED. Its probe asked `grep -qP x` and stopped there, while
 # the extractor ended in `|| true` -- so a pattern-rejection became an empty match set and

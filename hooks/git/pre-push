@@ -1,5 +1,26 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
+# PREPUSH_VERSION: 17 (2026-09-04) — v16 FIXED THE CONSUMERS AND LEFT THE PRODUCER. The
+# same `|| true` it removed from the three secret-arm stages still stood on the lines that
+# BUILD the scanned set: `added_all` and `added` are `git diff` piped through `grep '^+'`,
+# and a grep that fails there yields an EMPTY SCAN INPUT — every arm then reports clean on
+# a push nobody looked at. The size guard had it too: an errored `grep -c` leaves `total`
+# empty, `${total:-0}` reads 0, and the range cap that exists to refuse a huge push passes.
+#
+# FOUND BY TAKING A PEER'S STRUCTURAL POINT AND TURNING IT ON THIS FILE. r2 hit the same
+# class in its own commit-msg hook: every one of its controls drove the verdict function
+# directly, so none could see a defect in the step that BUILDS the verdict's input. v16's
+# controls have exactly that shape — they shim `grep` and watch the extractor refuse, which
+# says nothing about the two greps upstream of it.
+#
+# ‼ AND THE CONTROL MUST BE SELECTIVE, WHICH IS r2's SECOND FINDING AND THE MORE USEFUL ONE.
+#   A shim that breaks EVERY grep is caught by the v16 extractor check, because that call
+#   fails too — so a blunt instrument reports CLEAN and the defect survives. Only a grep
+#   that fails THIS call and works for the others exposes it. smoke 11e's control therefore
+#   rejects the exact `^+` filter and passes everything else through.
+#
+# Every stage from the diff to the finding now separates grep 1 (no match, benign) from
+# grep >1 (error) and refuses on the second.
 # PREPUSH_VERSION: 16 (2026-09-04) — THE FAIL-CLOSED CLAIM IN v14 WAS FALSE, AND A
 # CROSS-PROVIDER REFUTER FOUND IT IN THE PLACE IT WAS ASKED TO LOOK. Four defects, all
 # reproduced here before being fixed. THE FIRST IS THE ONE THAT MATTERS.
@@ -582,14 +603,29 @@ scan_range() {  # $1 = git rev range or single sha
   # is preserved by COUNTING first and REFUSING, so the operator gets an explicit
   # decision instead of a silent partial scan.
   enumerate_into __diff "the diff for $range" git diff "$range"
-  total="$(printf '%s' "$__diff" | grep -c '^+' || true)"
+  # EXIT STATUS KEPT (v17). grep -c exits 1 for a zero count, >1 for an error; the old
+  # `|| true` made an errored count read as 0, which passes the range cap below.
+  _sgx=0
+  total="$(printf '%s' "$__diff" | grep -c '^+')" || _sgx=$?
+  if (( _sgx > 1 )); then
+    printf 'pre-push: REFUSED — could not count the added lines (grep exit %d); the range cap cannot be applied.\n' "$_sgx" >&2
+    exit 1
+  fi
   if [[ "${total:-0}" -gt "${FLEET_SCAN_MAX_LINES:-50000}" ]]; then
     printf '\n\033[1;31m✗ PUSH BLOCKED — range too large to scan safely: %s added lines\033[0m\n' "$total" >&2
     printf 'The secret scan refuses to SAMPLE. Push in smaller ranges, or set\n' >&2
     printf 'FLEET_SCAN_MAX_LINES=<n> deliberately after checking what is in the diff.\n\n' >&2
     exit 1
   fi
-  added_all="$(printf '%s' "$__diff" | grep '^+' | grep -v '^+++' || true)"
+  # THE SCANNED SET ITSELF (v17). An error here empties the input to every arm below, and
+  # an empty input is what a clean push looks like. pipefail is set, so the status covers
+  # both greps in the pipe.
+  _sgx=0
+  added_all="$(printf '%s' "$__diff" | grep '^+' | grep -v '^+++')" || _sgx=$?
+  if (( _sgx > 1 )); then
+    printf 'pre-push: REFUSED — could not build the scanned line set (grep exit %d); nothing was scanned.\n' "$_sgx" >&2
+    exit 1
+  fi
   # The same, MINUS the vendored synthetic KAT vectors. Those carry test-only 0xAA
   # "secrets" (device_master_secret etc.) that trip the token/secret VALUE patterns on
   # every drift-sync — they are drift-checked test data, not real secrets.
@@ -600,7 +636,12 @@ scan_range() {  # $1 = git rev range or single sha
   #     added under a vectors/ dir still blocks.
   #   · the MAC scan (3) reads $added_all — never excluded; see the note there for why.
   enumerate_into __diff_scannable "scannable added lines for $range" git diff "$range" -- . ':(exclude,glob)**/vectors/**.json' ':(exclude,glob)testing/test-vectors/**.json'
-  added="$(printf '%s' "$__diff_scannable" | grep '^+' | grep -v '^+++' || true)"
+  _sgx=0
+  added="$(printf '%s' "$__diff_scannable" | grep '^+' | grep -v '^+++')" || _sgx=$?
+  if (( _sgx > 1 )); then
+    printf 'pre-push: REFUSED — could not build the secret-VALUE line set (grep exit %d); nothing was scanned.\n' "$_sgx" >&2
+    exit 1
+  fi
   # Tag message folded into BOTH scanned sets, +-prefixed so it reads as added content.
   # Into $added_all as well as $added: the MAC scan reads the unfiltered set, and a bench
   # identifier in a release note is exactly as public as one in a commit.

@@ -7830,3 +7830,50 @@ measured going the wrong way.
 `tests/smoke.sh` 344/344, 24 rows in 11e, six of them new.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260904-155 — v16 fixed the consumers and left the producer, found by turning a peer's structural point on this file
+
+**r2 hit the `|| true` class in its own `commit-msg` hook and reported two things. The second
+one is why this entry exists.** Its thirteen controls all drove the verdict function directly,
+so **none could see a defect in the step that builds the verdict's input** — and that is exactly
+the shape of the controls `D-20260904-154` shipped hours earlier. They shim `grep` and watch the
+*extractor* refuse, which says nothing about the two greps upstream of it.
+
+**Measured here, and the fail-open was real.** `added_all` and `added` — the entire scanned set
+— were `git diff` piped through `grep '^+'` with `|| true`. A grep that fails there yields an
+**empty scan input**, and an empty input is indistinguishable from a clean push: every arm
+reports nothing found. The range cap had it too — an errored `grep -c` leaves `total` empty,
+`${total:-0}` reads 0, and the guard that exists to refuse an unscannably large push passes it.
+
+**v16 fixed the three stages that CONSUME the scanned set and left the two that BUILD it.**
+Fixing a class at the point where it was noticed, rather than everywhere it holds, is the whole
+defect. The three consumer sites were the ones a refuter had named; the producer sites were the
+same code, four lines up, and nothing looked at them.
+
+**And the control has to be selective — r2's finding, and the more useful half.** A shim that
+breaks *every* grep is caught by the v16 extractor check, because that call fails too. **A blunt
+instrument reports CLEAN and the defect survives.** Only a grep that fails *this* call and works
+for the others exposes it. r2 reached this the hard way: its own first reproduction said *safe*.
+
+**Mutation proof, run rather than asserted.** Against the v16 hook **four** of the six new rows
+go RED — both *"published an UNSCANNED range"* rows among them — and the other 346 stay green.
+Against v17 all 350 pass. The old code is on disk during the proof, so this measures the fix
+rather than describing it.
+
+**One of those six rows caught the author out first.** It asserted the wrong refusal: the `^+`
+shim trips the *line count* before the set is ever built, so the push was refused by a different
+guard than the row named, and it failed against the FIXED hook. Naming the wrong refusal is the
+same defect as naming none — it was corrected, and a second selective shim on `^+++` now covers
+the construction path the first row cannot reach.
+
+**The class now has five instances in one day** across two repos and two hooks: the v14 extractor,
+the v16 producers, r2's trailer count, r2's `strip_comments`, and r2's unguarded `mktemp`.
+**Standing line, taken from r2:** *an instrument that fails to build is a FAILURE, never a skip.*
+And its companion, which is this entry's own: **`|| true` on a measuring step converts a broken
+measurement into the benign value, and the benign value is the one nobody investigates.**
+
+`tests/smoke.sh` 350/350, six of them new.
+
+**Decision-Log: this entry.**
