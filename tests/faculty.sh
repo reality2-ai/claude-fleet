@@ -284,6 +284,32 @@ if [[ "$_sha_first" == "true" ]]; then ok "a first Stop marks the lane ready (co
 else no "a first Stop did not mark ready (got '$_sha_first') — the control cannot discriminate"; fi
 if [[ "$_sha_refire" != "true" ]]; then ok "a stop_hook_active re-fire does NOT mark ready (guard runs)"
 else no "a stop_hook_active re-fire still ran the body and marked ready"; fi
+
+# ‼ AND THE RE-FIRE MUST STILL REACH THE DRAIN. The first version of the guard exited
+#   before it, so any lane whose turns end with a BLOCKING Stop hook — a /goal condition —
+#   never drained its inbox at all: eight messages, 1340s stale, on a live lane. This row
+#   asserts the guard is NARROW rather than total, by checking the heartbeat still moves
+#   on a re-fire (the guard runs) while ready does not (the body's turn-end half does not).
+#   A guard that skips everything and a guard that skips the right things print the same
+#   ready value; only the heartbeat separates them.
+_sha_hb() {
+  local id="stophookhb$$" sf
+  rm -f "$CHILDSTATE_DIR/$id.json"
+  printf '{"session_id":"%s","cwd":"%s","stop_hook_active":true}' "$id" "$_sha_ws" \
+    | FLEET_CHILD_ID="$id" FLEET_WORKSPACE="$_sha_ws" WORKSPACE="$_sha_ws" \
+      bash "$ROOT/hooks/on-stop.sh" >/dev/null 2>&1
+  sf="$CHILDSTATE_DIR/$id.json"
+  [[ -f "$sf" ]] && jq -r '.heartbeat // "none"' "$sf" 2>/dev/null || printf 'nostate\n'
+}
+_sha_beat="$(_sha_hb)"
+if [[ "$_sha_beat" =~ ^[0-9]+$ ]]; then ok "a re-fire still runs past the guard (heartbeat written)"
+else no "a re-fire exited before doing anything (heartbeat '$_sha_beat') — the drain is unreachable"; fi
+if grep -q 'STOP_REFIRE == 0' "$ROOT/hooks/on-stop.sh" && \
+   awk '/STOP_REFIRE=1/{g=NR} /fleet_drain_inbox/{d=NR} END{exit !(g && d && d>g)}' "$ROOT/hooks/on-stop.sh"; then
+  ok "the drain sits AFTER the re-fire guard, not behind an early exit"
+else
+  no "the drain is not reachable after the re-fire guard"
+fi
 if declare -F fleet_box_has_stuck_inject >/dev/null 2>&1; then ok "tag-gate fleet_box_has_stuck_inject defined (auto-Enter only on injects, not human text)"; else no "no tag-gate → auto-Enter could submit human typing"; fi
 if declare -f fleet_flush_stuck_box | grep -q "fleet_box_has_stuck_inject"; then ok "flush is tag-gated (never submits human typing)"; else no "flush not tag-gated"; fi
 if declare -f fleet_inject | grep -q 'marker='; then no "old tail-text marker verify still present"; else ok "old tail-text marker verify removed"; fi

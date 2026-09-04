@@ -7918,3 +7918,42 @@ in two places.
 `tests/faculty.sh` 105/105, two of them new.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260905-157 — the re-fire guard skipped the mail drain, and every lane pursuing a goal went deaf
+
+**`D-20260904-156` was right about the hazard and wrong about where to stand.** It made a
+`stop_hook_active` re-fire exit immediately, *before* `fleet_drain_inbox`. Any lane whose
+turns end with a **blocking Stop hook** — a `/goal` condition, most obviously — therefore
+never drained its inbox at all.
+
+**Measured, not inferred:** r2 live and working, **eight undelivered messages, 1340 seconds
+stale**. `fleet doctor` reported it. Nothing else would have — the lane looked healthy, the
+sender saw "queued", and the supervisor read the silence as a busy worker.
+
+**The original reasoning named the wrong culprit.** What it argued against was `/compact`
+keystroked on top of a half-submitted message — a **compaction** hazard, which the drain
+merely shares a pane with. The drain is the one thing on a re-fire that must still happen:
+the model is about to be re-invoked, so text placed in its box is read, and withholding it
+means **a lane pursuing a goal hears from nobody for as long as it pursues it**. The harder
+the lane works, the deafer it gets.
+
+**Narrowed rather than reverted.** A re-fire now skips only the pane-reconfiguring work —
+the stuck-box flush, both compaction paths, the idle notification — and lets the drain run.
+`.ready` is still withheld, because a re-fire means the turn did not end; the **heartbeat**
+is written, which is what separates *ran and skipped the right things* from *did not run*.
+
+**And that distinction is what the new controls assert.** A guard that skips everything and
+a guard that skips the right things print the **same `ready` value**, so a row testing
+`ready` alone cannot tell them apart — which is exactly why the first version's control went
+green over a broken hook. The rows now check the heartbeat moves, and that the drain sits
+after the guard rather than behind an early exit. **Mutation proof: against the previous
+hook both new rows go red (105/2); with the fix, 107/0.**
+
+**The shape, because it is general.** A guard added to stop a side effect being *replayed*
+disabled the side effect that was *load-bearing*, and the loss was invisible from both ends:
+the sender's mail queued successfully, the recipient never knew a message existed. **An
+outage with no error on either side is found by a denominator check or not at all.**
+
+**Decision-Log: this entry.**

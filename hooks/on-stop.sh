@@ -25,12 +25,33 @@ source "$TOOL_ROOT/lib/comms.sh" 2>/dev/null || exit 0
 # state it wrote is still current, and the next genuine turn boundary fires again.
 # `.ready` is deliberately NOT set here either — a re-fire means the turn did not
 # end, and reporting ready would be a false statement about this lane.
+# ‼ AMENDED SAME DAY, AND THE FIRST VERSION OF THIS GUARD BROKE MAIL DELIVERY FLEET-WIDE.
+#   It exited here, BEFORE the drain — so any lane whose turns end with a BLOCKING Stop
+#   hook (a `/goal` condition, most obviously) never drained its inbox at all. Measured on
+#   r2: eight undelivered messages, 1340 seconds stale, while the lane was live and
+#   working. `fleet doctor` reported it; nothing else would have.
+#
+#   THE ORIGINAL REASONING NAMED THE WRONG CULPRIT. What it argued against was `/compact`
+#   keystroked on top of a half-submitted message — a COMPACTION hazard, which the drain
+#   merely shares a pane with. The drain itself is the one thing on a re-fire that must
+#   still happen: the model IS about to be re-invoked, so text placed in its box is read,
+#   and withholding it means a lane pursuing a goal never hears anything from anybody.
+#
+#   So the guard is NARROWED to what it was always for: on a re-fire, skip the
+#   PANE-RECONFIGURING work — the stuck-box flush, both compaction paths, and the idle
+#   notification — and let the drain run. `.ready` is still NOT set, because a re-fire
+#   means the turn did not end and reporting ready would be a false statement.
+STOP_REFIRE=0
 if [[ "$(hjq '.stop_hook_active')" == "true" ]]; then
-  fleet_journal_append "$CHILD_ID" "stop re-fire (stop_hook_active) — no-op" 2>/dev/null || true
-  exit 0
+  STOP_REFIRE=1
+  fleet_journal_append "$CHILD_ID" "stop re-fire (stop_hook_active) — drain only" 2>/dev/null || true
 fi
 
-fleet_state_jq "$CHILD_ID" --argjson now "$NOW" '.ready=true | .heartbeat=$now' >/dev/null 2>&1 || true
+if (( STOP_REFIRE == 0 )); then
+  fleet_state_jq "$CHILD_ID" --argjson now "$NOW" '.ready=true | .heartbeat=$now' >/dev/null 2>&1 || true
+else
+  fleet_state_jq "$CHILD_ID" --argjson now "$NOW" '.heartbeat=$now' >/dev/null 2>&1 || true
+fi
 # Optional ground-truth liveness journal (no-op unless FLEET_JOURNAL is set).
 fleet_journal_append "$CHILD_ID" "stop turn" 2>/dev/null || true
 
@@ -44,7 +65,7 @@ _inbox="$(fleet_inbox_file "$CHILD_ID" 2>/dev/null)" || _inbox=""
 # Now that it's at its prompt, submit that stuck message before draining new mail. MANAGED
 # workers only (never auto-submit the human's ad-hoc lane).
 # shellcheck disable=SC2015  # best-effort chain; the trailing `|| true` is the intended fallback
-[[ "$MANAGED" == true ]] && { fleet_flush_stuck_box "$CHILD_ID" >/dev/null 2>&1 && sleep 0.3 || true; }
+[[ "$MANAGED" == true && "$STOP_REFIRE" == 0 ]] && { fleet_flush_stuck_box "$CHILD_ID" >/dev/null 2>&1 && sleep 0.3 || true; }
 
 # HARD CEILING — the only compaction that runs while mail is waiting.
 #
@@ -65,7 +86,7 @@ _hard_pct="${FLEET_COMPACT_HARD_PCT:-85}"
 [[ "$_hard_pct" =~ ^[0-9]+$ ]] || _hard_pct=0
 case " ${FLEET_COMPACT_SKIP:-} " in *" $CHILD_ID "*) _hard_pct=0 ;; esac
 _hard_fired=0
-if [[ "$MANAGED" == true ]] && (( _hard_pct > 0 )); then
+if [[ "$MANAGED" == true ]] && (( _hard_pct > 0 && STOP_REFIRE == 0 )); then
   _hctx="$(fleet_ctx_tokens "$CHILD_ID" 2>/dev/null || echo 0)"; [[ "$_hctx" =~ ^[0-9]+$ ]] || _hctx=0
   _hceil="${FLEET_CTX_CEILING:-1000000}"
   if (( _hctx > 0 && _hctx * 100 >= _hceil * _hard_pct )); then
@@ -95,7 +116,7 @@ if [[ -e "${FLEET_WORKSPACE:-.}/.fleet/no-idle-notify" ]]; then
 else
   _idle_notify="${FLEET_IDLE_NOTIFY:-on}"
 fi
-if [[ "$_idle_notify" != "off" && "$MANAGED" == true ]]; then
+if [[ "$_idle_notify" != "off" && "$MANAGED" == true && "$STOP_REFIRE" == 0 ]]; then
   _coord="${FLEET_IDLE_NOTIFY_TO:-supervisor}"
   if [[ "$CHILD_ID" != "$_coord" && "${_pending:-0}" -eq 0 ]]; then
     # BACKGROUND it (`&`) + disown: fleet_notify injects into the coordinator's tmux pane, which
@@ -130,7 +151,7 @@ _compact_pct="${FLEET_COMPACT_AT_PCT:-70}"; _compact_every="${FLEET_COMPACT_EVER
 case " ${FLEET_COMPACT_SKIP:-} " in *" $CHILD_ID "*) _compact_pct=0; _compact_every=0 ;; esac
 # `_hard_fired` excluded: a compaction is already in flight, and a second `/compact`
 # keystroked behind it lands in whatever pane state the first one left.
-if [[ "$MANAGED" == true && "${_pending:-0}" -eq 0 ]] && (( _hard_fired == 0 )) && (( _compact_pct > 0 || _compact_every > 0 )); then
+if [[ "$MANAGED" == true && "${_pending:-0}" -eq 0 ]] && (( _hard_fired == 0 && STOP_REFIRE == 0 )) && (( _compact_pct > 0 || _compact_every > 0 )); then
   _turns="$(fleet_state_get "$CHILD_ID" '.turns_since_compact' 0 2>/dev/null)"
   [[ "$_turns" =~ ^[0-9]+$ ]] || _turns=0
   _turns=$(( _turns + 1 ))
