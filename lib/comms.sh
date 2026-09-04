@@ -474,8 +474,24 @@ _fleet_drain_restore() {
 #   fleet_drain_inbox <to> [force]
 fleet_drain_inbox() {
   local to="$1" force="${2:-}" f
-  f="$(fleet_inbox_file "$to")" || return 0
-  [[ -f "$f" ]] || return 0
+  # ‼ AN UNKNOWN LANE IS NOT AN EMPTY QUEUE, AND THESE TWO LINES USED TO SAY IT WAS.
+  #   Both returned 0 — the SAME rc a real successful drain returns — whenever no
+  #   mailbox existed for "$to", so `fleet_drain_inbox <typo> force` and
+  #   `fleet_drain_inbox <live lane holding mail> force` were indistinguishable to
+  #   the caller. Measured 2026-09-05: a supervisor polling loop ran this 40 times
+  #   with the WRONG WORKSPACE CWD, so fleet_load_paths resolved a different
+  #   workspace, no member was found, rc was 0 every time — and that success was
+  #   read as "the recipient is busy". Two messages sat undelivered for 26 minutes
+  #   while the instrument reported success on every poll.
+  #   This is the rule the REST of this function already states at four sites —
+  #   "a failure is NEVER read as an empty queue", "no data-loss-as-success" —
+  #   applied to the one branch that predates them.
+  #   rc 3 = there is no mailbox for this id. rc 0 continues to mean a drain ran.
+  #   Safe for every caller: comms.sh and on-stop.sh both `|| true` it, and
+  #   faculty_deliver reads any nonzero as "keep it queued", which is exactly the
+  #   outcome they already take for an offline lane.
+  f="$(fleet_inbox_file "$to")" || return 3
+  [[ -f "$f" ]] || return 3
   # claude-bg workers are driven by their own controller (programmatic -p turns); the
   # cli-tmux drain must NOT type into the controller's bash window. Leave mail for it.
   [[ "$(fleet_state_get "$to" '.faculty' '')" == "claude-bg" ]] && return 1

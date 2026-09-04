@@ -7957,3 +7957,46 @@ the sender's mail queued successfully, the recipient never knew a message existe
 outage with no error on either side is found by a denominator check or not at all.**
 
 **Decision-Log: this entry.**
+
+## D-20260905-158 — the drain returned success for a mailbox that does not exist, and a polling loop read that as the recipient being busy
+
+**`fleet_drain_inbox` opened with two lines that returned `0`** whenever no mailbox existed
+for `$to` — `fleet_inbox_file` failing on an invalid id, and the inbox file being absent.
+That is the **same rc a real, successful drain returns**, so `fleet_drain_inbox <typo>` and
+`fleet_drain_inbox <live lane holding mail>` were indistinguishable to every caller.
+
+**Measured, not inferred.** The supervisor polled `fleet_drain_inbox r2 force` forty times
+over ten minutes from the **wrong workspace cwd**. `fleet_load_paths` resolved a different
+workspace, no member matched, and the call returned `0` on every attempt. That success was
+read as *the recipient is busy* — a conclusion the instrument could not have supported and
+could not have contradicted. **Two supervisor messages sat undelivered for 26 minutes while
+every poll reported success**, and one drain from the correct cwd delivered both instantly.
+`fleet doctor` had been flagging `undelivered mail 732s old` the whole time; the polling
+loop was trusted over the checker that was right.
+
+**The rule was already written in this function, four times over.** Its own comments say *a
+failure is NEVER read as an empty queue* and *no data-loss-as-success*, and every branch
+below the opening — symlinked inbox, snapshot-grab failure, malformed JSON — fails closed
+and says why. The two lines that predate that rule were never brought to it. `bin/fleet`
+learned the same lesson at the neighbouring call site on 2026-07-19 and wrote it down —
+*"queued" was never evidence of delivery* — for `fleet send` only.
+
+**`rc 3` now means there is no mailbox for this id; `rc 0` still means a drain ran.** Safe
+for every caller by inspection: `comms.sh:77` and `hooks/on-stop.sh:101` both `|| true` it,
+and `faculty_deliver` reads any nonzero as *keep it queued* — the outcome those callers
+already take for an offline lane. `bin/fleet` rejects an unknown recipient before this point.
+
+**Mutation proof, because a refusal shipped without one is the shape this fleet keeps
+paying for.** Four rows added at `tests/robustness.sh` section `(c'')`. Reverting the two
+lines to `return 0` turns **both new assertions red** while **both control rows stay green**
+— a real lane holding mail still returns `0` *and* its mail is actually delivered — so the
+rows cannot pass on a function that returns `3` for everything. `robustness 43/0`,
+`smoke 350/0`, `faculty 107/0`.
+
+**The shape, because it is general and it is the third instance this week.** A probe whose
+failure mode is the benign value cannot falsify anything: it answers the same way when it
+is working, when it is aimed at nothing, and when the thing it measures is absent. **Ask of
+any repeated check what result would make it stop, and whether the command can produce
+that result at all.** Forty identical successes are one measurement, not forty.
+
+**Decision-Log: this entry.**

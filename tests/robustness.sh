@@ -277,6 +277,28 @@ eq "(c) partial: consumed line marked delivered" "$da" "true"
 eq "(c) partial: failed line stays undelivered" "$db" "false"
 
 # =====================================================================
+section "(c'') an unknown lane is not an empty queue"
+# ‼ THE DRAIN RETURNED 0 FOR A MAILBOX THAT DOES NOT EXIST — the same rc a real
+#   successful drain returns. Measured 2026-09-05: a supervisor polling loop ran
+#   the drain 40 times from the wrong workspace cwd, matched no member, got rc=0
+#   every time, and read that success as "the recipient is busy". Two messages sat
+#   undelivered for 26 minutes while the instrument reported success on every poll.
+#   The rest of fleet_drain_inbox already refuses to read a failure as an empty
+#   queue at four sites; these two opening lines predated that rule.
+run_lib 'fleet_drain_inbox definitely-no-such-lane force' >/dev/null 2>&1; rcu=$?
+eq "(c'') drain of an absent mailbox returns 3, not 0" "$rcu" "3"
+run_lib 'fleet_drain_inbox "../evil" force' >/dev/null 2>&1; rcb=$?
+eq "(c'') drain of an invalid member id returns 3, not 0" "$rcb" "3"
+# POSITIVE CONTROL — without it the rows above pass on a function that returns 3
+# for everything, which is the failure mode they exist to catch.
+jq -nc --argjson ts "$(date +%s)" '{ts:$ts,from:"supervisor",to:"alpha",text:"ctrl-line",hops:1,kind:"fyi",delivered:false}' > "$WS/.fleet/inbox/alpha.jsonl"
+jq '.inject_failures=0' "$WS/.fleet/state/alpha.json" > "$WS/.fleet/state/alpha.json.t" && mv "$WS/.fleet/state/alpha.json.t" "$WS/.fleet/state/alpha.json"
+run_lib 'fleet_inject() { return 0; }; fleet_drain_inbox alpha' >/dev/null 2>&1; rcok=$?
+eq "(c'') control: a real lane holding mail still returns 0" "$rcok" "0"
+undel3="$(jq -s '[.[]|select(.delivered==false)]|length' "$WS/.fleet/inbox/alpha.jsonl")"
+eq "(c'') control: and the mail was actually delivered" "$undel3" "0"
+
+# =====================================================================
 section "(c') real fleet_inject returns non-zero when verify exhausts"
 # Sanity that the verify loop now returns 1 (not the old optimistic 0) when it
 # can never confirm submission. FLEET_INJECT_VERIFY stays on; we point at a
