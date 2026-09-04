@@ -975,7 +975,7 @@ if (( _gate_cnt_rc == 0 )); then ok "a known-size commit publishes"; else no "a 
 _gate_lines="$(sed -n 's/.*secret scan: [0-9]* files, \([0-9]*\) added lines.*/\1/p' "$_gate_cnt_out" | tail -1)"
 if [ "${_gate_lines:-x}" = "3" ]; then ok "denominator counts exactly the added lines (3)"; else no "denominator inaccurate (expected 3, got '${_gate_lines:-none}')"; fi
 
-# --- 11e. pre-push assignment arm (v14 pattern, v15 KAT filter) ----------------------------------------
+# --- 11e. pre-push assignment arm (v16) ----------------------------------------
 # The arm this covers had scanned 2813 commits of r2-standard and caught ZERO real secrets
 # while missing AWS_SECRET_ACCESS_KEY= and a value this fleet had already scrubbed. Both
 # corpora are driven through a REAL `git push` against the same throwaway remote as 11b,
@@ -984,21 +984,33 @@ if [ "${_gate_lines:-x}" = "3" ]; then ok "denominator counts exactly the added 
 # THE POSITIVE FIXTURES ARE ASSEMBLED AT RUNTIME, never written as literals — the same rule
 # section 11b learned the hard way. A file spelling out a matching value makes THIS FILE
 # unpushable by the very gate it tests.
-section "11e. pre-push assignment arm (v14 pattern, v15 KAT filter)"
+section "11e. pre-push assignment arm (v16)"
 
 # $1=desc $2=content $3=block|pass
+#
+# ‼ A NON-ZERO PUSH IS NOT EVIDENCE THIS HOOK REFUSED (fixed 2026-09-04 after a
+#   cross-provider refuter found it). The old form asserted only `rc != 0` and then reset
+#   HEAD after every expected block. Against a hook that does NOT block, the first fixture
+#   PUBLISHES, the reset leaves the local branch BEHIND the remote, and every later row is
+#   "blocked" by a non-fast-forward — so the whole section goes green against a broken
+#   gate. Two changes: the block rows assert THIS HOOK's refusal text, and the repository
+#   is resynchronised to the remote instead of blindly rewound, which is correct whether
+#   the push was refused or published and needs no force.
 _asg_case() {
-  local rc=0
+  local rc=0 out
   printf '%s\n' "$2" > "$GATEREPO/asg.txt"
   git -C "$GATEREPO" add asg.txt >/dev/null 2>&1
   git -C "$GATEREPO" commit -qm $'asg\n\nDecision-Log: none' >/dev/null 2>&1
-  git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || rc=$?
+  out="$(git -C "$GATEREPO" push origin HEAD:refs/heads/master 2>&1)" || rc=$?
   if [ "$3" = block ]; then
-    if [ "$rc" -ne 0 ]; then ok "$1"; else no "$1"; fi
-    git -C "$GATEREPO" reset -q --hard HEAD~1
+    if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -qF 'hardcoded secret/token/password assignment'
+    then ok "$1"
+    else no "$1 (rc=$rc; refusal text absent — a non-zero push is not proof this hook refused)"; fi
   else
     if [ "$rc" -eq 0 ]; then ok "$1"; else no "$1"; fi
   fi
+  git -C "$GATEREPO" fetch -q origin >/dev/null 2>&1
+  git -C "$GATEREPO" reset -q --hard origin/master >/dev/null 2>&1
 }
 
 # COLLISIONS — every one of these was a live match under v13 or under a naive widening, and
@@ -1062,6 +1074,47 @@ _asg_case "an ARBITRARY hex run of the same length still BLOCKS" \
           "$(printf 'key = %s' "$(printf 'a1b2c3d4e5f60718293a4b5c6d7e8f90%.0s' 1 2)")" block
 _asg_case "an ascending run with ONE byte out of place still BLOCKS" \
           "$(printf 'key = %sff' "$_kat")" block
+
+# TAB-SEPARATED ASSIGNMENT (v16). The separator accepted a literal space only, so this
+# exact shape was missed -- measured, not hypothesised.
+_asg_case "a TAB-separated secret assignment BLOCKS" \
+          "$(printf 'AWS_SECRET_ACCESS_KEY\t=\t%s/%s%s' "$_r1" "$_r2" "$_r3")" block
+# THE KAT EXEMPTION MUST REQUIRE THE WHOLE VALUE (v16). v15's comment claimed this and its
+# code did not: it trimmed every non-alphanumeric from both ends first, so an ascending run
+# wrapped in slashes was excused. A value that merely CONTAINS the sequence must still block.
+_asg_case "a slash-wrapped ascending run still BLOCKS" \
+          "$(printf 'key = /%s/' "$_kat")" block
+_asg_case "a QUOTED ascending run is still excused" \
+          "$(printf 'key = "%s"' "$_kat")" pass
+
+# A GREP THAT ACCEPTS -P BUT REJECTS THIS PATTERN MUST REFUSE (v16), AND THIS IS THE ROW THE
+# v14 CONTROL COULD NOT HAVE FAILED. Its probe asked `grep -qP x` and stopped there, while
+# the extractor ended in `|| true` -- so a pattern-rejection became an empty match set and
+# read as a clean push. The shim below passes the probe and fails the real call.
+_asg_badp="$TMP/badpcre"; mkdir -p "$_asg_badp"
+cat > "$_asg_badp/grep" <<'SHIM'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in *'(?i:'*) printf 'grep: unsupported PCRE construct
+' >&2; exit 2;; esac
+done
+exec /usr/bin/grep "$@"
+SHIM
+chmod 755 "$_asg_badp/grep"
+printf 'harmless
+' > "$GATEREPO/badp.txt"
+git -C "$GATEREPO" add badp.txt >/dev/null 2>&1
+git -C "$GATEREPO" commit -qm $'badp\n\nDecision-Log: none' >/dev/null 2>&1
+_asg_bp_out="$TMP/badpcre.out"; _asg_bp_rc=0
+PATH="$_asg_badp:$PATH" git -C "$GATEREPO" push -q origin HEAD:refs/heads/master \
+  >"$_asg_bp_out" 2>&1 || _asg_bp_rc=$?
+if (( _asg_bp_rc != 0 )); then ok "a grep that rejects the PATTERN refuses the push"
+else no "a grep that rejects the pattern published UNSCANNED (fail-open)"; fi
+has "the extractor refusal names the failure" "$_asg_bp_out" "extractor FAILED"
+_asg_bp2_rc=0
+git -C "$GATEREPO" push -q origin HEAD:refs/heads/master >/dev/null 2>&1 || _asg_bp2_rc=$?
+if (( _asg_bp2_rc == 0 )); then ok "the same push succeeds with a working grep (shim was the cause)"
+else no "the same push still fails with a working grep -- the refusal was not the shim"; fi
 
 # PCRE ABSENT MUST REFUSE THE PUSH, NOT PASS IT UNSCANNED. This is the control the whole
 # change turns on: `grep -qP` on a grep without PCRE exits non-zero, which is the SAME exit

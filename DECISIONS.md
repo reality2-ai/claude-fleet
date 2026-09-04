@@ -7772,3 +7772,61 @@ its corpus carried a hyphen. Same shape as the PCRE probe it had already caught 
 `tests/smoke.sh` 338/338, five of them new. Installed and digest-verified in both repos.
 
 **Decision-Log: this entry.**
+
+---
+
+## D-20260904-154 — the fail-closed claim was false, and the refuter found it in the place it was asked to look
+
+**A cross-provider refuter (`fleet-hook-refute`, codex) was given five claims to attack and
+broke four.** Three were reproduced here independently before anything was changed. This
+entry records the defects, because the shape of each is worth more than the patch.
+
+**1. The probe tested the wrong thing (high).** v14 asked `grep -qP x`, called PCRE proven,
+and the extractor ended in `|| true`. The real dependency is not *does `-P` exist* but *does
+this grep accept this pattern* — and `|| true` converts a pattern-rejection into an empty
+result, which is precisely what the scan reads as **no finding**. Measured with a grep that
+accepts `-P` and rejects `(?i:`: **the probe passed and a real secret produced an empty match
+set.** A push would have published unscanned under a version note claiming the scan fails
+closed. **A capability probe cannot cover a per-pattern failure; only the actual call's exit
+status can.** Every stage of the arm now separates *no match* (grep 1) from *error* (grep >1,
+awk non-zero) and refuses on the second.
+
+**2. The controls could false-green (high).** `smoke.sh` 11e asserted only a non-zero push and
+rewound `HEAD` after every expected block. Against a hook that does **not** block, the first
+fixture publishes, the rewind leaves the branch behind the remote, and every later row is
+"blocked" by a non-fast-forward — **the section goes green against a broken gate**. This was
+seen in this session before the refuter named it, when one wrong fixture published and the two
+rows after it failed as non-fast-forwards in an unrelated arm; it was read as a bad fixture
+and not as a defect in the harness. Rows now assert the hook's own refusal text, and the
+repository resynchronises to the remote — correct whether the push was refused or published,
+and needing no force.
+
+**3. The separator accepted a literal space only (medium).** `KEY<TAB>=<TAB>value` was missed,
+measured. Now `\h` rather than `\s`: `\s` includes a newline and this arm runs `-o` over a
+multi-line added-set, so a match could otherwise span two lines.
+
+**4. The v15 comment claimed what its code did not (medium).** It said the ascending-run
+exemption required *the whole value*; the code trimmed every non-alphanumeric from both ends
+first, so a slash-wrapped run was excused and a value merely **containing** the sequence could
+be waved through. Only characters outside the value charset are trimmed now. **The comment was
+as much the defect as the code** — it is what a later reader would have checked against.
+
+**The one that generalises.** Findings 1 and 4 are the same error in two materials: a stated
+guarantee that nothing measured. In 1 the sentence was in a version note and the code passed
+the input through; in 4 the sentence was three lines above the code that contradicted it. Both
+survived review because **the claim was legible and the gap was not.**
+
+**And the reviewer could not report.** The refuter's sandbox refused the fleet inbox write, so
+it held four findings for seven hours while showing `idle` with no output. **A reviewer that
+cannot deliver is indistinguishable from a reviewer that found nothing** — the same shape as
+the defect it was reporting, one layer out. Tracked separately; it is a fleet-transport defect,
+not a hook defect.
+
+Mutation evidence for the three new arms is the pre-fix measurement rather than a post-fix
+re-run: under v15 the pattern-rejecting grep produced an empty match set, the tab form matched
+zero times, and the slash-wrapped run was excused. Each new row asserts the behaviour that was
+measured going the wrong way.
+
+`tests/smoke.sh` 344/344, 24 rows in 11e, six of them new.
+
+**Decision-Log: this entry.**

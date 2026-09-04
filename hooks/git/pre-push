@@ -1,5 +1,40 @@
 #!/usr/bin/env bash
 # pre-push secret-scan — blocks a push whose newly-pushed commits add a secret.
+# PREPUSH_VERSION: 16 (2026-09-04) — THE FAIL-CLOSED CLAIM IN v14 WAS FALSE, AND A
+# CROSS-PROVIDER REFUTER FOUND IT IN THE PLACE IT WAS ASKED TO LOOK. Four defects, all
+# reproduced here before being fixed. THE FIRST IS THE ONE THAT MATTERS.
+#
+# 1. THE PROBE TESTED THE WRONG THING. v14 asked `grep -qP x` and called PCRE proven. The
+#    real dependency is not "does -P exist", it is "does THIS grep accept THIS pattern" —
+#    and the extractor ended in `|| true`, which converts a pattern-rejection into an EMPTY
+#    RESULT, which is exactly what this scan reads as NO FINDING. MEASURED with a grep that
+#    accepts -P and rejects `(?i:`: the probe PASSED and a real secret produced an empty
+#    match set. A push would have published unscanned, under a version note claiming the
+#    scan fails closed. THE FIX IS NOT A BETTER PROBE — it is to stop discarding the exit
+#    status. Every stage of this arm now distinguishes NO MATCH (grep 1, benign) from ERROR
+#    (grep >1, awk non-zero) and REFUSES on the second. A capability probe cannot cover a
+#    per-pattern failure; only the actual call's status can.
+#
+# 2. THE SEPARATOR ACCEPTED A LITERAL SPACE ONLY. `KEY<TAB>=<TAB>value` was missed, measured.
+#    Now `\h` (horizontal whitespace), not `\s` — `\s` includes a newline and this arm runs
+#    over a multi-line added-set with `-o`, so a match could otherwise span two lines.
+#
+# 3. THE v15 KAT FILTER DID NOT REQUIRE WHAT ITS OWN COMMENT CLAIMED. That comment said
+#    "the whole value"; the code stripped every non-alphanumeric from both ends first, so a
+#    slash-wrapped ascending run was excused — a real value that merely CONTAINS an ascending
+#    run could be waved through. Now only characters OUTSIDE the value charset are trimmed
+#    (quotes, whitespace), so anything carrying a `/`, `+` or `=` is no longer bare hex and
+#    is not excused. The comment was the defect as much as the code was.
+#
+# 4. THE CONTROLS COULD FALSE-GREEN. See tests/smoke.sh 11e: the block rows asserted only a
+#    non-zero push, and a reset after an unexpected publish left the local branch behind the
+#    remote, so every later row was "blocked" by a non-fast-forward rather than by this hook.
+#    The rows now assert THIS HOOK'S refusal text and resynchronise instead of cascading.
+#
+# The refuter could not deliver any of this through fleet mail — its sandbox refused the
+# inbox write — and sat for seven hours looking idle with no output. A reviewer that cannot
+# report is indistinguishable from a reviewer that found nothing, which is the same shape as
+# the defect it was reporting.
 # PREPUSH_VERSION: 15 (2026-09-04) — A STRICTLY ASCENDING HEX BYTE RUN IS A TEST VECTOR,
 # NOT A KEY. v14 left one collision deliberately: r2-standard
 # `vectors/TEST-VECTORS-FORMATS.md`, an ascending 32-byte run under a `key` name, on the
@@ -646,7 +681,7 @@ scan_range() {  # $1 = git rev range or single sha
     exit 1
   fi
   _sv='[A-Za-z0-9_\-\/+=]'
-  _spre='["'"'"' ]*[:=]["'"'"' ]*'
+  _spre='["'"'"'\h]*[:=]["'"'"'\h]*'
   _sold='secret|token|passwd|password|client_secret|(?:[_\-]|\b)api[_\-]?key'
   _snew='(?:[_\-]|\b)key'
   _stail="${_sv}{16,}(?!${_sv})(?!\s*[({])(?!::)"
@@ -654,21 +689,41 @@ scan_range() {  # $1 = git rev range or single sha
   _squoted='(?<=["'"'"'])'
   _smat="(?=${_sv}{0,120}?[0-9])(?=${_sv}{0,120}?[A-Za-z])"
   _spat="(?:((?i:${_sold}|bearer)${_spre})(?:${_squoted}|${_scamel})|((?i:${_snew})${_spre}|\b(?i:bearer)\s+)${_scamel}${_smat})${_stail}"
-  assignments="$(grep -oP -- "$_spat" <<<"$added" || true)"
-  assignments="$(grep -viE '[:=]["'"'"' ]*(R2-(SCRUBBED|REDACTED|PLACEHOLDER)-[A-Z0-9_-]+|UjItU0NSVUJCRUQt[A-Za-z0-9_-]*)$' <<<"$assignments" || true)"
+  # EXIT STATUS IS NOT DISCARDED (v16). grep 0 = matched, 1 = no match, >1 = ERROR. The
+  # old `|| true` collapsed all three into "no finding", so a pattern this grep cannot
+  # compile read as a clean push. Each stage below refuses on error and only on error.
+  _srx=0
+  assignments="$(grep -oP -- "$_spat" <<<"$added")" || _srx=$?
+  if (( _srx > 1 )); then
+    printf 'pre-push: REFUSED — the secret-assignment extractor FAILED (grep exit %d).\n' "$_srx" >&2
+    printf '          This grep accepts -P but could not run the pattern, so nothing was\n' >&2
+    printf '          scanned. An unscanned push is refused, never passed.\n' >&2
+    exit 1
+  fi
+  _srx=0
+  assignments="$(grep -viE '[:=]["'"'"'\t ]*(R2-(SCRUBBED|REDACTED|PLACEHOLDER)-[A-Z0-9_-]+|UjItU0NSVUJCRUQt[A-Za-z0-9_-]*)$' <<<"$assignments")" || _srx=$?
+  if (( _srx > 1 )); then
+    printf 'pre-push: REFUSED — the scrub-marker filter FAILED (grep exit %d); nothing scanned.\n' "$_srx" >&2
+    exit 1
+  fi
   # KNOWN-ANSWER TEST VECTORS (v15). A strictly ascending hex byte run — each byte exactly
   # one more than the last, and the whole value — is the canonical KAT shape and cannot be
   # a real key. This REMOVES a match the pattern already made and never adds one. The value
   # is isolated without any quote literal in the awk program (strip to the first separator,
-  # then trim trailing non-alphanumerics), because quoting a quote through two shells is
-  # how this kind of filter silently stops matching anything at all.
+  # then trim only characters OUTSIDE the value charset), because quoting a quote through
+  # two shells is how this kind of filter silently stops matching anything at all.
+  _srx=0
   assignments="$(awk '
     function hexval(c,  p) { p = index("0123456789abcdef", tolower(c)); return p - 1 }
     {
       v = $0
-      sub(/^[^:=]*[:=][ ]*/, "", v)
-      gsub(/^[^0-9A-Za-z]+/, "", v)
-      gsub(/[^0-9A-Za-z]+$/, "", v)
+      sub(/^[^:=]*[:=][ \t]*/, "", v)
+      # TRIM ONLY WHAT IS NOT PART OF A VALUE (v16): quotes and whitespace. Stripping
+      # every non-alphanumeric excused a slash-wrapped ascending run, so a value merely
+      # CONTAINING the sequence was waved through. A value keeping a / + or = is no longer
+      # bare hex and is not excused.
+      gsub(/^[^0-9A-Za-z\/+=_-]+/, "", v)
+      gsub(/[^0-9A-Za-z\/+=_-]+$/, "", v)
       keep = 1
       if (length(v) >= 16 && length(v) % 2 == 0 && tolower(v) ~ /^[0-9a-f]+$/) {
         asc = 1; prev = -1
@@ -680,7 +735,12 @@ scan_range() {  # $1 = git rev range or single sha
         if (asc) keep = 0
       }
       if (keep) print
-    }' <<<"$assignments" || true)"
+    }' <<<"$assignments")" || _srx=$?
+  if (( _srx != 0 )); then
+    printf 'pre-push: REFUSED — the known-answer-vector filter FAILED (awk exit %d).\n' "$_srx" >&2
+    printf '          A filter that cannot run must not be read as "nothing to exclude".\n' >&2
+    exit 1
+  fi
   [[ -n "$assignments" ]] && findings+="  • a hardcoded secret/token/password assignment\n"
 
   # 3) MAC-shaped VALUES in added content.
