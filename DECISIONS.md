@@ -8075,3 +8075,45 @@ controls stay green**, so the rows cannot pass by reporting everything.
 `robustness 56/0` (6 new rows), `smoke 350/0`, `faculty 107/0`.
 
 **Decision-Log: this entry.**
+
+## D-20260906-161 — the Stop hook no longer delivers, and an absent courier became a failure in the same change
+
+**The drain is out of `hooks/on-stop.sh`.** That line made delivery the recipient's
+job: a lane whose hooks are absent was undeliverable-to while every health signal read
+normal (`r2`, 2026-09-05: heartbeat 4s fresh, `last_drain_attempt` 2,898s stale, mail
+queued behind it), and a read-only reviewer could never receive at all, because draining
+is a write and its sandbox returns `EROFS`.
+
+**What moved is the RETRY, not the delivery.** `comms.sh:77` still drains on the send
+path, so a message to a lane that is ready still lands immediately. What needed somebody
+always running was the second attempt — and the recipient is precisely the party that
+cannot be relied on to make it.
+
+**THE TWO HALVES OF THIS ENTRY ARE ONE CHANGE AND MUST NEVER BE SEPARATED.** While the
+hook drained, a missing courier only made mail slower, and `D-160` deliberately treated
+its absence as benign so the row would not train readers to ignore it. **The moment the
+hook stopped draining, absence became fleet-wide silence** — one failed send and the
+message queues forever. `fleet doctor` therefore now reports a missing courier as a
+problem, naming the command that fixes it. Dropping the hook drain while absence stayed
+benign would have shipped exactly the silent-outage shape the courier was built to
+remove.
+
+**Both test assertions inverted with the behaviour, rather than being deleted.**
+`faculty.sh` used to assert the drain sat after the re-fire guard; it now asserts the
+hook does **not** drain, because a hook that still drains is a second delivery owner —
+the multi-writer premise this work exists to end. `robustness.sh` used to assert an
+absent courier is silent; it now asserts the opposite, with a companion row that the
+report says how to fix it.
+
+**Mutation proof, both directions.** Restoring the drain line turns the faculty row red;
+deleting the courier heartbeat turns four robustness rows red while both controls stay
+green.
+
+**Measured during the change, and worth recording:** the courier is a single point of
+failure and it died silently when its host task was killed — 45 minutes with no delivery
+owner. Nothing was queued, so nothing was lost, but nobody ran `doctor` either. A courier
+belongs under supervision, not in a session's background task; that is the next step.
+
+`robustness 57/0`, `faculty 108/0`, `smoke 350/0`.
+
+**Decision-Log: this entry.**

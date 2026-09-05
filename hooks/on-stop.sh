@@ -98,7 +98,19 @@ if [[ "$MANAGED" == true ]] && (( _hard_pct > 0 && STOP_REFIRE == 0 )); then
   fi
 fi
 
-(( _hard_fired == 1 )) || fleet_drain_inbox "$CHILD_ID" force >/dev/null 2>&1 || true
+# ‼ THE HOOK NO LONGER DELIVERS — `fleet courier` DOES (`D-159`, `D-161`).
+#   This line made DELIVERY THE RECIPIENT'S JOB: a lane whose hooks are absent was
+#   undeliverable-to while every health signal read normal (r2, 2026-09-05:
+#   heartbeat 4s fresh, last_drain_attempt 2898s stale, mail queued behind it), and
+#   a read-only reviewer could never receive at all because draining is a write.
+#   The send path still attempts immediate delivery (`comms.sh:77`); what moved to
+#   the courier is the RETRY, which is the half that needed somebody always running.
+#
+# ‼‼ AND THIS TRADE IS ONLY SAFE BECAUSE `fleet doctor` NOW TREATS AN ABSENT
+#    COURIER AS A FAILURE. Before this line went, no courier meant slower mail;
+#    after it, no courier means NO retries fleet-wide. The two changes are one
+#    change and must never be separated — dropping this drain while absence is
+#    still benign is a silent fleet-wide outage waiting for the first failed send.
 
 # Event-driven idle signal (default ON): a MANAGED worker that returned to its prompt
 # with NOTHING queued is about to sit idle — proactively tell the supervisor so it can

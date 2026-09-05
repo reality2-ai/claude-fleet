@@ -357,9 +357,14 @@ jq '.ts = (.ts - 500)' "$CJ" > "$CJ.t" && mv "$CJ.t" "$CJ"
 doc_stale="$("$FLEET" doctor 2>&1 || true)"
 hasstr "(d') a stopped courier is reported" "$doc_stale" "courier: last pass"
 hasstr "(d') and the report says what it costs" "$doc_stale" "nothing to carry it"
+# ‼ ABSENCE INVERTED WITH `D-161`. While the Stop hook drained, no courier only
+#   meant slower mail and flagging it would have trained readers to ignore the row.
+#   The hook no longer drains, so no courier means NO RETRY fleet-wide — a failed
+#   send queues forever. This row and the hook change are one change.
 rm -f "$CJ"
 doc_none="$("$FLEET" doctor 2>&1 || true)"
-lacksstr "(d') control: no courier at all is NOT reported as a problem" "$doc_none" "courier: last pass"
+hasstr "(d') no courier at all is now a REPORTED failure" "$doc_none" "courier: not running"
+hasstr "(d') and it says how to fix it" "$doc_none" "fleet courier"
 
 # =====================================================================
 section "(c') real fleet_inject returns non-zero when verify exhausts"

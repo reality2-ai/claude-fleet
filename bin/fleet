@@ -2414,6 +2414,13 @@ cmd_doctor() {
   #   reports "queued" and nothing ever carries it. Threshold comes from the
   #   courier's own recorded interval, so a slow courier is not called dead.
   local _cj="$RUN_DIR/courier.json"
+  # ‼ ABSENCE FLIPPED FROM BENIGN TO FATAL WHEN THE Stop-HOOK DRAIN WENT (`D-161`).
+  #   While the hook drained, a missing courier only made mail slower, so flagging
+  #   it would have trained everyone to ignore the row. Now nothing retries a failed
+  #   send, so a fleet with no courier delivers once and then queues forever.
+  if [[ ! -f "$_cj" ]]; then
+    problems+=("courier: not running — the Stop hook no longer drains, so a failed send is never retried (start: fleet courier)")
+  fi
   if [[ -f "$_cj" ]]; then
     local _cts _cin _cage
     _cts="$(jq -r '.ts // 0' "$_cj" 2>/dev/null || echo 0)"

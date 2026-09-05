@@ -304,11 +304,19 @@ _sha_hb() {
 _sha_beat="$(_sha_hb)"
 if [[ "$_sha_beat" =~ ^[0-9]+$ ]]; then ok "a re-fire still runs past the guard (heartbeat written)"
 else no "a re-fire exited before doing anything (heartbeat '$_sha_beat') — the drain is unreachable"; fi
-if grep -q 'STOP_REFIRE == 0' "$ROOT/hooks/on-stop.sh" && \
-   awk '/STOP_REFIRE=1/{g=NR} /fleet_drain_inbox/{d=NR} END{exit !(g && d && d>g)}' "$ROOT/hooks/on-stop.sh"; then
-  ok "the drain sits AFTER the re-fire guard, not behind an early exit"
+# ‼ THE HOOK NO LONGER DELIVERS AT ALL (`D-161`). This row used to assert the drain
+#   sat after the re-fire guard; delivery moved to `fleet courier`, so the assertion
+#   inverts: the hook must NOT call the drain. A hook that still drains is a second
+#   delivery owner, which is the multi-writer premise the courier exists to remove.
+if grep -q 'STOP_REFIRE == 0' "$ROOT/hooks/on-stop.sh"; then
+  ok "the re-fire guard is still in place"
 else
-  no "the drain is not reachable after the re-fire guard"
+  no "the re-fire guard is gone"
+fi
+if grep -qE '^[^#]*fleet_drain_inbox' "$ROOT/hooks/on-stop.sh"; then
+  no "the Stop hook still drains — delivery is the recipient's job again"
+else
+  ok "the Stop hook does NOT drain (the courier owns delivery)"
 fi
 if declare -F fleet_box_has_stuck_inject >/dev/null 2>&1; then ok "tag-gate fleet_box_has_stuck_inject defined (auto-Enter only on injects, not human text)"; else no "no tag-gate → auto-Enter could submit human typing"; fi
 if declare -f fleet_flush_stuck_box | grep -q "fleet_box_has_stuck_inject"; then ok "flush is tag-gated (never submits human typing)"; else no "flush not tag-gated"; fi
