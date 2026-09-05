@@ -339,6 +339,29 @@ if "$FLEET" courier --once --interval abc >/dev/null 2>&1; then
 else ok "(d) control: a non-numeric --interval is refused"; fi
 
 # =====================================================================
+section "(d') the courier is watched, because nobody else is watching it"
+# ‼ A DEAD COURIER AND A QUIET ONE PRINTED THE SAME THING. It carries every
+#   lane's mail and reported nothing until it exited, so its failure mode was
+#   silence — the exact shape it was built to remove. `.last_drain_attempt` is
+#   NOT a substitute: it only moves when a drain gets past the early returns, so
+#   a fleet with nothing queued leaves it stale and reads as a dead courier.
+"$FLEET" courier --once --lane alpha >/dev/null 2>&1
+CJ="$WS/.fleet/run/courier.json"
+if [ -f "$CJ" ]; then ok "(d') a pass writes a courier heartbeat"
+else no "(d') no courier heartbeat written — a dead courier is indistinguishable from a quiet one"; fi
+cj_int="$(jq -r '.interval // empty' "$CJ" 2>/dev/null)"
+eq "(d') the heartbeat records the interval doctor judges it by" "${cj_int:-missing}" "20"
+doc_fresh="$("$FLEET" doctor 2>&1 || true)"
+lacksstr "(d') control: a fresh courier is not reported as a problem" "$doc_fresh" "courier: last pass"
+jq '.ts = (.ts - 500)' "$CJ" > "$CJ.t" && mv "$CJ.t" "$CJ"
+doc_stale="$("$FLEET" doctor 2>&1 || true)"
+hasstr "(d') a stopped courier is reported" "$doc_stale" "courier: last pass"
+hasstr "(d') and the report says what it costs" "$doc_stale" "nothing to carry it"
+rm -f "$CJ"
+doc_none="$("$FLEET" doctor 2>&1 || true)"
+lacksstr "(d') control: no courier at all is NOT reported as a problem" "$doc_none" "courier: last pass"
+
+# =====================================================================
 section "(c') real fleet_inject returns non-zero when verify exhausts"
 # Sanity that the verify loop now returns 1 (not the old optimistic 0) when it
 # can never confirm submission. FLEET_INJECT_VERIFY stays on; we point at a

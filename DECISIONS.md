@@ -8046,3 +8046,32 @@ request, and only then delete what the race hardening defends.
 `robustness 50/0` (7 new rows), `smoke 350/0`, `faculty 107/0`.
 
 **Decision-Log: this entry.**
+
+## D-20260905-160 — the courier's own failure mode was silence, which is what it was built to remove
+
+**`fleet courier` reported nothing until it exited.** It carries every lane's mail, and
+a dead one and a quiet one printed the same thing. That is the shape `D-159` was written
+against, reproduced in the fix.
+
+**And the obvious substitute is wrong.** `.last_drain_attempt` only moves when a drain
+gets **past** the early returns (no window, not ready, no mailbox), so a fleet with
+nothing queued leaves it stale. **I misread exactly that twice on 2026-09-05** — once
+raising a false alarm about r2 being unreachable when its inbox was simply empty. A
+field that goes stale during correct operation cannot be a liveness signal.
+
+**Each pass now writes `$RUN_DIR/courier.json`** — `ts`, `passes`, `lanes`, `delivered`,
+`interval`, `pid` — and `fleet doctor` judges it **by the interval the courier recorded**
+rather than a guessed threshold, so a deliberately slow courier is not called dead.
+
+**Absent is not a problem; present-and-stopped is.** A fleet with no courier still
+delivers on the send path, so flagging its absence would train everyone to ignore the
+row. A courier that exists and has stopped is the dangerous state: every send reports
+*queued* and nothing carries it. The suite asserts **both** directions — a fresh courier
+and no courier at all are silent, a stopped one is reported.
+
+**Mutation proof.** Deleting the heartbeat write turns **four rows red** while **both
+controls stay green**, so the rows cannot pass by reporting everything.
+
+`robustness 56/0` (6 new rows), `smoke 350/0`, `faculty 107/0`.
+
+**Decision-Log: this entry.**

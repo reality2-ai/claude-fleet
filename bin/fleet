@@ -2408,6 +2408,24 @@ cmd_doctor() {
     fi
   done
 
+  # ‼ THE COURIER IS THE ONE PROCESS EVERY LANE DEPENDS ON AND THE ONE NOBODY
+  #   WATCHES. Absent is NOT a problem — a fleet can still deliver on the send
+  #   path — but PRESENT AND STOPPED is the dangerous state, because every send
+  #   reports "queued" and nothing ever carries it. Threshold comes from the
+  #   courier's own recorded interval, so a slow courier is not called dead.
+  local _cj="$RUN_DIR/courier.json"
+  if [[ -f "$_cj" ]]; then
+    local _cts _cin _cage
+    _cts="$(jq -r '.ts // 0' "$_cj" 2>/dev/null || echo 0)"
+    _cin="$(jq -r '.interval // 20' "$_cj" 2>/dev/null || echo 20)"
+    [[ "$_cts" =~ ^[0-9]+$ ]] || _cts=0
+    [[ "$_cin" =~ ^[0-9]+$ ]] || _cin=20
+    _cage=$(( now - _cts ))
+    if (( _cage > _cin * 3 + 30 )); then
+      problems+=("courier: last pass ${_cage}s ago (interval ${_cin}s) — mail is queuing with nothing to carry it")
+    fi
+  fi
+
   if [[ "$quiet" == 1 ]]; then
     [[ ${#problems[@]} -eq 0 ]] && return 0
     # compact, single-line summary for the watchdog → supervisor note.
@@ -2740,6 +2758,18 @@ cmd_courier() {
       (( rc == 0 )) && delivered=$((delivered + 1))
     done
     n=$((n + 1))
+    # ‼ A DELIVERY OWNER WITH NO OBSERVABLE HEARTBEAT IS THE SHAPE IT REPLACED.
+    #   Children write a heartbeat and `fleet doctor` reads it; the courier moves
+    #   everybody's mail and, until this line, said nothing until it exited. A dead
+    #   courier and a quiet one printed the SAME THING — and `.last_drain_attempt`
+    #   is not a substitute: it only moves when a drain gets PAST the early returns,
+    #   so a fleet with nothing queued leaves it stale and reads as failure. I
+    #   misread exactly that twice on 2026-09-05 before writing this.
+    #   The interval is recorded so `doctor` computes staleness from what this
+    #   courier actually does, instead of guessing a threshold.
+    printf '{"ts":%s,"passes":%s,"lanes":%s,"delivered":%s,"interval":%s,"pid":%s}\n' \
+      "$(date +%s)" "$n" "${#lanes[@]}" "$delivered" "$interval" "$$" \
+      | fleet_safe_write "$RUN_DIR/courier.json" >/dev/null 2>&1 || true
     (( once )) && break
     sleep "$interval"
   done
