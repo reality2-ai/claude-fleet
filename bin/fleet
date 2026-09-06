@@ -2730,17 +2730,51 @@ cmd_broadcast() {
 #
 #   fleet courier [--once] [--interval <s>] [--lane <id>]…
 cmd_courier() {
-  local once=0 interval="${FLEET_COURIER_INTERVAL:-20}" lanes=()
+  local once=0 supervised=0 stop=0 interval="${FLEET_COURIER_INTERVAL:-20}" lanes=()
   while (( $# )); do
     case "$1" in
-      --once)     once=1; shift ;;
-      --interval) interval="${2:?--interval needs seconds}"; shift 2 ;;
-      --lane)     fleet_require_member_id "${2:?--lane needs an id}"; lanes+=("$2"); shift 2 ;;
-      *) die "usage: fleet courier [--once] [--interval <s>] [--lane <id>]…" ;;
+      --once)       once=1; shift ;;
+      --supervised) supervised=1; shift ;;
+      --stop)       stop=1; shift ;;
+      --interval)   interval="${2:?--interval needs seconds}"; shift 2 ;;
+      --lane)       fleet_require_member_id "${2:?--lane needs an id}"; lanes+=("$2"); shift 2 ;;
+      *) die "usage: fleet courier [--once|--supervised|--stop] [--interval <s>] [--lane <id>]…" ;;
     esac
   done
   [[ "$interval" =~ ^[0-9]+$ ]] || die "--interval must be a whole number of seconds"
   fleet_load_paths; [[ -f "$MANIFEST" ]] && fleet_manifest_load "$MANIFEST"
+
+  # ‼ THE COURIER IS NOW LOAD-BEARING AND KEPT DYING WITH ITS PARENT. Since the
+  #   `Stop` hook stopped draining (`D-161`) it is the only thing that retries a
+  #   failed send, and it was living in an interactive session's background task:
+  #   KILLED TWICE ON 2026-09-05/06, once leaving the fleet 45 minutes with no
+  #   delivery owner. A single point of failure whose lifetime is tied to whoever
+  #   happened to start it is not a delivery guarantee.
+  # ‼ SAME MECHANISM THE TMUX SERVER ALREADY USES, for the reason recorded at
+  #   `lib/tmux.sh:167` — a process spawned inside a login session lives in that
+  #   session's cgroup scope and is reaped when the session ends. The per-user
+  #   manager outlives the login. `Restart=always` because a courier that exited
+  #   for any reason is an outage, not a state to preserve.
+  local _cu="fleet-courier-${FLEET_WORKSPACE_ID:-default}"
+  if (( stop )); then
+    fleet_tmux_user_manager_ok || die "no --user systemd manager here; stop the courier however it was started"
+    systemctl --user stop "$_cu.service" 2>/dev/null || true
+    systemctl --user reset-failed "$_cu.service" 2>/dev/null || true
+    info "courier: stopped $_cu.service"
+    return 0
+  fi
+  if (( supervised )); then
+    fleet_tmux_user_manager_ok || die "cannot supervise: no --user systemd manager (systemd-run + XDG_RUNTIME_DIR). Run 'fleet courier' in a process that outlives this one."
+    systemctl --user reset-failed "$_cu.service" 2>/dev/null || true
+    if systemd-run --user --quiet --collect --unit="$_cu" \
+         --property=Restart=always --property=RestartSec=5 \
+         --setenv=FLEET_WORKSPACE="$WORKSPACE" \
+         "$TOOL_ROOT/bin/fleet" courier --interval "$interval" 2>/dev/null; then
+      info "courier: supervised as $_cu.service (Restart=always, interval ${interval}s)"
+      return 0
+    fi
+    die "systemd-run --user failed to start $_cu.service"
+  fi
   # No --lane: every manifest member, plus any lane that has a state file (ad-hoc
   # and retired lanes keep mailboxes and are still legitimate recipients).
   if (( ${#lanes[@]} == 0 )); then

@@ -339,6 +339,23 @@ if "$FLEET" courier --once --interval abc >/dev/null 2>&1; then
 else ok "(d) control: a non-numeric --interval is refused"; fi
 
 # =====================================================================
+section "(d'') the courier outlives whoever started it"
+# ‼ IT WAS KILLED TWICE IN TWO DAYS living in an interactive session's background
+#   task, once leaving the fleet 45 minutes with no delivery owner — and since
+#   `D-161` it is the only thing that retries a failed send. These rows check the
+#   WIRING only; the behaviour was proved on the live fleet by killing the main
+#   PID and watching systemd restart it (`D-162`), which no fixture here can do
+#   without a user manager it may not have.
+if grep -q 'Restart=always' "$ROOT/bin/fleet"; then ok "(d'') the courier unit restarts always (an exited courier is an outage)"
+else no "(d'') courier unit has no Restart=always"; fi
+if awk '/^cmd_courier\(\)/{c=1} c&&/fleet_tmux_user_manager_ok/{found=1} /^}/{if(c&&NR>1)c=0} END{exit !found}' "$ROOT/bin/fleet"; then
+  ok "(d'') supervision reuses the tmux server's user-manager probe, not a new mechanism"
+else no "(d'') courier invented its own supervision path"; fi
+cs_out="$("$FLEET" courier --nonsense 2>&1 || true)"
+hasstr "(d'') an unknown courier flag is refused" "$cs_out" "usage: fleet courier"
+hasstr "(d'') and the usage names the supervised form" "$cs_out" "--supervised"
+
+# =====================================================================
 section "(d') the courier is watched, because nobody else is watching it"
 # ‼ A DEAD COURIER AND A QUIET ONE PRINTED THE SAME THING. It carries every
 #   lane's mail and reported nothing until it exited, so its failure mode was

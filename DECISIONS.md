@@ -8117,3 +8117,36 @@ belongs under supervision, not in a session's background task; that is the next 
 `robustness 57/0`, `faculty 108/0`, `smoke 350/0`.
 
 **Decision-Log: this entry.**
+
+## D-20260906-162 — the courier was a single point of failure living in a session's background task, and it died twice
+
+**Since `D-161` the courier is the only thing that retries a failed send**, and it was
+running as a background task of an interactive session. **It was killed twice inside two
+days** — 2026-09-05 23:14 and 2026-09-06 13:23 — the first leaving the fleet **45 minutes
+with no delivery owner**. Nothing was lost either time, because nothing happened to be
+queued; that is luck, not a property.
+
+**A delivery guarantee whose lifetime is tied to whoever happened to start it is not a
+guarantee.** `fleet courier --supervised` now launches the loop as a transient
+`--user` unit with `Restart=always`, and `--stop` takes it down.
+
+**It reuses the mechanism the tmux server already uses, for the reason already recorded
+at `lib/tmux.sh:167`:** a process spawned inside a login session lives in that session's
+cgroup scope and is reaped when the session ends, while the per-user manager outlives the
+login. Inventing a second supervision path would have meant two things to understand and
+one of them untested.
+
+**Proved on the live fleet, not in a fixture.** Started supervised (`MainPID 43417`,
+heartbeat `pid` matching, so the *supervised* process is demonstrably the one delivering),
+then `kill -9` on the main PID: systemd restarted it as `46058`, unit `active`. The exact
+failure that happened twice today now self-heals in five seconds.
+
+**The suite checks the wiring and says so.** No fixture here can kill a unit and wait for
+a user manager that may not exist, so the rows assert `Restart=always` is set, that
+supervision reuses `fleet_tmux_user_manager_ok` rather than a private path, and that the
+usage names the supervised form. **They are weaker than the live proof and the comment
+records that**, so nobody mistakes four green greps for a demonstration.
+
+`robustness 61/0` (4 new rows), `faculty 108/0`, `smoke 350/0`.
+
+**Decision-Log: this entry.**
